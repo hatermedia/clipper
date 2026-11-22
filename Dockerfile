@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg passwd \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -13,7 +13,8 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 RUN pip install .
 
-RUN useradd --create-home --uid 1000 clipper \
+RUN groupadd --gid 1000 clipper \
+    && useradd --create-home --uid 1000 --gid clipper clipper \
     && mkdir -p /footage /out \
     && chown -R clipper:clipper /app /out
 USER clipper
