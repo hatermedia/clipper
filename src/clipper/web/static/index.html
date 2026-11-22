@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clipper — gaming highlight trimmer</title>
+  <meta name="description" content="Turn raw gameplay into highlight clips. Local audio + motion detection, lossless FFmpeg cuts." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322d3ee' stroke-width='2'%3E%3Ccircle cx='6' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12'/%3E%3C/svg%3E" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#06090f',
+            panel: '#0b111b',
+            panel2: '#0f1724',
+          },
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
+          },
+          boxShadow: {
+            glow: '0 0 40px -12px rgba(34, 211, 238, 0.35)',
+            card: '0 20px 60px -30px rgba(0, 0, 0, 0.8)',
+          },
+          keyframes: {
+            rise: {
+              '0%': { opacity: '0', transform: 'translateY(8px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            shimmer: {
+              '0%': { backgroundPosition: '200% 0' },
+              '100%': { backgroundPosition: '-200% 0' },
+            },
+          },
+          animation: {
+            rise: 'rise .35s ease-out both',
+            shimmer: 'shimmer 2s linear infinite',
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    [x-cloak] { display: none !important; }
+    html { color-scheme: dark; }
+    body {
+      background-color: #06090f;
+      background-image:
+        radial-gradient(55% 45% at 50% -5%, rgba(34, 211, 238, 0.14), transparent 70%),
+        radial-gradient(40% 35% at 95% 10%, rgba(244, 63, 94, 0.08), transparent 70%);
+    }
+    .grid-bg {
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(70% 60% at 50% 0%, black, transparent 100%);
+    }
+    .glass {
+      background: linear-gradient(180deg, rgba(15, 23, 36, 0.82), rgba(11, 17, 27, 0.92));
+      backdrop-filter: blur(14px);
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 9999px;
+      background: linear-gradient(to right, #22d3ee var(--pct, 50%), rgba(255,255,255,0.09) var(--pct, 50%));
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 9999px;
+      background: #e6fbff;
+      border: 3px solid #0891b2;
+      box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.14), 0 4px 12px rgba(0,0,0,.5);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 9999px;
+      background: #e6fbff;
+      border: 3px solid #0891b2;
+      box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.14);
+      cursor: pointer;
+    }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.2); border-radius: 9999px; border: 2px solid #06090f; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,.35); }
+    .shimmer {
+      background: linear-gradient(90deg, rgba(34,211,238,.12) 25%, rgba(34,211,238,.35) 50%, rgba(34,211,238,.12) 75%);
+      background-size: 200% 100%;
+    }
+  </style>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+</head>
+
+<body class="min-h-screen bg-ink font-sans text-slate-200 antialiased" x-data="clipperApp()" x-init="init()" @keydown.escape.window="browserOpen = false">
+  <div class="pointer-events-none fixed inset-0 -z-10 grid-bg"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 border-b border-white/5 bg-ink/80 backdrop-blur-xl">
+    <div class="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 lg:px-8">
+      <div class="flex items-center gap-3">
+        <div class="grid h-9 w-9 place-items-center rounded-xl bg-cyan-400/10 ring-1 ring-cyan-400/30 shadow-glow">
+          <svg class="h-5 w-5 text-cyan-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="6" r="3"></circle>
+            <circle cx="6" cy="18" r="3"></circle>
+            <path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-bold tracking-[0.22em] text-white">CLIPPER</span>
+            <span class="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-400" x-text="'v' + (health?.version || '0.1.0')"></span>
+          </div>
+          <p class="text-[11px] text-slate-500">gaming highlight trimmer</p>
+        </div>
+      </div>
+
+      <div class="ml-auto flex items-center gap-4">
+        <div class="hidden items-center gap-2 sm:flex" :title="health?.ffmpeg || 'checking ffmpeg'">
+          <span class="h-2 w-2 rounded-full" :class="health?.ok ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,.8)]' : (health ? 'bg-rose-400' : 'bg-slate-600')"></span>
+          <span class="text-[11px] text-slate-400" x-text="health ? (health.ok ? 'ffmpeg ready' : 'ffmpeg missing') : 'checking…'"></span>
+        </div>
+        <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer"
+           class="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-300 transition hover:border-cyan-400/30 hover:text-white">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.13c-3.2.7-3.88-1.36-3.88-1.36-.53-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.69 5.4-5.25 5.69.41.35.77 1.05.77 2.12v3.14c0 .3.21.66.8.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 pb-24 pt-10 lg:px-8">
+    <!-- Hero -->
+    <section class="mb-9 max-w-3xl animate-rise">
+      <div class="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-1 text-[11px] font-medium text-cyan-300">
+        <span class="h-1.5 w-1.5 rounded-full bg-cyan-300"></span>
+        Local-only · no uploads · no cloud
+      </div>
+      <h1 class="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+        Turn raw gameplay into <span class="bg-gradient-to-r from-cyan-300 via-sky-300 to-rose-300 bg-clip-text text-transparent">highlights.</span>
+      </h1>
+      <p class="mt-4 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
+        Clipper listens for loud reactions and watches for sudden motion, then cuts the boring parts out.
+        Stream-copy exports are instant. Everything runs on your machine.
+      </p>
+    </section>
+
+    <div class="grid gap-6 xl:grid-cols-[390px_minmax(0,1fr)]">
+      <!-- Controls -->
+      <aside class="space-y-5">
+        <div class="glass rounded-2xl border border-white/[0.07] p-5 shadow-card">
+          <div class="mb-4 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-sm font-semibold text-white">
+              <span class="grid h-6 w-6 place-items-center rounded-md bg-cyan-400/10 text-xs text-cyan-300 ring-1 ring-cyan-400/20">1</span>
+              Footage
+            </div>
+            <span class="text-[11px] text-slate-500">mp4 · mkv · mov · avi</span>
+          </div>
+
+          <label class="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-slate-500">Input folder</label>
+          <div class="flex gap-2">
+            <div class="relative min-w-0 flex-1">
+              <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+              <input x-model="input" type="text" spellcheck="false" placeholder="C:\Videos\gameplay"
+                     class="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pl-9 pr-3 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-400/50 focus:outline-none focus:ring-2 focus:ring-cyan-400/10" />
+            </div>
+            <button @click="openBrowser()" title="Browse folders"
+                    class="grid w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-200">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+            </button>
+          </div>
+
+          <div class="mt-3 flex items-center justify-between gap-3">
+            <label class="inline-flex cursor-pointer items-center gap-2 text-xs text-slate-400">
+              <input x-model="recursive" type="checkbox" class="h-3.5 w-3.5 rounded border-white/20 bg-black/30 text-cyan-400 focus:ring-cyan-400/30" />
+              Include subfolders
+            </label>
+            <button @click="scan()" :disabled="scanning || !input.trim()"
+                    class="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-3.5 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+              <svg x-show="scanning" class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+              <svg x-show="!scanning" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <span x-text="scanning ? 'Scanning…' : 'Scan'"></span>
+            </button>
+          </div>
+
+          <p x-show="scanError" x-text="scanError" class="mt-3 rounded-lg border border-rose-400/20 bg-rose-400/[0.06] px-3 py-2 text-xs text-rose-300"></p>
+
+          <div x-show="files.length" x-cloak class="mt-4 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.04] p-3">
+            <div class="flex items-center gap-2 text-xs font-medium text-emerald-300">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>
+              <span x-text="files.length + (files.length === 1 ? ' video ready' : ' videos ready')"></span>
+            </div>
+            <ul class="mt-2 space-y-1">
+              <template x-for="f in files.slice(0, 5)" :key="f.path">
+                <li class="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span class="h-1 w-1 shrink-0 rounded-full bg-emerald-400/70"></span>
+                  <span class="truncate" x-text="f.name"></span>
+                  <span class="ml-auto shrink-0 font-mono text-[10px] text-slate-600" x-text="size(f.size)"></span>
+                </li>
+              </template>
+            </ul>
+            <p x-show="files.length > 5" class="mt-1 pl-3 text-[10px] text-slate-500" x-text="'+ ' + (files.length - 5) + ' more'"></p>
+          </div>
+        </div>
+
+        <div class="glass rounded-2xl border border-white/[0.07] p-5 shadow-card">
+          <div class="mb-5 flex items-center gap-2 text-sm font-semibold text-white">
+            <span class="grid h-6 w-6 place-items-center rounded-md bg-rose-400/10 text-xs text-rose-300 ring-1 ring-rose-400/20">2</span>
+            Detection
+          </div>
+
+          <div class="flex items-end justify-between">
+            <label class="text-[11px] font-medium uppercase tracking-wider text-slate-500">Sensitivity</label>
+            <span class="rounded-md bg-white/[0.04] px-2 py-0.5 font-mono text-xs text-cyan-300" x-text="Math.round(sensitivity * 100) + '%'"></span>
+          </div>
+          <input x-model.number="sensitivity" type="range" min="0" max="1" step="0.01"
+                 class="mt-3 w-full" :style="'--pct:' + (sensitivity * 100) + '%'" />
+          <div class="mt-1.5 flex justify-between text-[10px] text-slate-600">
+            <span>Only bangers</span>
+            <span>Balanced</span>
+            <span>Chaotic</span>
+          </div>
+
+          <div class="mt-4 grid grid-cols-3 gap-2">
+            <button @click="setPreset('strict')" :class="sensitivity < 0.4 ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-200' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:text-slate-200'"
+                    class="rounded-lg border px-2 py-2 text-[11px] font-medium transition">Strict</button>
+            <button @click="setPreset('balanced')" :class="sensitivity >= 0.4 && sensitivity <= 0.65 ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-200' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:text-slate-200'"
+                    class="rounded-lg border px-2 py-2 text-[11px] font-medium transition">Balanced</button>
+            <button @click="setPreset('loose')" :class="sensitivity > 0.65 ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-200' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:text-slate-200'"
+                    class="rounded-lg border px-2 py-2 text-[11px] font-medium transition">Loose</button>
+          </div>
+
+          <div class="mt-5 grid grid-cols-2 gap-3">
+            <div>
+              <label class="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-slate-500">Pre-roll (s)</label>
+              <input x-model.number="pre" type="number" min="0" max="120" step="1"
+                     class="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-slate-200 focus:border-cyan-400/50 focus:outline-none" />
+            </div>
+            <div>
+              <label class="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-slate-500">Post-roll (s)</label>
+              <input x-model.number="post" type="number" min="0" max="120" step="1"
+                     class="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-slate-200 focus:border-cyan-400/50 focus:outline-none" />
+            </div>
+          </div>
+
+          <details class="group mt-4 rounded-xl border border-white/[0.06] bg-black/20">
+            <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs text-slate-400">
+              <span>Advanced tuning</span>
+              <svg class="h-4 w-4 transition group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="space-y-3 border-t border-white/[0.05] px-3 py-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="mb-1 block text-[10px] uppercase tracking-wider text-slate-600">Max clips</label>
+                  <input x-model.number="maxClips" type="number" min="1" max="200"
+                         class="w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 font-mono text-xs text-slate-300 focus:border-cyan-400/50 focus:outline-none" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-[10px] uppercase tracking-wider text-slate-600">Sample FPS</label>
+                  <input x-model.number="sampleFps" type="number" min="1" max="15"
+                         class="w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 font-mono text-xs text-slate-300 focus:border-cyan-400/50 focus:outline-none" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-[10px] uppercase tracking-wider text-slate-600">Audio weight</label>
+                  <input x-model.number="audioWeight" type="number" min="0" max="1" step="0.05"
+                         class="w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 font-mono text-xs text-slate-300 focus:border-cyan-400/50 focus:outline-none" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-[10px] uppercase tracking-wider text-slate-600">Motion weight</label>
+                  <input x-model.number="visualWeight" type="number" min="0" max="1" step="0.05"
+                         class="w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 font-mono text-xs text-slate-300 focus:border-cyan-400/50 focus:outline-none" />
+                </div>
+              </div>
+              <p class="text-[10px] leading-4 text-slate-600">Overlapping windows merge automatically. Higher weights make that signal dominate the excitement score.</p>
+            </div>
+          </details>
+
+          <button @click="analyze()" :disabled="analyzing || !input.trim() || !files.length"
+                  class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-3 text-sm font-semibold text-slate-950 shadow-glow transition hover:from-cyan-300 hover:to-sky-300 disabled:cursor-not-allowed disabled:opacity-40">
+            <svg x-show="analyzing" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+            <svg x-show="!analyzing" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="M19 16v4M17 18h4"/></svg>
+            <span x-text="analyzing ? 'Analyzing…' : 'Detect highlights'"></span>
+          </button>
+          <p class="mt-2 text-center text-[10px] text-slate-600">Analysis is a dry run. Nothing renders until you export.</p>
+        </div>
+
+        <div x-show="health && !health.ok" x-cloak class="rounded-2xl border border-rose-400/20 bg-rose-400/[0.06] p-4">
+          <div class="flex items-center gap-2 text-xs font-semibold text-rose-300">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            FFmpeg not found
+          </div>
+          <p class="mt-1.5 text-[11px] leading-5 text-slate-400">Install it with <code class="rounded bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-rose-200">winget install Gyan.FFmpeg</code> and restart Clipper.</p>
+        </div>
+      </aside>
+
+      <!-- Results -->
+      <section class="min-w-0 space-y-5">
+        <!-- Analyzing -->
+        <div x-show="job && analyzing" x-cloak class="glass animate-rise rounded-2xl border border-cyan-400/20 p-6 shadow-card">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm font-semibold text-white">Finding the good parts</div>
+              <p class="mt-1 text-xs text-slate-400" x-text="job?.message || 'Starting…'"></p>
+            </div>
+            <button @click="cancelJob('analyze')" class="rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] text-slate-400 transition hover:border-rose-400/30 hover:text-rose-300">Cancel</button>
+          </div>
+          <div class="mt-5 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+            <div class="h-full rounded-full bg-gradient-to-r from-cyan-400 to-sky-400 transition-all duration-500" :style="'width:' + Math.round((job?.progress || 0) * 100) + '%'"></div>
+          </div>
+          <div class="mt-2 flex justify-between font-mono text-[10px] text-slate-500">
+            <span>audio spikes + motion delta</span>
+            <span x-text="Math.round((job?.progress || 0) * 100) + '%'"></span>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div x-show="!analysis && !(job && analyzing)" x-cloak class="glass animate-rise rounded-2xl border border-white/[0.07] p-10 text-center shadow-card">
+          <div class="mx-auto grid h-16 w-16 place-items-center rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+            <svg class="h-7 w-7 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 9 5 3-5 3V9Z"/></svg>
+          </div>
+          <h2 class="mt-5 text-base font-semibold text-white">No footage analyzed yet</h2>
+          <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
+            Pick a folder of raw gameplay, tune how greedy the detector should be, and hit
+            <span class="text-slate-300">Detect highlights</span>. You will see timestamps and preview frames before anything is rendered.
+          </p>
+          <div class="mx-auto mt-6 grid max-w-md grid-cols-3 gap-2 text-[11px]">
+            <div class="rounded-xl border border-white/[0.05] bg-white/[0.02] px-2 py-3 text-slate-500"><span class="block text-base font-semibold text-cyan-300">1</span>Scan files</div>
+            <div class="rounded-xl border border-white/[0.05] bg-white/[0.02] px-2 py-3 text-slate-500"><span class="block text-base font-semibold text-rose-300">2</span>Review clips</div>
+            <div class="rounded-xl border border-white/[0.05] bg-white/[0.02] px-2 py-3 text-slate-500"><span class="block text-base font-semibold text-emerald-300">3</span>Export fast</div>
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div x-show="analysis" x-cloak class="space-y-5 animate-rise">
+          <div class="glass flex flex-wrap items-center gap-4 rounded-2xl border border-white/[0.07] p-5 shadow-card">
+            <div class="flex items-center gap-3">
+              <div class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400/10 ring-1 ring-emerald-400/20">
+                <svg class="h-5 w-5 text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>
+              </div>
+              <div>
+                <div class="text-sm font-semibold text-white" x-text="analysis?.summary.clips + ' clip' + (analysis?.summary.clips === 1 ? '' : 's') + ' found'"></div>
+                <div class="text-[11px] text-slate-500" x-text="analysis?.summary.files + ' file' + (analysis?.summary.files === 1 ? '' : 's') + ' · sensitivity ' + Math.round((analysis?.summary.settings.sensitivity || 0) * 100) + '%'"></div>
+              </div>
+            </div>
+            <div class="ml-auto flex items-center gap-2">
+              <button @click="analyze()" :disabled="analyzing" class="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] text-slate-300 transition hover:border-cyan-400/30 hover:text-white">Re-run</button>
+            </div>
+          </div>
+
+          <!-- Export -->
+          <div class="glass rounded-2xl border border-white/[0.07] p-5 shadow-card">
+            <div class="flex flex-wrap items-center gap-3">
+              <div>
+                <div class="text-sm font-semibold text-white">Export clips</div>
+                <p class="mt-0.5 text-[11px] text-slate-500">Stream copy is instant. Re-encode for frame-accurate cuts.</p>
+              </div>
+              <label class="ml-auto inline-flex cursor-pointer items-center gap-2 text-[11px] text-slate-400">
+                <input x-model="reencode" type="checkbox" class="h-3.5 w-3.5 rounded border-white/20 bg-black/30 text-cyan-400 focus:ring-cyan-400/30" />
+                Re-encode
+              </label>
+              <select x-show="reencode" x-model="encoder" class="rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-[11px] text-slate-300 focus:border-cyan-400/50 focus:outline-none">
+                <option value="libx264">libx264</option>
+                <option value="h264_nvenc">H.264 NVENC</option>
+                <option value="hevc_nvenc">HEVC NVENC</option>
+                <option value="libx265">libx265</option>
+              </select>
+            </div>
+
+            <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+              <div class="relative min-w-0 flex-1">
+                <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+                <input x-model="output" type="text" spellcheck="false" placeholder="trimmed"
+                       class="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pl-9 pr-3 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-400/50 focus:outline-none" />
+              </div>
+              <button @click="exportAll()" :disabled="exporting || !analysisId"
+                      class="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-2.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40">
+                <svg x-show="exporting" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                <svg x-show="!exporting" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+                <span x-text="exporting ? 'Exporting…' : 'Export all'"></span>
+              </button>
+            </div>
+
+            <div x-show="exporting && exportJob" x-cloak class="mt-4">
+              <div class="h-2 overflow-hidden rounded-full bg-white/[0.06]">
+                <div class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-500" :style="'width:' + Math.round((exportJob?.progress || 0) * 100) + '%'"></div>
+              </div>
+              <div class="mt-2 flex justify-between font-mono text-[10px] text-slate-500">
+                <span class="truncate" x-text="exportJob?.message"></span>
+                <span x-text="Math.round((exportJob?.progress || 0) * 100) + '%'"></span>
+              </div>
+              <button @click="cancelJob('export')" class="mt-2 rounded-lg border border-white/10 px-2.5 py-1 text-[10px] text-slate-400 transition hover:border-rose-400/30 hover:text-rose-300">Cancel export</button>
+            </div>
+
+            <div x-show="exportResult" x-cloak class="mt-4 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.04] p-3">
+              <div class="flex items-center gap-2 text-xs font-semibold text-emerald-300">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>
+                <span x-text="exportResult?.outputs.length + ' file(s) exported'"></span>
+              </div>
+              <ul class="mt-2 max-h-40 space-y-1 overflow-auto">
+                <template x-for="out in exportResult?.outputs || []" :key="out">
+                  <li class="flex items-center gap-2 text-[11px] text-slate-400">
+                    <span class="truncate font-mono" x-text="out.split(/[\\\\/]/).pop()"></span>
+                    <button @click="copy(out)" class="ml-auto shrink-0 text-[10px] text-cyan-400 hover:text-cyan-300">copy path</button>
+                  </li>
+                </template>
+              </ul>
+              <p x-show="exportResult?.errors?.length" class="mt-2 text-[11px] text-rose-300" x-text="exportResult?.errors?.length + ' clip(s) failed — check the console/report.'"></p>
+            </div>
+            <p x-show="exportJob?.status === 'error'" x-cloak class="mt-3 rounded-lg border border-rose-400/20 bg-rose-400/[0.06] px-3 py-2 text-xs text-rose-300" x-text="exportJob?.error"></p>
+          </div>
+
+          <!-- File cards -->
+          <template x-for="file in analysis?.files || []" :key="file.path">
+            <article class="glass overflow-hidden rounded-2xl border border-white/[0.07] shadow-card">
+              <div class="flex flex-wrap items-center gap-3 border-b border-white/[0.05] px-5 py-4">
+                <div class="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.03] text-slate-500 ring-1 ring-white/[0.06]">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg>
+                </div>
+                <div class="min-w-0">
+                  <div class="truncate text-sm font-medium text-white" x-text="file.name"></div>
+                  <div class="mt-0.5 font-mono text-[10px] text-slate-500" x-text="file.info.width + '×' + file.info.height + ' · ' + file.info.fps.toFixed(1) + ' fps · ' + file.info.duration_label"></div>
+                </div>
+                <div class="ml-auto rounded-full border border-white/10 px-2.5 py-1 text-[10px] text-slate-400" x-text="file.clip_count + (file.clip_count === 1 ? ' clip' : ' clips')"></div>
+              </div>
+
+              <div x-show="file.error" class="px-5 py-4 text-xs text-rose-300" x-text="file.error"></div>
+              <div x-show="!file.error && file.clip_count === 0" class="px-5 py-6 text-center text-xs text-slate-500">
+                No highlights found. Try a higher sensitivity or different pre/post padding.
+              </div>
+
+              <div class="space-y-2 p-3 sm:p-4">
+                <template x-for="(clip, ci) in file.clips" :key="file.path + ':' + clip.start">
+                  <div class="group flex flex-col gap-3 rounded-xl border border-white/[0.04] bg-white/[0.015] p-3 transition hover:border-cyan-400/20 hover:bg-cyan-400/[0.02] sm:flex-row">
+                    <button @click="openPreview(file.path, clip.peak)" class="relative shrink-0 overflow-hidden rounded-lg border border-white/[0.06] bg-black/40" title="Open full preview">
+                      <img :src="thumb(file.path, clip.peak)" :alt="'Preview at ' + clip.peak_label" loading="lazy"
+                           class="h-24 w-full object-cover transition duration-300 group-hover:scale-[1.03] sm:w-44" />
+                      <span class="absolute inset-0 grid place-items-center bg-black/0 transition group-hover:bg-black/20">
+                        <span class="grid h-8 w-8 scale-90 place-items-center rounded-full bg-black/60 text-white opacity-0 ring-1 ring-white/20 transition group-hover:scale-100 group-hover:opacity-100">
+                          <svg class="ml-0.5 h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5Z"/></svg>
+                        </span>
+                      </span>
+                    </button>
+
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-mono text-[12px] text-cyan-300" x-text="clip.start_label + ' → ' + clip.end_label"></span>
+                        <span class="rounded-md bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-slate-400" x-text="clip.duration_label"></span>
+                        <span class="ml-auto rounded-md px-2 py-0.5 font-mono text-xs font-semibold" :class="scoreText(clip.score_pct)" x-text="clip.score_pct"></span>
+                      </div>
+                      <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+                        <div class="h-full rounded-full transition-all duration-500" :class="scoreBar(clip.score_pct)" :style="'width:' + clip.score_pct + '%'"></div>
+                      </div>
+                      <div class="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+                        <span class="rounded-full border px-2 py-0.5" :class="reasonClass(clip.reason)" x-text="clip.reason"></span>
+                        <span x-text="'audio ' + clip.audio_score.toFixed(2)"></span>
+                        <span class="text-slate-700">·</span>
+                        <span x-text="'motion ' + clip.visual_score.toFixed(2)"></span>
+                        <button @click="openPreview(file.path, clip.peak)" class="ml-auto text-[10px] text-cyan-400 opacity-0 transition group-hover:opacity-100 hover:text-cyan-300">preview frame</button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <div x-show="file.warnings?.length" class="border-t border-white/[0.04] px-5 py-3">
+                <template x-for="w in file.warnings" :key="w">
+                  <p class="text-[10px] leading-5 text-amber-300/80" x-text="'! ' + w"></p>
+                </template>
+              </div>
+            </article>
+          </template>
+
+          <p class="px-1 text-[10px] leading-5 text-slate-600">
+            Stream copy cuts at the nearest keyframe, so a lossless clip can start slightly earlier than the timestamp.
+            Use Re-encode for frame-accurate edges.
+          </p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="border-t border-white/5 py-6">
+    <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 text-[11px] text-slate-600 sm:flex-row sm:items-center lg:px-8">
+      <span>Clipper · MIT licensed · footage never leaves your machine</span>
+      <span class="sm:ml-auto">Built with FastAPI, OpenCV, SciPy and FFmpeg</span>
+    </div>
+  </footer>
+
+  <!-- Toast -->
+  <div x-show="toast" x-cloak x-transition.opacity
+       class="fixed bottom-5 right-5 z-50 max-w-[calc(100vw-2.5rem)] rounded-xl border px-4 py-2.5 text-xs shadow-2xl backdrop-blur"
+       :class="toast?.type === 'error' ? 'border-rose-400/30 bg-rose-950/90 text-rose-200' : 'border-cyan-400/30 bg-slate-900/90 text-cyan-100'">
+    <span x-text="toast?.message"></span>
+  </div>
+
+  <!-- Folder browser -->
+  <div x-show="browserOpen" x-cloak x-transition.opacity class="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm" @click.self="browserOpen = false">
+    <div class="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-panel shadow-2xl" x-transition>
+      <div class="flex items-center gap-3 border-b border-white/[0.06] px-5 py-4">
+        <div class="grid h-8 w-8 place-items-center rounded-lg bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/20">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+        </div>
+        <div>
+          <div class="text-sm font-semibold text-white">Choose footage</div>
+          <div class="text-[10px] text-slate-500">Pick a folder, or a single video file</div>
+        </div>
+        <button @click="browserOpen = false" class="ml-auto grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-white/5 hover:text-white">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3">
+        <button @click="browse(browseData.parent)" :disabled="!browseData.parent" class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-slate-400 transition hover:text-white disabled:opacity-30" title="Up one level">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+        </button>
+        <input x-model="browsePath" @keydown.enter.prevent="browse(browsePath)" type="text" spellcheck="false" placeholder="Paste a folder path…"
+               class="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-400/50 focus:outline-none" />
+        <button @click="browse(browsePath)" class="rounded-lg bg-white/[0.06] px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10">Go</button>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-auto p-3">
+        <div x-show="browseLoading" class="grid place-items-center py-12 text-slate-500">
+          <svg class="h-6 w-6 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+        </div>
+
+        <div x-show="!browseLoading && !browseData.path" class="space-y-4">
+          <div>
+            <div class="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Drives & home</div>
+            <div class="flex flex-wrap gap-2">
+              <template x-for="root in browseData.roots" :key="root">
+                <button @click="browse(root)" class="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-xs text-slate-300 transition hover:border-cyan-400/30 hover:text-white" x-text="root"></button>
+              </template>
+            </div>
+          </div>
+          <p class="px-1 text-[11px] leading-5 text-slate-500">Or paste a full path above. Clipper only reads videos; it never uploads them.</p>
+        </div>
+
+        <div x-show="!browseLoading && browseData.path" class="space-y-1">
+          <div class="mb-2 truncate px-1 font-mono text-[10px] text-slate-500" x-text="browseData.path"></div>
+          <template x-for="dir in browseData.dirs" :key="dir.path">
+            <button @click="browse(dir.path)" class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-cyan-400/[0.06]">
+              <svg class="h-4 w-4 shrink-0 text-cyan-400/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+              <span class="truncate text-xs text-slate-300" x-text="dir.name"></span>
+              <svg class="ml-auto h-3.5 w-3.5 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </template>
+
+          <div x-show="browseData.files.length" class="pt-3">
+            <div class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Videos in this folder</div>
+            <template x-for="file in browseData.files" :key="file.path">
+              <button @click="pickFile(file.path)" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-rose-400/[0.06]">
+                <svg class="h-4 w-4 shrink-0 text-rose-400/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg>
+                <span class="truncate text-xs text-slate-400" x-text="file.name"></span>
+                <span class="ml-auto shrink-0 font-mono text-[10px] text-slate-600" x-text="size(file.size)"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 border-t border-white/[0.06] px-5 py-4">
+        <div class="min-w-0 flex-1 truncate font-mono text-[10px] text-slate-500" x-text="browseData.path || 'Select a drive or paste a path'"></div>
+        <button @click="browserOpen = false" class="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-400 transition hover:text-white">Cancel</button>
+        <button @click="chooseFolder()" :disabled="!browseData.path" class="rounded-lg bg-cyan-400 px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-40">Use this folder</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function clipperApp() {
+      return {
+        health: null,
+        input: '',
+        output: 'trimmed',
+        reencode: false,
+        encoder: 'libx264',
+        recursive: false,
+        sensitivity: 0.5,
+        pre: 8,
+        post: 5,
+        minClip: 3,
+        maxClips: 30,
+        audioWeight: 0.6,
+        visualWeight: 0.4,
+        sampleFps: 4,
+        scanning: false,
+        files: [],
+        scanError: '',
+        analyzing: false,
+        job: null,
+        analysis: null,
+        analysisId: null,
+        exporting: false,
+        exportJob: null,
+        exportResult: null,
+        browserOpen: false,
+        browsePath: '',
+        browseLoading: false,
+        browseData: { path: '', parent: null, roots: [], dirs: [], files: [] },
+        toast: null,
+        toastTimer: null,
+
+        async init() {
+          try {
+            this.health = await this.apiGet('/api/health');
+          } catch (err) {
+            this.health = { ok: false, error: err.message };
+          }
+          if (!this.health.ok) {
+            this.notify('FFmpeg is missing. Install it, then restart Clipper.', 'error');
+          }
+        },
+
+        async apiGet(url) {
+          const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || data.error || res.statusText);
+          return data;
+        },
+
+        async apiPost(url, body) {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || data.error || res.statusText);
+          return data;
+        },
+
+        notify(message, type = 'info') {
+          this.toast = { message, type };
+          clearTimeout(this.toastTimer);
+          this.toastTimer = setTimeout(() => { this.toast = null; }, 4200);
+        },
+
+        size(bytes) {
+          if (!bytes) return '0 B';
+          const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+          let value = Number(bytes);
+          let unit = 0;
+          while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+          return (value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)) + ' ' + units[unit];
+        },
+
+        setPreset(name) {
+          if (name === 'strict') this.sensitivity = 0.32;
+          if (name === 'balanced') this.sensitivity = 0.52;
+          if (name === 'loose') this.sensitivity = 0.78;
+        },
+
+        thumb(file, t) {
+          return '/api/thumb?file=' + encodeURIComponent(file) + '&t=' + Number(t).toFixed(3) + '&w=480';
+        },
+
+        openPreview(file, t) {
+          window.open(this.thumb(file, t), '_blank', 'noopener');
+        },
+
+        copy(text) {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(() => this.notify('Path copied'));
+          }
+        },
+
+        scoreText(pct) {
+          if (pct >= 75) return 'text-rose-300 bg-rose-400/10';
+          if (pct >= 50) return 'text-amber-300 bg-amber-400/10';
+          return 'text-cyan-300 bg-cyan-400/10';
+        },
+
+        scoreBar(pct) {
+          if (pct >= 75) return 'bg-gradient-to-r from-rose-500 to-orange-400';
+          if (pct >= 50) return 'bg-gradient-to-r from-amber-400 to-rose-400';
+          return 'bg-gradient-to-r from-cyan-400 to-sky-400';
+        },
+
+        reasonClass(reason) {
+          if (reason === 'audio + motion') return 'border-rose-400/30 bg-rose-400/10 text-rose-300';
+          if (reason === 'audio spike') return 'border-amber-400/30 bg-amber-400/10 text-amber-300';
+          if (reason === 'motion spike') return 'border-sky-400/30 bg-sky-400/10 text-sky-300';
+          return 'border-white/10 bg-white/[0.03] text-slate-400';
+        },
+
+        async scan() {
+          if (!this.input.trim()) return;
+          this.scanning = true;
+          this.scanError = '';
+          this.analysis = null;
+          this.analysisId = null;
+          this.job = null;
+          this.exportResult = null;
+          this.exportJob = null;
+          this.files = [];
+          try {
+            const data = await this.apiPost('/api/scan', {
+              input: this.input.trim(),
+              recursive: this.recursive,
+            });
+            this.files = data.files || [];
+            if (this.files.length && (!this.output || this.output === 'trimmed' || this.output === './trimmed')) {
+              const sep = /\\/.test(this.input) || /^[A-Za-z]:/.test(this.input) ? '\\' : '/';
+              const trimmed = this.input.trim();
+              const isFile = /\.(mp4|mkv|mov|avi)$/i.test(trimmed);
+              const base = isFile
+                ? trimmed.replace(/[\\/][^\\/]+$/, '')
+                : trimmed.replace(/[\\/]+$/, '');
+              this.output = base + sep + 'trimmed';
+            }
+            if (this.files.length) this.notify(this.files.length + ' video(s) ready');
+            else this.notify('No supported videos found in that folder.', 'error');
+          } catch (err) {
+            this.scanError = err.message;
+            this.notify(err.message, 'error');
+          } finally {
+            this.scanning = false;
+          }
+        },
+
+        async analyze() {
+          if (this.analyzing) return;
+          this.analyzing = true;
+          this.analysis = null;
+          this.analysisId = null;
+          this.exportResult = null;
+          this.exportJob = null;
+          this.job = { progress: 0, message: 'Queued' };
+          try {
+            const data = await this.apiPost('/api/analyze', {
+              input: this.input.trim(),
+              recursive: this.recursive,
+              sensitivity: Number(this.sensitivity),
+              pre: Number(this.pre),
+              post: Number(this.post),
+              min_clip: Number(this.minClip || 3),
+              max_clips: Number(this.maxClips || 30),
+              audio_weight: Number(this.audioWeight || 0.6),
+              visual_weight: Number(this.visualWeight || 0.4),
+              sample_fps: Number(this.sampleFps || 4),
+              merge_gap: 1.0,
+            });
+            this.watch(data.job_id, 'analyze');
+          } catch (err) {
+            this.analyzing = false;
+            this.job = null;
+            this.notify(err.message, 'error');
+          }
+        },
+
+        async watch(jobId, kind) {
+          const tick = async () => {
+            try {
+              const data = await this.apiGet('/api/jobs/' + jobId);
+              if (kind === 'analyze') {
+                this.job = data;
+                if (data.status === 'done') {
+                  this.analysis = data.result.summary;
+                  this.analysisId = data.result.analysis_id;
+                  this.analyzing = false;
+                  this.notify('Found ' + (this.analysis.summary.clips || 0) + ' clip(s)');
+                  return;
+                }
+                if (data.status === 'error') {
+                  this.analyzing = false;
+                  this.notify(data.error || 'Analysis failed', 'error');
+                  return;
+                }
+                if (data.status === 'cancelled') {
+                  this.analyzing = false;
+                  this.job = null;
+                  this.notify('Analysis cancelled');
+                  return;
+                }
+              } else {
+                this.exportJob = data;
+                if (data.status === 'done') {
+                  this.exportResult = data.result.export;
+                  this.exporting = false;
+                  this.notify('Exported ' + (this.exportResult.outputs || []).length + ' clip(s)');
+                  return;
+                }
+                if (data.status === 'error') {
+                  this.exporting = false;
+                  this.notify(data.error || 'Export failed', 'error');
+                  return;
+                }
+                if (data.status === 'cancelled') {
+                  this.exporting = false;
+                  this.exportJob = null;
+                  this.notify('Export cancelled');
+                  return;
+                }
+              }
+              setTimeout(tick, 700);
+            } catch (err) {
+              if (kind === 'analyze') this.analyzing = false;
+              else this.exporting = false;
+              this.notify(err.message, 'error');
+            }
+          };
+          tick();
+        },
+
+        async exportAll() {
+          if (!this.analysisId || this.exporting) return;
+          this.exporting = true;
+          this.exportResult = null;
+          this.exportJob = { progress: 0, message: 'Queued' };
+          try {
+            const data = await this.apiPost('/api/export', {
+              analysis_id: this.analysisId,
+              output: this.output.trim() || 'trimmed',
+              reencode: this.reencode,
+              encoder: this.encoder,
+              crf: 20,
+              preset: 'veryfast',
+            });
+            this.watch(data.job_id, 'export');
+          } catch (err) {
+            this.exporting = false;
+            this.exportJob = null;
+            this.notify(err.message, 'error');
+          }
+        },
+
+        async cancelJob(kind) {
+          const id = kind === 'analyze' ? this.job?.id : this.exportJob?.id;
+          if (!id) return;
+          try {
+            await this.apiPost('/api/jobs/' + id + '/cancel', {});
+          } catch (err) {
+            this.notify(err.message, 'error');
+          }
+        },
+
+        async openBrowser() {
+          this.browserOpen = true;
+          let start = this.input.trim();
+          if (start && !/[/\\]$/.test(start) && !/\.[A-Za-z0-9]{2,5}$/.test(start)) start += '';
+          await this.browse(start || '');
+        },
+
+        async browse(path) {
+          this.browseLoading = true;
+          try {
+            const data = await this.get('/api/browse?path=' + encodeURIComponent(path || ''));
+            this.browseData = data;
+            this.browsePath = data.path || '';
+          } catch (err) {
+            this.notify(err.message, 'error');
+          } finally {
+            this.browseLoading = false;
+          }
+        },
+
+        chooseFolder() {
+          if (!this.browseData.path) return;
+          this.input = this.browseData.path;
+          this.files = [];
+          this.analysis = null;
+          this.analysisId = null;
+          this.browserOpen = false;
+          this.scan();
+        },
+
+        pickFile(path) {
+          this.input = path;
+          this.files = [];
+          this.analysis = null;
+          this.analysisId = null;
+          this.browserOpen = false;
+          this.scan();
+        },
+      };
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Clipper output
+trimmed/
+previews/
+demo/
+demo.mp4
+*.trimmed.mp4
+
+# Raw footage (never commit gameplay captures)
+*.mp4
+*.mkv
+*.mov
+*.avi
+
+# Local config
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
