@@ -89,6 +89,12 @@ source .venv/bin/activate
 pip install -e .
 ```
 
+### Release wheel
+
+```bash
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.1.0/clipper_gg-0.1.0-py3-none-any.whl
+```
+
 ### pipx
 
 ```bash
@@ -288,7 +294,7 @@ The image runs as a non-root user. If your mounted folders are not writable, adj
 
 ## Performance notes
 
-- Analysis is one audio pass + one proxy pass + OpenCV scanning. A 10-minute 1080p60 clip typically analyzes in roughly a minute on a modern desktop; 4K and long VODs take longer.
+- Analysis is one audio pass + one proxy pass + OpenCV scanning. The proxy is 320px at 4fps, so analysis is mostly decode-bound; a 46-second 720p clip takes a few seconds here, while 4K and long VODs take longer.
 - Stream-copy export is nearly instant and uses almost no CPU.
 - Re-encoding is the slow path. `h264_nvenc` is much faster than `libx264` when it works.
 - Preview thumbnails are cached by file mtime + timestamp in the OS temp folder.
