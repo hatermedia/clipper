@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How to batch trim ShadowPlay clips (automatic highlights, no upload)</title>
+  <meta name="description" content="Batch trim NVIDIA ShadowPlay gameplay clips with Clipper: scan a folder, detect loud reactions and motion, preview timestamps, and export lossless highlights locally." />
+  <link rel="canonical" href="https://hatermedia.github.io/clipper/guides/batch-trim-shadowplay.html" />
+  <meta name="theme-color" content="#06090f" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="How to batch trim ShadowPlay clips automatically" />
+  <meta property="og:description" content="Scan a folder of ShadowPlay footage, detect highlights, preview timestamps, and export locally with FFmpeg." />
+  <meta property="og:image" content="https://hatermedia.github.io/clipper/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322d3ee' stroke-width='2'%3E%3Ccircle cx='6' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="../site.css" />
+</head>
+<body>
+<header class="site-header">
+  <div class="container nav">
+    <a class="brand" href="../">
+      <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"></path></svg></span>
+      <span><span class="brand-name">CLIPPER</span><span class="brand-sub">gaming highlight trimmer</span></span>
+    </a>
+    <nav class="nav-links">
+      <a href="../#features">Features</a>
+      <a href="../#demo">Demo</a>
+      <a href="../#install">Install</a>
+      <a class="btn btn-ghost btn-sm nav-cta" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main class="section container">
+  <div class="article">
+    <div class="breadcrumb"><a href="../">Home</a> <span>/</span> <span>Guides</span> <span>/</span> <span>Batch trim ShadowPlay</span></div>
+    <span class="eyebrow">Guide · 6 min read</span>
+    <h1>How to batch trim ShadowPlay clips automatically</h1>
+    <p class="lead">ShadowPlay is great at capturing everything. It is terrible at telling you which 30 seconds mattered. This guide shows a local workflow that scans a folder of clips, finds the loud and fast-moving moments, and exports a trimmed pack without uploading anything.</p>
+
+    <h2>The problem with manual trimming</h2>
+    <p>If you record a four-hour session, you might end up with 30–80 separate clips. Scrubbing each one, finding the fight, setting in/out points, and exporting is death by a thousand cuts. Most editors solve it with a timeline and a lot of coffee. A clipper solves it with signal processing.</p>
+    <p>The trick is not “AI understanding.” It is simpler: gunfights and reactions are loud, explosions and camera flicks are visually busy, and quiet downtime is neither. Score both, merge the overlapping windows, and cut.</p>
+
+    <h2>Step 1 — Install FFmpeg and Clipper</h2>
+    <p>Clipper is a Python CLI with a local web UI. You need Python 3.10+ and FFmpeg on <code>PATH</code>.</p>
+    <pre><code># Windows
+winget install Gyan.FFmpeg
+
+# macOS
+brew install ffmpeg
+
+# Ubuntu / Debian
+sudo apt install ffmpeg</code></pre>
+    <p><strong>Windows shortcut:</strong> the portable zip bundles Python and FFmpeg. Unzip it, double-click <code>Clipper UI.cmd</code>, and skip the source install. <a href="https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper-0.1.1-windows-x64-portable.zip">Download the portable build</a>.</p>
+    <p>Otherwise install the current release wheel:</p>
+    <pre><code>python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper_gg-0.1.1-py3-none-any.whl</code></pre>
+    <p>Or install straight from the repository with pipx:</p>
+    <pre><code>pipx install git+https://github.com/hatermedia/clipper.git</code></pre>
+
+    <h2>Step 2 — Dry-run the whole folder</h2>
+    <p>Point Clipper at the folder where ShadowPlay saves its captures. The default is usually <code>Videos\NVIDIA</code> or a custom folder you chose in the overlay.</p>
+    <pre><code>clipper --input "D:\ShadowPlay" --dry-run</code></pre>
+    <p>A dry run writes timestamps, a score breakdown, and preview JPEGs into <code>trimmed\previews</code>. It does not render video. Read the report before you commit to a batch:</p>
+    <pre><code>demo_gameplay.mp4  0:46.021  1280x720  30.0fps
+  01  0:12.500 -&gt; 0:18.500    6.0s  score 100  [audio + motion]
+  02  0:30.250 -&gt; 0:36.250    6.0s  score 100  [audio + motion]</code></pre>
+    <p>The score is a relative confidence signal, not a percentage of “goodness.” A clip with only loud audio should score lower than one where audio and motion agree.</p>
+
+    <h2>Step 3 — Tune the detector for your game</h2>
+    <p>The defaults are deliberately middle-of-the-road: 8 seconds before the peak, 5 seconds after, sensitivity 0.5. Two knobs matter most:</p>
+    <ul>
+      <li><strong>Sensitivity</strong> (<code>--sensitivity</code>): higher finds more moments and more false positives.</li>
+      <li><strong>Padding</strong> (<code>--pre</code>, <code>--post</code>): how much run-up and aftermath you want around the peak.</li>
+    </ul>
+    <p>For fast shooters, a balanced starting point is:</p>
+    <pre><code>clipper --input "D:\ShadowPlay" --dry-run --sensitivity 0.6 --pre 5 --post 4</code></pre>
+    <p>For quiet tactical games where the action is visual but not loud, raise the motion weight:</p>
+    <pre><code>clipper --input "D:\ShadowPlay" --dry-run --sensitivity 0.65 --visual-weight 0.7 --audio-weight 0.3</code></pre>
+    <p>For racing or sports where the engine/commentary is constant, lower the audio weight and rely more on visual deltas.</p>
+
+    <h2>Step 4 — Export the highlights</h2>
+    <pre><code>clipper --input "D:\ShadowPlay" --output "D:\Highlights"</code></pre>
+    <p>By default Clipper uses FFmpeg stream copy (<code>-c copy</code>). It is effectively instant and does not touch quality. The trade-off is keyframe alignment: a copy clip can start slightly before the requested timestamp. That is usually desirable for highlights because you get extra run-up.</p>
+    <p>If you need exact edges for a montage, re-encode:</p>
+    <pre><code>clipper --input "D:\ShadowPlay" --output "D:\Highlights" --reencode --encoder h264_nvenc</code></pre>
+    <p>NVENC is fast on NVIDIA GPUs. If the encoder is listed but unusable on your machine, Clipper retries with <code>libx264</code>.</p>
+
+    <h2>Batch behavior worth knowing</h2>
+    <ul>
+      <li>Supported inputs: <code>.mp4</code>, <code>.mkv</code>, <code>.mov</code>, <code>.avi</code>.</li>
+      <li>Use <code>--recursive</code> for nested folders.</li>
+      <li>Output defaults to <code>./trimmed</code>; reports are written as <code>clipper-report-*.json</code>.</li>
+      <li>Overlapping windows merge, so a long fight stays one clip instead of being chopped into fragments.</li>
+      <li>Clips are capped by <code>--max-clips</code> (default 30) and filtered by <code>--min-clip</code> (default 3s).</li>
+    </ul>
+
+    <div class="callout">
+      <p><strong>Rights check:</strong> ShadowPlay captures can include copyrighted music, voice chat, or other people’s audio. Clipper only edits; it does not grant publishing rights. Use footage you own or are authorized to publish.</p>
+    </div>
+
+    <h2>Prefer a UI?</h2>
+    <p>Run <code>clipper ui</code>. It starts a local FastAPI server at <code>127.0.0.1:8765</code> with a folder browser, sensitivity slider, preview thumbnails, and batch export progress. Nothing is uploaded.</p>
+
+    <div class="article-cta">
+      <h2>Get the free tool</h2>
+      <p>The release wheel and source are on GitHub. MIT licensed. If you would rather send footage and get clips back, there is a pilot done-for-you service too.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/tag/v0.1.1" target="_blank" rel="noreferrer">Download Clipper</a>
+        <a class="btn btn-ghost" href="../#service">Done-for-you clips</a>
+      </div>
+    </div>
+
+    <h2>FAQ</h2>
+    <h3>Does Clipper upload my ShadowPlay clips?</h3>
+    <p>No. Analysis and export run locally. The web server binds to localhost by default.</p>
+    <h3>Will stream copy miss the start of a fight?</h3>
+    <p>It can start on the previous keyframe, which means extra run-up, not less. If the extra footage bothers you, use <code>--reencode</code>.</p>
+    <h3>Can it handle 4K or long VODs?</h3>
+    <p>Yes, but analysis is decode-bound. The visual pass uses a 320px / 4fps proxy, so it is much cheaper than decoding every frame at full resolution. Long 4K sessions still take time.</p>
+    <h3>What if the folder contains non-gameplay clips?</h3>
+    <p>Clipper does not understand context. A loud menu, a shout, or a music-heavy intro can score. Review the dry-run list; it is designed for exactly that.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="container footer-grid">
+    <div class="tiny">Clipper · MIT licensed · footage never leaves your machine.</div>
+    <div class="footer-links">
+      <a href="../">Home</a>
+      <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
+      <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">Docs</a>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open-source game clip tools: what to look for (and where Clipper fits)</title>
+  <meta name="description" content="A practical comparison of open-source gameplay clippers, local vs cloud highlight detection, lossless trimming, and the trade-offs behind Clipper." />
+  <link rel="canonical" href="https://hatermedia.github.io/clipper/guides/open-source-game-clipper.html" />
+  <meta name="theme-color" content="#06090f" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Open-source game clip tools: what to look for" />
+  <meta property="og:description" content="Local vs cloud, lossless vs re-encode, heuristic vs semantic detection. Where Clipper fits and where it does not." />
+  <meta property="og:image" content="https://hatermedia.github.io/clipper/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322d3ee' stroke-width='2'%3E%3Ccircle cx='6' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="../site.css" />
+</head>
+<body>
+<header class="site-header">
+  <div class="container nav">
+    <a class="brand" href="../">
+      <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"></path></svg></span>
+      <span><span class="brand-name">CLIPPER</span><span class="brand-sub">gaming highlight trimmer</span></span>
+    </a>
+    <nav class="nav-links">
+      <a href="../#features">Features</a>
+      <a href="../#demo">Demo</a>
+      <a href="../#install">Install</a>
+      <a class="btn btn-ghost btn-sm nav-cta" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main class="section container">
+  <div class="article">
+    <div class="breadcrumb"><a href="../">Home</a> <span>/</span> <span>Guides</span> <span>/</span> <span>Open-source game clippers</span></div>
+    <span class="eyebrow">Comparison · 8 min read</span>
+    <h1>Open-source game clip tools: what to look for</h1>
+    <p class="lead">“Open source” is not a quality guarantee. Two tools can both be MIT licensed and still make opposite trade-offs: local vs cloud, heuristic vs semantic, lossless vs re-encode, general vs one-game. Here is the checklist I would use, and where Clipper honestly fits.</p>
+
+    <h2>The seven questions that matter</h2>
+    <ol>
+      <li><strong>Does it upload my footage?</strong> If yes, read the privacy policy and data retention terms. If no, verify the web server binds locally.</li>
+      <li><strong>Is the detection semantic or signal-based?</strong> Semantic models understand context but add downloads/cost. Signal-based tools are fast and predictable but can be fooled by loud menus.</li>
+      <li><strong>Is the export lossless?</strong> Stream copy preserves quality and is nearly instant. Re-encode gives exact edges but costs time and generational quality.</li>
+      <li><strong>Does it merge overlaps?</strong> Without merging, one fight becomes six stuttering clips.</li>
+      <li><strong>Can it batch a folder?</strong> A single-file web editor is not the same tool as a batch CLI.</li>
+      <li><strong>What is the license?</strong> MIT/Apache are permissive. “Source available” is not open source.</li>
+      <li><strong>What happens when it fails?</strong> A good tool has a dry run, previews, reports, and clear errors. Silent failure is worse than no tool.</li>
+    </ol>
+
+    <h2>Local vs cloud</h2>
+    <p>Cloud tools are convenient: upload a VOD, get clips, maybe captions. They also mean a multi-gigabyte upload, a queue, a subscription, and someone else’s retention policy. For a 40GB folder, the upload alone can take hours.</p>
+    <p>Local tools are less convenient to install and more limited by your hardware. In exchange, the footage never leaves the machine, there is no per-minute bill, and the tool works offline. If you already have a gaming PC, local is usually the better economics.</p>
+
+    <h2>Heuristic vs semantic detection</h2>
+    <p>A semantic model can find “the boss kill” or “the funny NPC line.” A heuristic detector finds “loud and fast-moving.” The heuristic is cheaper, faster, and game-agnostic. The semantic model is better at context and worse at cost, latency, and privacy.</p>
+    <p>The pragmatic workflow is two-stage: use the cheap heuristic to cut a 4-hour VOD down to 20 candidate windows, then apply a semantic model or human review to the shortlist. You get most of the context benefit without paying to analyze every frame.</p>
+
+    <h2>Where Clipper fits</h2>
+    <p>Clipper is the cheap first stage. It is a Python CLI + local web UI that scans a folder, scores audio spikes and motion, merges windows, and exports with FFmpeg. It is MIT licensed, has no accounts, and does not upload footage.</p>
+    <table>
+      <thead><tr><th></th><th>Clipper</th><th>Typical cloud clipper</th></tr></thead>
+      <tbody>
+        <tr><td>Input</td><td>Any local folder</td><td>Upload / platform URL</td></tr>
+        <tr><td>Detection</td><td>Audio RMS + OpenCV motion</td><td>Cloud AI / chat / speech</td></tr>
+        <tr><td>Setup</td><td>Python + FFmpeg</td><td>Account + subscription</td></tr>
+        <tr><td>Export</td><td>Stream copy or re-encode</td><td>Usually re-encode</td></tr>
+        <tr><td>Privacy</td><td>100% local</td><td>Upload required</td></tr>
+        <tr><td>License</td><td>MIT</td><td>Proprietary</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Where Clipper does not fit</h2>
+    <p>It is not a vertical-caption generator. It does not know what a boss fight is. It does not publish to Twitch, YouTube, or TikTok. It does not replace a human editor for a paid montage. If those are requirements, use a different tool or combine Clipper with one.</p>
+    <p>It also does not magically make bad footage good. A loud, motionless menu can score. A quiet, tense clutch can be missed. Review the dry-run list.</p>
+
+    <h2>Other open-source projects worth knowing</h2>
+    <p>The space is not empty. Projects such as <a href="https://github.com/AnIntellectualBeing/GTA-Auto-Clipper" target="_blank" rel="noreferrer">GTA Auto Clipper</a> focus on a specific game and a 9:16 caption workflow. <a href="https://github.com/LilycleHeart/apex-highlight-clipper" target="_blank" rel="noreferrer">Apex Highlight Clipper</a> focuses on Apex combat. Browser “web clippers” such as <a href="https://github.com/webclipper/web-clipper" target="_blank" rel="noreferrer">webclipper</a> solve a completely different problem: clipping web pages, not gameplay footage.</p>
+    <p>Use the right tool for the job. Clipper’s niche is the general, local, batch first pass.</p>
+
+    <h2>Install and verify</h2>
+    <pre><code># 1. FFmpeg on PATH
+winget install Gyan.FFmpeg  # Windows
+
+# 2. Release wheel
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper_gg-0.1.1-py3-none-any.whl
+
+# 3. Dry run before rendering
+clipper --input "D:\Captures" --dry-run
+
+# 4. Local UI
+clipper ui</code></pre>
+    <p>Read the report, check the preview frames, then export. If you want an exact-edge montage, add <code>--reencode</code>.</p>
+
+    <div class="article-cta">
+      <h2>Read the code, not the marketing</h2>
+      <p>The repository is public. The detection code is small enough to audit: <code>detect/audio.py</code>, <code>detect/visual.py</code>, and <code>detect/merge.py</code>.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">View on GitHub</a>
+        <a class="btn btn-ghost" href="../#service">Done-for-you clips</a>
+      </div>
+    </div>
+
+    <h2>FAQ</h2>
+    <h3>Is Clipper really MIT?</h3>
+    <p>Yes. See the <a href="https://github.com/hatermedia/clipper/blob/main/LICENSE" target="_blank" rel="noreferrer">LICENSE</a>. You can use, modify, and redistribute it with attribution.</p>
+    <h3>Can I use it commercially?</h3>
+    <p>The MIT license allows commercial use of the software. You are still responsible for the rights to the footage you process and publish.</p>
+    <h3>Why not just use FFmpeg directly?</h3>
+    <p>You can. Clipper adds the detection, window merging, previews, batch reporting, and UI. If you already have a detection pipeline, the editing layer may not be worth it.</p>
+    <h3>Does it work on Steam Deck / Linux?</h3>
+    <p>The code targets Python 3.10+ and FFmpeg on Windows, macOS, and Linux. CI covers Linux; the local UI runs in a browser. Performance depends on the hardware.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="container footer-grid">
+    <div class="tiny">Clipper · MIT licensed · footage never leaves your machine.</div>
+    <div class="footer-links">
+      <a href="../">Home</a>
+      <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
+      <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">Docs</a>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

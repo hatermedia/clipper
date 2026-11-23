@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from clipper import __version__
 from clipper.web.app import app
 
 client = TestClient(app)
@@ -13,7 +14,7 @@ def test_health() -> None:
     response = client.get("/api/health")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["version"] == "0.1.0"
+    assert payload["version"] == __version__
     assert "ok" in payload
 
 

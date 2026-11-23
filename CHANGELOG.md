@@ -6,6 +6,18 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-23
+
+### Added
+
+- Windows x64 portable build with Python 3.13, FFmpeg, FFprobe, the web UI,
+  and launcher scripts bundled. Unzip and double-click `Clipper UI.cmd`; no
+  Python or FFmpeg install required.
+- Frozen-build FFmpeg discovery: the executable now looks in its own folder,
+  `bin/`, and `ffmpeg/bin/` before falling back to `PATH`.
+- Public landing page, demo video/GIF, social preview, three guides, and a
+  done-for-you clip request flow.
+
 ## [0.1.0] - 2026-11-22
 
 ### Added
@@ -38,5 +50,6 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/hatermedia/clipper/releases/tag/v0.1.1
 [0.1.0]: https://github.com/hatermedia/clipper/releases/tag/v0.1.0

@@ -9,7 +9,13 @@ Clipper scans a folder of gameplay footage, finds the loud reactions and sudden 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![Local-first](https://img.shields.io/badge/local--first-no%20uploads-22d3ee.svg)](#privacy)
 
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.1.1](https://github.com/hatermedia/clipper/releases/tag/v0.1.1)
+
 ![Clipper web UI](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/screenshot.png)
+
+[![Watch the 20-second demo](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/demo-poster.jpg)](https://github.com/hatermedia/clipper/blob/main/docs/media/demo.mp4)
+
+*20-second demo: scan → detect → export. Real UI, synthetic demo footage.*
 
 ---
 
@@ -42,7 +48,18 @@ No shade to the bigger tools — they do things Clipper doesn't. Clipper is for 
 
 ## Install
 
-### Requirements
+### Windows portable (recommended)
+
+No Python install. No FFmpeg install. Download the Windows x64 zip, unzip it,
+and double-click `Clipper UI.cmd`.
+
+**[Download clipper-0.1.1-windows-x64-portable.zip](https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper-0.1.1-windows-x64-portable.zip)** (188 MB)
+
+The zip bundles Python 3.13, FFmpeg, FFprobe, the local UI, and CLI launchers.
+Windows SmartScreen may warn because the executable is unsigned; the source and
+reproducible build script are in [`packaging/`](packaging/).
+
+### Requirements for source installs
 
 - Python **3.10+**
 - **FFmpeg 5+** with `ffmpeg` and `ffprobe` on `PATH`
@@ -92,7 +109,7 @@ pip install -e .
 ### Release wheel
 
 ```bash
-python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.1.0/clipper_gg-0.1.0-py3-none-any.whl
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper_gg-0.1.1-py3-none-any.whl
 ```
 
 ### pipx
@@ -368,6 +385,13 @@ scripts/            synthetic footage generator
 - Whisper-based reaction/speech cues as an optional third detector.
 - Twitch/YouTube VOD import (explicitly opt-in, local download).
 - Drag-and-drop UI for individual clips.
+
+## Done-for-you clips (optional)
+
+If you want the output without the setup, there are limited pilot slots for
+trimmed clip packs. You keep the rights; the tool stays free and MIT licensed.
+See [SERVICE.md](SERVICE.md) for packages, process, and terms. This is separate
+from the open-source project and does not affect the free release.
 
 ## Contributing
 

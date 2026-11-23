@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -80,6 +81,23 @@ def _env_binary(name: str) -> Path | None:
 
 def _candidate_dirs() -> list[Path]:
     dirs: list[Path] = []
+
+    # Portable/frozen builds ship ffmpeg next to the executable.
+    try:
+        exe_dir = Path(sys.executable).resolve().parent
+        bundle_dir = Path(getattr(sys, "_MEIPASS", exe_dir))
+        dirs.extend(
+            [
+                exe_dir,
+                exe_dir / "bin",
+                exe_dir / "ffmpeg" / "bin",
+                bundle_dir,
+                bundle_dir / "bin",
+            ]
+        )
+    except (OSError, RuntimeError):
+        pass
+
     for raw in (
         os.environ.get("CLIPPER_FFMPEG_DIR"),
         os.environ.get("FFMPEG_DIR"),

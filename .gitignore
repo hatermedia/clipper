@@ -10,6 +10,13 @@ __pycache__/
 .eggs/
 build/
 dist/
+
+# Portable build artifacts
+packaging/build/
+packaging/dist/
+packaging/release/
+packaging/clipper.spec
+packaging/build.log
 .pytest_cache/
 .coverage
 htmlcov/
@@ -28,6 +35,12 @@ demo.mp4
 *.mkv
 *.mov
 *.avi
+
+# Small product demo assets are intentional
+!docs/media/*.mp4
+!docs/media/*.gif
+docs/media/raw/
+docs/_landing-preview.png
 
 # Local config
 .env

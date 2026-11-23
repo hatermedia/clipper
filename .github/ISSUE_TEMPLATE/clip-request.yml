@@ -1,0 +1,61 @@
+name: Done-for-you clip request
+description: Request a pilot slot for a trimmed highlight pack. Do not post private footage links.
+title: "[Clip request] "
+labels: ["service"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a request for a **paid done-for-you clip pack**, separate from the free open-source tool.
+
+        **Do not post private footage links, email addresses, phone numbers, or personal data in this public issue.** If the slot fits, you will receive a private intake method.
+
+        Pilot pricing and terms: https://github.com/hatermedia/clipper/blob/main/SERVICE.md
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - Warm-up ($29 intro / 10 clips)
+        - Session ($99 / 25 clips)
+        - Grind ($249 / 60 clips)
+        - Not sure yet
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game / footage type
+      placeholder: "Apex Legends, 1080p60, 6 hours"
+    validations:
+      required: true
+  - type: input
+    id: deadline
+    attributes:
+      label: Desired deadline
+      placeholder: "Within 72 hours"
+  - type: textarea
+    id: notes
+    attributes:
+      label: What counts as a highlight?
+      description: Kills, wipe, reaction, funny moment, specific match, etc.
+      placeholder: "Triple kills, squad wipes, and loud reactions. Skip menu screens and downtime."
+  - type: dropdown
+    id: delivery
+    attributes:
+      label: Preferred delivery
+      options:
+        - 16:9 lossless MP4/MKV
+        - 16:9 re-encoded MP4
+        - Discuss in private
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I own or have permission to use this footage.
+          required: true
+        - label: I understand this is a paid service request, not a free support ticket.
+          required: true
+        - label: I will not post private footage links or personal data in this issue.
+          required: true
