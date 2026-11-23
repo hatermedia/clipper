@@ -17,6 +17,15 @@ All notable changes to Clipper are documented here. The format follows
 - The app waits 1.2 seconds before quitting after starting the helper, giving
   Windows time to hand off the process.
 
+### Verified
+
+- End-to-end from the frozen 0.3.2 app using a local release feed: detection,
+  download, SHA-256 verification, helper handoff after the app exited, silent
+  install, and relaunch all completed.
+- Users still on 0.3.0 or 0.3.1 may need to install 0.3.2 manually once if the
+  old helper cannot replace the running app. Releases after 0.3.2 use the
+  hardened helper.
+
 ## [0.3.1] - 2026-11-24
 
 ### Added
