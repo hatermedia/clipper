@@ -6,6 +6,25 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-24
+
+### Changed
+
+- Redesigned the native app around OpenCode's dark theme: `#0c0c0e`
+  background, flat panels, OpenCode blue (`#4f8bff` / `#3b5cf6`) accents, and
+  the same Inter + IBM Plex Mono typography (bundled locally, no download).
+- Replaced the native Windows message boxes with a frameless custom dialog for
+  updates, errors, and confirmations, so the update prompt matches the app.
+- Recolored the app icon to OpenCode blue with a small peach status dot.
+- Section labels, table headers, timecodes, scores, and header status now use
+  IBM Plex Mono; body copy uses Inter.
+
+### Fixed
+
+- Long input and output paths display from the start instead of scrolling to
+  the end.
+- The scanned-file list is hidden when empty and grows only as files are added.
+
 ## [0.3.3] - 2026-11-24
 
 ### Fixed
@@ -182,7 +201,8 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/hatermedia/clipper/releases/tag/v0.3.4
 [0.3.3]: https://github.com/hatermedia/clipper/releases/tag/v0.3.3
 [0.3.2]: https://github.com/hatermedia/clipper/releases/tag/v0.3.2
 [0.3.1]: https://github.com/hatermedia/clipper/releases/tag/v0.3.1

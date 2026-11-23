@@ -16,14 +16,16 @@ from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QSize, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -33,7 +35,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -76,119 +77,247 @@ VIDEO_ICON = ASSET_DIR / "icon.png"
 
 STYLESHEET = """
 QWidget {
-    background: #06090f;
-    color: #e2e8f0;
-    font-family: "Segoe UI", "Inter", sans-serif;
+    background: #0c0c0e;
+    color: #f5f5f7;
+    font-family: "Inter";
     font-size: 13px;
 }
-QMainWindow { background: #06090f; }
+QMainWindow { background: #0c0c0e; }
+QLabel { background: transparent; }
+QCheckBox { background: transparent; }
 QFrame#Panel {
-    background: #0b111b;
-    border: 1px solid #1f2d40;
-    border-radius: 14px;
+    background: #121214;
+    border: 1px solid #2c2c2e;
+    border-radius: 8px;
 }
 QFrame#DropZone {
-    background: #070c14;
-    border: 1px dashed #2a3b52;
-    border-radius: 12px;
+    background: #101012;
+    border: 1px dashed #38383a;
+    border-radius: 6px;
 }
-QFrame#DropZone:hover { border-color: #22d3ee; }
-QLabel#Brand { font-size: 16px; font-weight: 800; letter-spacing: 2px; color: white; }
-QLabel#BrandSub { color: #64748b; font-size: 10px; }
-QLabel#Section { font-size: 13px; font-weight: 700; color: white; }
-QLabel#Muted { color: #94a3b8; font-size: 11px; }
-QLabel#Status { color: #67e8f9; font-size: 11px; }
-QLabel#Summary { color: #94a3b8; font-size: 12px; }
+QFrame#DropZone:hover { border-color: #4f8bff; }
+QLabel#Brand {
+    font-family: "IBM Plex Mono";
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #ffffff;
+}
+QLabel#BrandSub {
+    font-family: "IBM Plex Mono";
+    color: #68686f;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+}
+QLabel#Section {
+    font-family: "IBM Plex Mono";
+    font-size: 10px;
+    font-weight: 600;
+    color: #a1a1a6;
+    letter-spacing: 1px;
+}
+QLabel#Muted { color: #a1a1a6; font-size: 11px; }
+QLabel#Status {
+    font-family: "IBM Plex Mono";
+    color: #a1a1a6;
+    font-size: 10px;
+}
+QLabel#Summary { color: #a1a1a6; font-size: 11px; }
 QLabel#Preview {
-    background: #070c14;
-    border: 1px solid #1f2d40;
-    border-radius: 10px;
-    color: #64748b;
+    background: #101012;
+    border: 1px solid #2c2c2e;
+    border-radius: 6px;
+    color: #68686f;
 }
 QPushButton {
-    background: #111a27;
-    border: 1px solid #24344a;
-    border-radius: 8px;
-    padding: 7px 12px;
-    color: #e2e8f0;
+    background: #161618;
+    border: 1px solid #38383a;
+    border-radius: 6px;
+    padding: 6px 11px;
+    color: #f5f5f7;
+    font-weight: 500;
 }
-QPushButton:hover { border-color: #22d3ee; background: #13202f; }
-QPushButton:pressed { background: #0d1724; }
+QPushButton:hover { background: #1c1c1f; border-color: #4f8bff; }
+QPushButton:pressed { background: #101012; }
+QPushButton:disabled { color: #68686f; background: #121214; border-color: #2c2c2e; }
 QPushButton#Primary {
-    background: #22d3ee;
-    color: #041018;
-    font-weight: 700;
+    background: #f5f5f7;
+    color: #0c0c0e;
+    font-weight: 600;
     border: none;
-    padding: 9px 16px;
+    padding: 8px 14px;
 }
-QPushButton#Primary:hover { background: #67e8f9; }
-QPushButton#Primary:disabled { background: #164e63; color: #64748b; }
-QPushButton:disabled { color: #64748b; background: #0b111b; border-color: #1a2536; }
+QPushButton#Primary:hover { background: #ffffff; }
+QPushButton#Primary:pressed { background: #d2d2d7; }
+QPushButton#Primary:disabled { background: #1c1c1f; color: #68686f; }
+QPushButton#Accent {
+    background: #3b5cf6;
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+    padding: 6px 12px;
+}
+QPushButton#Accent:hover { background: #4f8bff; }
+QPushButton#Accent:pressed { background: #2f49c9; }
+QPushButton#Accent:disabled { background: #1c1c1f; color: #68686f; }
+QPushButton#Mono {
+    font-family: "IBM Plex Mono";
+    font-size: 10px;
+    padding: 5px 9px;
+}
+QPushButton#IconButton {
+    background: transparent;
+    border: none;
+    color: #a1a1a6;
+    font-size: 16px;
+    padding: 0;
+}
+QPushButton#IconButton:hover { background: #1c1c1f; color: #ffffff; }
+QCheckBox { color: #c7c7cc; spacing: 7px; }
 QCheckBox::indicator {
-    width: 15px;
-    height: 15px;
-    border: 1px solid #2a3b52;
-    border-radius: 4px;
-    background: #070c14;
+    width: 14px;
+    height: 14px;
+    border: 1px solid #48484c;
+    border-radius: 3px;
+    background: #101012;
 }
-QCheckBox::indicator:hover { border-color: #22d3ee; }
-QCheckBox::indicator:checked { background: #22d3ee; border-color: #22d3ee; }
+QCheckBox::indicator:hover { border-color: #4f8bff; }
+QCheckBox::indicator:checked { background: #4f8bff; border-color: #4f8bff; }
 QFrame#UpdateBar {
-    background: #0a1a24;
-    border: 1px solid #155e75;
-    border-radius: 10px;
+    background: #101012;
+    border: 1px solid #2c2c2e;
+    border-left: 2px solid #4f8bff;
+    border-radius: 6px;
 }
-QFrame#UpdateBar QLabel { color: #a5f3fc; font-size: 12px; }
+QFrame#UpdateBar QLabel { color: #c7c7cc; font-size: 12px; }
 QFrame#UpdateBar QPushButton { padding: 5px 10px; }
-QFrame#UpdateBar QPushButton#Primary { padding: 5px 12px; }
 QLineEdit, QComboBox, QSpinBox {
-    background: #070c14;
-    border: 1px solid #24344a;
-    border-radius: 7px;
+    background: #101012;
+    border: 1px solid #38383a;
+    border-radius: 6px;
     padding: 6px 8px;
-    color: #e2e8f0;
-    selection-background-color: #164e63;
+    color: #f5f5f7;
+    selection-background-color: #3b5cf6;
+    selection-color: #ffffff;
 }
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: #4f8bff; }
 QComboBox QAbstractItemView {
-    background: #0b111b;
-    border: 1px solid #24344a;
-    selection-background-color: #164e63;
+    background: #1c1c1f;
+    border: 1px solid #38383a;
+    selection-background-color: #2c2c2e;
+    selection-color: #ffffff;
+    outline: 0;
 }
-QCheckBox { color: #cbd5e1; spacing: 7px; }
 QGroupBox {
-    border: 1px solid #1f2d40;
-    border-radius: 10px;
+    border: 1px solid #2c2c2e;
+    border-radius: 6px;
     margin-top: 12px;
     padding: 12px 10px 8px 10px;
-    color: #94a3b8;
+    color: #a1a1a6;
 }
-QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
-QSlider::groove:horizontal { height: 5px; background: #1e293b; border-radius: 2px; }
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    font-family: "IBM Plex Mono";
+    font-size: 10px;
+    color: #a1a1a6;
+    letter-spacing: 1px;
+}
+QSlider::groove:horizontal { height: 3px; background: #2c2c2e; border-radius: 2px; }
 QSlider::handle:horizontal {
-    width: 15px; margin: -5px 0; border-radius: 7px; background: #22d3ee;
+    width: 12px; margin: -5px 0; border-radius: 6px;
+    background: #f5f5f7;
 }
-QSlider::sub-page:horizontal { background: #22d3ee; border-radius: 2px; }
+QSlider::handle:horizontal:hover { background: #ffffff; }
+QSlider::sub-page:horizontal { background: #4f8bff; border-radius: 2px; }
 QProgressBar {
-    background: #111a27; border: 1px solid #24344a; border-radius: 5px;
-    text-align: center; color: #94a3b8; height: 14px; font-size: 10px;
+    background: #161618;
+    border: none;
+    border-radius: 2px;
+    text-align: center;
+    color: #a1a1a6;
+    height: 10px;
+    font-size: 9px;
 }
-QProgressBar::chunk { background: #22d3ee; border-radius: 5px; }
+QProgressBar::chunk { background: #4f8bff; border-radius: 2px; }
 QTreeWidget {
-    background: #070c14; border: 1px solid #1f2d40; border-radius: 10px;
-    alternate-background-color: #0b111b;
+    background: #101012;
+    border: 1px solid #2c2c2e;
+    border-radius: 6px;
+    alternate-background-color: #121214;
+    outline: 0;
 }
-QTreeWidget::item { padding: 4px; }
-QTreeWidget::item:selected { background: #123041; color: white; }
+QTreeWidget::item { padding: 5px 4px; border: none; }
+QTreeWidget::item:selected { background: #1c1c1f; color: #ffffff; }
 QHeaderView::section {
-    background: #0b111b; color: #94a3b8; border: 0;
-    border-bottom: 1px solid #1f2d40; padding: 6px;
+    background: #121214;
+    color: #a1a1a6;
+    border: 0;
+    border-bottom: 1px solid #2c2c2e;
+    padding: 6px 8px;
+    font-family: "IBM Plex Mono";
+    font-size: 10px;
+    letter-spacing: 0.5px;
 }
 QListWidget {
-    background: #070c14; border: 1px solid #1f2d40; border-radius: 8px;
-    color: #94a3b8;
+    background: #101012;
+    border: 1px solid #2c2c2e;
+    border-radius: 6px;
+    color: #a1a1a6;
+    outline: 0;
 }
 QScrollArea { border: none; background: transparent; }
-QToolTip { background: #0b111b; color: #e2e8f0; border: 1px solid #24344a; }
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: #2c2c2e;
+    border-radius: 4px;
+    min-height: 24px;
+}
+QScrollBar::handle:vertical:hover { background: #38383a; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 2px;
+}
+QScrollBar::handle:horizontal {
+    background: #2c2c2e;
+    border-radius: 4px;
+    min-width: 24px;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+QSplitter::handle { background: #0c0c0e; }
+QSplitter::handle:hover { background: #1c1c1f; }
+QToolTip {
+    background: #1c1c1f;
+    color: #f5f5f7;
+    border: 1px solid #38383a;
+    padding: 6px;
+    font-size: 11px;
+}
+QDialog { background: transparent; }
+QFrame#DialogPanel {
+    background: #161618;
+    border: 1px solid #38383a;
+    border-radius: 10px;
+}
+QLabel#DialogTitle {
+    font-family: "IBM Plex Mono";
+    font-size: 10px;
+    font-weight: 600;
+    color: #a1a1a6;
+    letter-spacing: 1px;
+}
+QLabel#DialogMessage {
+    font-family: "Inter";
+    font-size: 14px;
+    color: #f5f5f7;
+}
 """
 
 
@@ -333,11 +462,11 @@ class DropZone(QFrame):
         self.setAcceptDrops(True)
         self.setMinimumHeight(68)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(2)
         title = QLabel("Drop a folder or video here")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("color: #cbd5e1; font-weight: 600;")
+        title.setStyleSheet("color: #f5f5f7; font-weight: 500;")
         subtitle = QLabel("or use Browse to pick a folder")
         subtitle.setAlignment(Qt.AlignCenter)
         subtitle.setObjectName("Muted")
@@ -356,6 +485,170 @@ class DropZone(QFrame):
                 return
 
 
+def load_app_fonts() -> None:
+    global _FONTS_LOADED
+    if _FONTS_LOADED:
+        return
+    font_dir = ASSET_DIR / "fonts"
+    if not font_dir.is_dir():
+        return
+    for path in sorted(font_dir.glob("*.ttf")):
+        QFontDatabase.addApplicationFont(str(path))
+    _FONTS_LOADED = True
+
+
+_FONTS_LOADED = False
+
+
+class AppDialog(QDialog):
+    """Small OpenCode-style modal used instead of the platform QMessageBox."""
+
+    _ACCENTS = {
+        "info": "#4f8bff",
+        "warning": "#f4b434",
+        "critical": "#ed5a5a",
+    }
+
+    def __init__(
+        self,
+        parent: QWidget | None,
+        title: str,
+        message: str,
+        *,
+        confirm: str | None = None,
+        cancel: str = "Close",
+        kind: str = "info",
+        detail: str = "",
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setModal(True)
+        self.setWindowTitle(title)
+        self._drag_pos = None
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(24, 24, 24, 24)
+        panel = QFrame()
+        panel.setObjectName("DialogPanel")
+        panel.setMinimumWidth(440)
+        panel.setMaximumWidth(500)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(36)
+        shadow.setColor(QColor(0, 0, 0, 190))
+        shadow.setOffset(0, 10)
+        panel.setGraphicsEffect(shadow)
+        outer.addWidget(panel)
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+
+        top = QHBoxLayout()
+        top.setSpacing(7)
+        dot = QLabel("●")
+        dot.setStyleSheet(
+            f"color: {self._ACCENTS.get(kind, self._ACCENTS['info'])}; font-size: 9px;"
+        )
+        heading = QLabel(title.upper())
+        heading.setObjectName("DialogTitle")
+        close = QPushButton("×")
+        close.setObjectName("IconButton")
+        close.setFixedSize(24, 24)
+        close.clicked.connect(self.reject)
+        top.addWidget(dot)
+        top.addWidget(heading)
+        top.addStretch(1)
+        top.addWidget(close)
+        layout.addLayout(top)
+
+        body = QLabel(message)
+        body.setObjectName("DialogMessage")
+        body.setWordWrap(True)
+        body.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(body)
+
+        if detail:
+            extra = QLabel(detail)
+            extra.setObjectName("Muted")
+            extra.setWordWrap(True)
+            extra.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            layout.addWidget(extra)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+        actions.addStretch(1)
+        cancel_btn = QPushButton(cancel)
+        cancel_btn.clicked.connect(self.reject)
+        actions.addWidget(cancel_btn)
+        if confirm:
+            confirm_btn = QPushButton(confirm)
+            confirm_btn.setObjectName("Accent")
+            confirm_btn.setDefault(True)
+            confirm_btn.clicked.connect(self.accept)
+            actions.addWidget(confirm_btn)
+        layout.addLayout(actions)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self.adjustSize()
+        parent = self.parentWidget()
+        if parent is not None:
+            center = parent.window().frameGeometry().center()
+            self.move(center.x() - self.width() // 2, center.y() - self.height() // 2)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._drag_pos is not None and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() == Qt.Key_Escape:
+            self.reject()
+            return
+        super().keyPressEvent(event)
+
+
+def show_message(
+    parent: QWidget | None,
+    title: str,
+    message: str,
+    *,
+    kind: str = "info",
+    detail: str = "",
+) -> None:
+    AppDialog(parent, title, message, kind=kind, detail=detail).exec()
+
+
+def ask_confirm(
+    parent: QWidget | None,
+    title: str,
+    message: str,
+    *,
+    confirm: str = "Continue",
+    cancel: str = "Not now",
+    kind: str = "info",
+) -> bool:
+    dialog = AppDialog(
+        parent,
+        title,
+        message,
+        confirm=confirm,
+        cancel=cancel,
+        kind=kind,
+    )
+    return dialog.exec() == QDialog.Accepted
+
+
 class MainWindow(QMainWindow):
     def __init__(self, initial_input: str | None = None) -> None:
         super().__init__()
@@ -366,6 +659,7 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(VIDEO_ICON)))
 
         self.qsettings = QSettings("hatermedia", "Clipper")
+        load_app_fonts()
         self.summary: AnalysisSummary | None = None
         self.worker: AnalyzeWorker | None = None
         self.export_worker: ExportWorker | None = None
@@ -424,25 +718,34 @@ class MainWindow(QMainWindow):
         header.addWidget(logo)
         brand_box = QVBoxLayout()
         brand_box.setSpacing(0)
+        brand_line = QHBoxLayout()
+        brand_line.setSpacing(8)
         brand = QLabel("CLIPPER")
         brand.setObjectName("Brand")
-        sub = QLabel("native gameplay highlight trimmer")
+        version_label = QLabel(f"v{__version__}")
+        version_label.setObjectName("BrandSub")
+        brand_line.addWidget(brand)
+        brand_line.addWidget(version_label)
+        brand_line.addStretch(1)
+        sub = QLabel("local highlight engine")
         sub.setObjectName("BrandSub")
-        brand_box.addWidget(brand)
+        brand_box.addLayout(brand_line)
         brand_box.addWidget(sub)
         header.addLayout(brand_box)
         header.addStretch(1)
-        self.gpu_label = QLabel("GPU: checking…")
+        self.gpu_label = QLabel("nvenc / checking")
         self.gpu_label.setObjectName("Status")
-        self.ffmpeg_label = QLabel("FFmpeg: checking…")
-        self.ffmpeg_label.setObjectName("Muted")
+        self.ffmpeg_label = QLabel("ffmpeg / checking")
+        self.ffmpeg_label.setObjectName("Status")
         header.addWidget(self.ffmpeg_label)
         header.addWidget(self.gpu_label)
         updates = QPushButton("Updates")
+        updates.setObjectName("Mono")
         updates.setToolTip("Check GitHub for a newer Clipper release")
         updates.clicked.connect(lambda: self.check_updates(manual=True))
         header.addWidget(updates)
         github = QPushButton("GitHub ↗")
+        github.setObjectName("Mono")
         github.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/hatermedia/clipper")))
         header.addWidget(github)
         outer.addLayout(header)
@@ -455,7 +758,7 @@ class MainWindow(QMainWindow):
         self.update_label = QLabel("")
         update_row.addWidget(self.update_label, 1)
         self.update_action = QPushButton("Download update")
-        self.update_action.setObjectName("Primary")
+        self.update_action.setObjectName("Accent")
         self.update_action.clicked.connect(self._update_action_clicked)
         update_row.addWidget(self.update_action)
         update_later = QPushButton("Later")
@@ -486,7 +789,7 @@ class MainWindow(QMainWindow):
         left.setContentsMargins(16, 14, 16, 8)
         left.setSpacing(8)
 
-        left.addWidget(self._section("1 · Footage"))
+        left.addWidget(self._section("01 / FOOTAGE"))
         path_row = QHBoxLayout()
         self.input_edit = QLineEdit()
         self.input_edit.setPlaceholderText("No folder selected")
@@ -513,10 +816,11 @@ class MainWindow(QMainWindow):
         self.file_list = QListWidget()
         self.file_list.setMaximumHeight(86)
         self.file_list.setSelectionMode(QAbstractItemView.NoSelection)
+        self.file_list.setVisible(False)
         left.addWidget(self.file_list)
 
         left.addSpacing(6)
-        left.addWidget(self._section("2 · Detection"))
+        left.addWidget(self._section("02 / DETECTION"))
         sensitivity_row = QHBoxLayout()
         sensitivity_row.addWidget(QLabel("Sensitivity"))
         sensitivity_row.addStretch(1)
@@ -557,7 +861,7 @@ class MainWindow(QMainWindow):
             "The game may be inside a Discord stream window."
         )
         self.ai_state = QLabel("")
-        self.ai_state.setObjectName("Muted")
+        self.ai_state.setObjectName("Status")
         ai_row.addWidget(self.ai)
         ai_row.addWidget(self.ai_state)
         ai_row.addStretch(1)
@@ -596,7 +900,7 @@ class MainWindow(QMainWindow):
             "OpenCV motion scoring and audio analysis stay on the CPU."
         )
         self.gpu_state = QLabel("")
-        self.gpu_state.setObjectName("Muted")
+        self.gpu_state.setObjectName("Status")
         self.gpu_state.setToolTip("OpenCV motion scoring and audio RMS stay on the CPU.")
         gpu_row.addWidget(self.gpu)
         gpu_row.addWidget(self.gpu_state)
@@ -646,6 +950,9 @@ class MainWindow(QMainWindow):
         )
         self.advanced.setVisible(False)
         left.addWidget(self.advanced)
+        privacy = QLabel("local-only / no uploads")
+        privacy.setObjectName("BrandSub")
+        left.addWidget(privacy)
         left.addStretch(1)
 
         left_scroll.setWidget(controls)
@@ -664,7 +971,7 @@ class MainWindow(QMainWindow):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         footer_layout.addWidget(self.progress)
-        self.status = QLabel("Ready")
+        self.status = QLabel("ready")
         self.status.setObjectName("Status")
         self.status.setWordWrap(True)
         footer_layout.addWidget(self.status)
@@ -684,7 +991,7 @@ class MainWindow(QMainWindow):
         right.setSpacing(10)
 
         results_header = QHBoxLayout()
-        results_header.addWidget(self._section("Highlights"))
+        results_header.addWidget(self._section("HIGHLIGHTS"))
         results_header.addStretch(1)
         self.summary_label = QLabel("Nothing analyzed yet")
         self.summary_label.setObjectName("Summary")
@@ -693,7 +1000,7 @@ class MainWindow(QMainWindow):
 
         self.tree = QTreeWidget()
         self.tree.setColumnCount(6)
-        self.tree.setHeaderLabels(["Clip", "Start", "End", "Length", "Score", "Signal"])
+        self.tree.setHeaderLabels(["CLIP", "START", "END", "LENGTH", "SCORE", "SIGNAL"])
         self.tree.setIconSize(QSize(104, 58))
         self.tree.setAlternatingRowColors(True)
         self.tree.setRootIsDecorated(True)
@@ -715,7 +1022,7 @@ class MainWindow(QMainWindow):
         self.preview.setMaximumHeight(210)
         right.addWidget(self.preview)
 
-        export_group = QGroupBox("Export")
+        export_group = QGroupBox("EXPORT")
         export_layout = QGridLayout(export_group)
         export_layout.setHorizontalSpacing(8)
         export_layout.setVerticalSpacing(7)
@@ -756,7 +1063,7 @@ class MainWindow(QMainWindow):
         self.export_status.setObjectName("Status")
         self.export_status.setWordWrap(True)
         export_footer.addWidget(self.export_status, 1)
-        self.open_folder = QPushButton("Open output folder")
+        self.open_folder = QPushButton("Open folder")
         self.open_folder.setEnabled(False)
         self.open_folder.clicked.connect(self.open_output)
         export_footer.addWidget(self.open_folder)
@@ -812,7 +1119,9 @@ class MainWindow(QMainWindow):
         self.ai_model.currentTextChanged.connect(lambda _: self._ai_changed(self.ai.isChecked()))
         self._ai_changed(self.ai.isChecked())
         self.input_edit.setText(str(self.qsettings.value("input", "")))
+        self.input_edit.setCursorPosition(0)
         self.output_edit.setText(str(self.qsettings.value("output", "")))
+        self.output_edit.setCursorPosition(0)
         geometry = self.qsettings.value("geometry")
         if geometry:
             self.restoreGeometry(geometry)
@@ -857,7 +1166,7 @@ class MainWindow(QMainWindow):
         if release is None:
             self.update_bar.hide()
             if self._manual_update_check:
-                QMessageBox.information(
+                show_message(
                     self,
                     "Updates",
                     f"Clipper {__version__} is up to date.",
@@ -883,10 +1192,12 @@ class MainWindow(QMainWindow):
         self.update_check_worker = None
         if self._manual_update_check:
             self.update_bar.hide()
-            QMessageBox.warning(
+            show_message(
                 self,
                 "Update check failed",
-                message + "\n\nYou can also download the latest release from GitHub.",
+                message,
+                kind="warning",
+                detail="You can also download the latest release from GitHub.",
             )
 
     def _update_action_clicked(self) -> None:
@@ -946,10 +1257,12 @@ class MainWindow(QMainWindow):
         self.update_action.setText("Retry")
         self.update_action.setEnabled(True)
         self.update_action.setToolTip(message)
-        QMessageBox.warning(
+        show_message(
             self,
-            "Update download failed",
-            message + "\n\nYou can download the release manually from GitHub.",
+            "Download failed",
+            message,
+            kind="warning",
+            detail="You can download the release manually from GitHub.",
         )
 
     def _install_update(self) -> None:
@@ -958,7 +1271,7 @@ class MainWindow(QMainWindow):
         if release is None or installer is None:
             return
         if not is_installed_build():
-            QMessageBox.information(
+            show_message(
                 self,
                 "Install update",
                 "This copy is not running from the installed Windows build, so "
@@ -966,20 +1279,23 @@ class MainWindow(QMainWindow):
             )
             open_release_page(release)
             return
-        answer = QMessageBox.question(
+        if not ask_confirm(
             self,
             "Install update",
-            f"Install Clipper {release.version} now?\n\n"
-            "Clipper will close, install silently, and reopen.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
-        )
-        if answer != QMessageBox.Yes:
+            f"Install Clipper {release.version} now?",
+            confirm="Install and restart",
+            detail="Clipper will close, install silently, and reopen.",
+        ):
             return
         try:
             launch_installer(installer, wait_pid=os.getpid(), relaunch=True)
         except UpdateError as exc:
-            QMessageBox.critical(self, "Could not start installer", str(exc))
+            show_message(
+                self,
+                "Could not start installer",
+                str(exc),
+                kind="critical",
+            )
             return
         self.update_label.setText(f"Installing Clipper {release.version}…")
         self.update_action.setEnabled(False)
@@ -987,18 +1303,18 @@ class MainWindow(QMainWindow):
 
     def _update_status(self) -> None:
         if self.ffmpeg_ok:
-            self.ffmpeg_label.setText("FFmpeg ready")
+            self.ffmpeg_label.setText("ffmpeg / ready")
             self.ffmpeg_label.setToolTip(self.ffmpeg_text)
         else:
-            self.ffmpeg_label.setText("FFmpeg missing")
-            self.ffmpeg_label.setStyleSheet("color: #fb7185;")
+            self.ffmpeg_label.setText("ffmpeg / missing")
+            self.ffmpeg_label.setStyleSheet("color: #ed5a5a;")
             self.ffmpeg_label.setToolTip("Install FFmpeg or use the portable build.")
         self._gpu_changed(self.gpu.isChecked())
         self._ai_changed(self.ai.isChecked())
 
     def _ai_changed(self, checked: bool) -> None:
         if not self.ai_available:
-            self.ai_state.setText("Ollama/model missing")
+            self.ai_state.setText("ollama / missing")
             self.ai_state.setToolTip("Install Ollama and run: ollama pull qwen2.5vl:7b")
             self.ai.setEnabled(False)
             return
@@ -1006,25 +1322,25 @@ class MainWindow(QMainWindow):
         self.ai_model.setEnabled(checked)
         self.ai_game.setEnabled(checked)
         if checked:
-            self.ai_state.setText(f"{self.ai_model.currentText()} · local")
+            self.ai_state.setText(f"{self.ai_model.currentText()} / local")
             self.ai_state.setToolTip("Local vision review via Ollama; runs on the GPU when available.")
         else:
             self.ai_state.setText("off")
 
     def _gpu_changed(self, checked: bool) -> None:
         if not self.nvenc:
-            self.gpu_label.setText("GPU: unavailable")
-            self.gpu_label.setStyleSheet("color: #94a3b8;")
-            self.gpu_state.setText("CPU only")
+            self.gpu_label.setText("nvenc / unavailable")
+            self.gpu_label.setStyleSheet("color: #68686f;")
+            self.gpu_state.setText("cpu only")
             return
         if checked:
-            self.gpu_label.setText("GPU: NVENC on")
-            self.gpu_label.setStyleSheet("color: #67e8f9;")
-            self.gpu_state.setText("proxy/re-encode")
+            self.gpu_label.setText("nvenc / on")
+            self.gpu_label.setStyleSheet("color: #4f8bff;")
+            self.gpu_state.setText("proxy + re-encode")
         else:
-            self.gpu_label.setText("GPU: NVENC off")
-            self.gpu_label.setStyleSheet("color: #94a3b8;")
-            self.gpu_state.setText("CPU proxy")
+            self.gpu_label.setText("nvenc / off")
+            self.gpu_label.setStyleSheet("color: #a1a1a6;")
+            self.gpu_state.setText("cpu proxy")
 
     def _sensitivity_changed(self, value: int) -> None:
         self.sensitivity_value.setText(f"{value}%")
@@ -1063,6 +1379,7 @@ class MainWindow(QMainWindow):
             return
         target = Path(cleaned).expanduser()
         self.input_edit.setText(str(target))
+        self.input_edit.setCursorPosition(0)
         lowered = str(target).lower()
         if "valorant" in lowered:
             self.ai_game.setCurrentIndex(0)
@@ -1078,18 +1395,20 @@ class MainWindow(QMainWindow):
         self.preview.setText("Select a clip to preview its peak frame")
         self.export_btn.setEnabled(False)
         self.open_folder.setEnabled(False)
+        self.file_list.clear()
+        self.file_list.setVisible(False)
         if scan:
             self.scan()
 
     def scan(self) -> None:
         target = self.input_edit.text().strip()
         if not target:
-            QMessageBox.information(self, "Choose footage", "Pick a folder or drag one onto the drop zone.")
+            show_message(self, "Choose footage", "Pick a folder or drag one onto the drop zone.")
             return
         try:
             files = scan_inputs(target, recursive=self.recursive.isChecked())
         except (ClipperError, OSError) as exc:
-            QMessageBox.warning(self, "Scan failed", str(exc))
+            show_message(self, "Scan failed", str(exc), kind="warning")
             return
         self.files = files
         self.file_list.clear()
@@ -1097,6 +1416,9 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(file.name)
             item.setToolTip(str(file))
             self.file_list.addItem(item)
+        if files:
+            self.file_list.setFixedHeight(min(86, max(38, 24 + 22 * min(len(files), 3))))
+        self.file_list.setVisible(bool(files))
         self.summary_label.setText(f"{len(files)} video(s) ready" if files else "No videos found")
         if not files:
             self.status.setText("No supported videos found in that folder.")
@@ -1131,12 +1453,21 @@ class MainWindow(QMainWindow):
 
     def analyze(self) -> None:
         if not self.ffmpeg_ok:
-            QMessageBox.critical(self, "FFmpeg missing", "Install FFmpeg or use the portable Windows build.")
+            show_message(
+                self,
+                "FFmpeg missing",
+                "Install FFmpeg or use the portable Windows build.",
+                kind="critical",
+            )
             return
         if not self.files:
             self.scan()
         if not self.files:
-            QMessageBox.information(self, "No footage", "Choose a folder with supported video files first.")
+            show_message(
+                self,
+                "No footage",
+                "Choose a folder with supported video files first.",
+            )
             return
         self.summary = None
         self.tree.clear()
@@ -1185,7 +1516,7 @@ class MainWindow(QMainWindow):
             if self._screenshot_path:
                 QTimer.singleShot(300, self._capture_screenshot)
             else:
-                QMessageBox.critical(self, "Analysis failed", message)
+                show_message(self, "Analysis failed", message, kind="critical")
 
     def _capture_screenshot(self) -> None:
         if self._screenshot_path:
@@ -1197,6 +1528,8 @@ class MainWindow(QMainWindow):
 
     def _populate(self, summary: AnalysisSummary) -> None:
         self.tree.clear()
+        mono = QFont("IBM Plex Mono")
+        mono.setPixelSize(12)
         for analysis in summary.files:
             top = QTreeWidgetItem(
                 [
@@ -1224,6 +1557,8 @@ class MainWindow(QMainWindow):
                         clip.reason,
                     ]
                 )
+                for column in range(5):
+                    child.setFont(column, mono)
                 child.setTextAlignment(4, Qt.AlignCenter)
                 if index - 1 < len(analysis.previews):
                     preview = analysis.previews[index - 1]
@@ -1263,7 +1598,7 @@ class MainWindow(QMainWindow):
             self.choose_output()
             output = self.output_edit.text().strip()
         if not output:
-            QMessageBox.information(self, "Output folder", "Choose an output folder first.")
+            show_message(self, "Output folder", "Choose an output folder first.")
             return
         settings = self._build_settings()
         self._set_running(True)
@@ -1288,7 +1623,12 @@ class MainWindow(QMainWindow):
         self.last_output_dir = str(Path(self.output_edit.text().strip()).resolve())
         if result.errors:
             self.export_status.setText(f"{len(result.outputs)} exported, {len(result.errors)} failed.")
-            QMessageBox.warning(self, "Export finished with errors", "\n".join(result.errors[:8]))
+            show_message(
+                self,
+                "Export finished with errors",
+                "\n".join(result.errors[:8]),
+                kind="warning",
+            )
         else:
             self.export_status.setText(f"Exported {len(result.outputs)} clip(s).")
         self.open_folder.setEnabled(True)
@@ -1299,7 +1639,7 @@ class MainWindow(QMainWindow):
             self.export_status.setText("Export cancelled.")
         else:
             self.export_status.setText("Export failed.")
-            QMessageBox.critical(self, "Export failed", message)
+            show_message(self, "Export failed", message, kind="critical")
 
     def open_output(self) -> None:
         target = self.last_output_dir or self.output_edit.text().strip()
@@ -1329,13 +1669,13 @@ class MainWindow(QMainWindow):
             self.export_worker and self.export_worker.isRunning()
         )
         if running:
-            answer = QMessageBox.question(
+            if not ask_confirm(
                 self,
                 "Quit Clipper?",
                 "A job is still running. Cancel it and quit?",
-                QMessageBox.Yes | QMessageBox.No,
-            )
-            if answer != QMessageBox.Yes:
+                confirm="Quit",
+                kind="warning",
+            ):
                 event.ignore()
                 return
             self.cancel_current()
@@ -1365,6 +1705,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("Clipper")
     app.setOrganizationName("hatermedia")
     app.setStyle("Fusion")
+    load_app_fonts()
     app.setStyleSheet(STYLESHEET)
     window = MainWindow(initial_input=args.input)
     window.show()
