@@ -88,6 +88,11 @@ class DetectionSettings:
     proxy_width: int = 320
     gpu: bool = False
     low_power: bool = False
+    ai: bool = False
+    ai_model: str = "qwen2.5vl:7b"
+    ai_game: str = "generic"
+    ai_min_confidence: float = 0.55
+    ai_max_candidates: int = 60
 
     def validate(self) -> None:
         if not 0.0 <= self.sensitivity <= 1.0:
@@ -108,6 +113,10 @@ class DetectionSettings:
             raise ValueError("threads cannot be negative")
         if not 160 <= self.proxy_width <= 1280:
             raise ValueError("proxy_width must be between 160 and 1280")
+        if not 0.0 <= self.ai_min_confidence <= 1.0:
+            raise ValueError("ai_min_confidence must be between 0 and 1")
+        if not 1 <= self.ai_max_candidates <= 200:
+            raise ValueError("ai_max_candidates must be between 1 and 200")
         self.min_clip = float(self.min_clip)
         self.max_clips = int(self.max_clips)
         self.sample_fps = float(self.sample_fps)

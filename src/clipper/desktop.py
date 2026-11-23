@@ -56,9 +56,19 @@ from .config import (
     find_ffmpeg,
     set_low_priority,
 )
+from .detect.ai import DEFAULT_MODEL, ollama_status
 from .ffmpeg import FFmpegError, ffmpeg_version, nvenc_available
 from .models import AnalysisSummary
 from .pipeline import analyze_target, export_analysis, scan_inputs
+from .update import (
+    ReleaseInfo,
+    UpdateError,
+    check_with_cache,
+    download_installer,
+    is_installed_build,
+    launch_installer,
+    open_release_page,
+)
 
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 VIDEO_ICON = ASSET_DIR / "icon.png"
@@ -114,6 +124,23 @@ QPushButton#Primary {
 QPushButton#Primary:hover { background: #67e8f9; }
 QPushButton#Primary:disabled { background: #164e63; color: #64748b; }
 QPushButton:disabled { color: #64748b; background: #0b111b; border-color: #1a2536; }
+QCheckBox::indicator {
+    width: 15px;
+    height: 15px;
+    border: 1px solid #2a3b52;
+    border-radius: 4px;
+    background: #070c14;
+}
+QCheckBox::indicator:hover { border-color: #22d3ee; }
+QCheckBox::indicator:checked { background: #22d3ee; border-color: #22d3ee; }
+QFrame#UpdateBar {
+    background: #0a1a24;
+    border: 1px solid #155e75;
+    border-radius: 10px;
+}
+QFrame#UpdateBar QLabel { color: #a5f3fc; font-size: 12px; }
+QFrame#UpdateBar QPushButton { padding: 5px 10px; }
+QFrame#UpdateBar QPushButton#Primary { padding: 5px 12px; }
 QLineEdit, QComboBox, QSpinBox {
     background: #070c14;
     border: 1px solid #24344a;
@@ -252,6 +279,51 @@ class ExportWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class UpdateCheckWorker(QThread):
+    found = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, force: bool = False) -> None:
+        super().__init__()
+        self.force = force
+
+    def run(self) -> None:
+        try:
+            release, _cached = check_with_cache(force=self.force)
+            self.found.emit(release)
+        except UpdateError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class UpdateDownloadWorker(QThread):
+    progress = Signal(int, int)
+    ready = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, release: ReleaseInfo) -> None:
+        super().__init__()
+        self.release = release
+
+    def run(self) -> None:
+        try:
+            path = download_installer(
+                self.release,
+                progress=self._progress,
+            )
+            self.ready.emit(str(path))
+        except UpdateError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+    def _progress(self, done: int, total: int) -> None:
+        if self.isInterruptionRequested():
+            raise UpdateError("Download cancelled.")
+        self.progress.emit(done, total)
+
+
 class DropZone(QFrame):
     pathDropped = Signal(str)
 
@@ -259,7 +331,7 @@ class DropZone(QFrame):
         super().__init__()
         self.setObjectName("DropZone")
         self.setAcceptDrops(True)
-        self.setMinimumHeight(82)
+        self.setMinimumHeight(68)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(2)
@@ -302,6 +374,21 @@ class MainWindow(QMainWindow):
         self.last_output_dir: str | None = None
         self.nvenc = False
         self._screenshot_path: Path | None = None
+        ai_state = ollama_status(timeout=1.5)
+        installed = {str(name).lower(): str(name) for name in ai_state.get("models", [])}
+        vision = [
+            name for name in installed.values()
+            if any(token in name.lower() for token in ("vl", "llava", "minicpm", "moondream", "gemma3"))
+            and not name.lower().startswith("qwen3")
+        ]
+        self.ai_models = vision
+        self.ai_available = bool(vision)
+        self.ai_default = DEFAULT_MODEL if DEFAULT_MODEL.lower() in installed else (vision[0] if vision else DEFAULT_MODEL)
+        self.update_release: ReleaseInfo | None = None
+        self.update_installer: Path | None = None
+        self.update_check_worker: UpdateCheckWorker | None = None
+        self.update_download_worker: UpdateDownloadWorker | None = None
+        self._manual_update_check = False
 
         try:
             bins = find_ffmpeg()
@@ -318,6 +405,7 @@ class MainWindow(QMainWindow):
         if initial_input:
             self.set_input(initial_input, scan=False)
         self._update_status()
+        QTimer.singleShot(2500, lambda: self.check_updates(manual=False))
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
@@ -350,26 +438,53 @@ class MainWindow(QMainWindow):
         self.ffmpeg_label.setObjectName("Muted")
         header.addWidget(self.ffmpeg_label)
         header.addWidget(self.gpu_label)
+        updates = QPushButton("Updates")
+        updates.setToolTip("Check GitHub for a newer Clipper release")
+        updates.clicked.connect(lambda: self.check_updates(manual=True))
+        header.addWidget(updates)
         github = QPushButton("GitHub ↗")
         github.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/hatermedia/clipper")))
         header.addWidget(github)
         outer.addLayout(header)
+
+        self.update_bar = QFrame()
+        self.update_bar.setObjectName("UpdateBar")
+        update_row = QHBoxLayout(self.update_bar)
+        update_row.setContentsMargins(12, 7, 8, 7)
+        update_row.setSpacing(8)
+        self.update_label = QLabel("")
+        update_row.addWidget(self.update_label, 1)
+        self.update_action = QPushButton("Download update")
+        self.update_action.setObjectName("Primary")
+        self.update_action.clicked.connect(self._update_action_clicked)
+        update_row.addWidget(self.update_action)
+        update_later = QPushButton("Later")
+        update_later.clicked.connect(self.update_bar.hide)
+        update_row.addWidget(update_later)
+        self.update_bar.hide()
+        outer.addWidget(self.update_bar)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
         outer.addWidget(splitter, 1)
 
         # ---------------- left controls ----------------
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         left_panel = QFrame()
         left_panel.setObjectName("Panel")
         left_panel.setMinimumWidth(370)
         left_panel.setMaximumWidth(410)
-        left = QVBoxLayout(left_panel)
-        left.setContentsMargins(16, 16, 16, 16)
-        left.setSpacing(10)
+        left_shell = QVBoxLayout(left_panel)
+        left_shell.setContentsMargins(0, 0, 0, 0)
+        left_shell.setSpacing(0)
+
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        controls = QWidget()
+        left = QVBoxLayout(controls)
+        left.setContentsMargins(16, 14, 16, 8)
+        left.setSpacing(8)
 
         left.addWidget(self._section("1 · Footage"))
         path_row = QHBoxLayout()
@@ -396,7 +511,7 @@ class MainWindow(QMainWindow):
         left.addLayout(row)
 
         self.file_list = QListWidget()
-        self.file_list.setMaximumHeight(105)
+        self.file_list.setMaximumHeight(86)
         self.file_list.setSelectionMode(QAbstractItemView.NoSelection)
         left.addWidget(self.file_list)
 
@@ -434,6 +549,45 @@ class MainWindow(QMainWindow):
         pad.addWidget(self.pre, 1, 0)
         pad.addWidget(self.post, 1, 1)
         left.addLayout(pad)
+
+        ai_row = QHBoxLayout()
+        self.ai = QCheckBox("AI review (local)")
+        self.ai.setToolTip(
+            "Reviews candidates with a local Ollama vision model. "
+            "The game may be inside a Discord stream window."
+        )
+        self.ai_state = QLabel("")
+        self.ai_state.setObjectName("Muted")
+        ai_row.addWidget(self.ai)
+        ai_row.addWidget(self.ai_state)
+        ai_row.addStretch(1)
+        left.addLayout(ai_row)
+
+        ai_controls = QGridLayout()
+        ai_controls.setHorizontalSpacing(8)
+        ai_controls.setVerticalSpacing(4)
+        ai_controls.addWidget(QLabel("AI model"), 0, 0)
+        self.ai_model = QComboBox()
+        for model in (self.ai_models or [f"{DEFAULT_MODEL} (not installed)"]):
+            self.ai_model.addItem(model)
+        preferred = self.ai_model.findText(self.ai_default)
+        if preferred >= 0:
+            self.ai_model.setCurrentIndex(preferred)
+        self.ai_model.setEnabled(self.ai_available)
+        ai_controls.addWidget(self.ai_model, 0, 1)
+        ai_controls.addWidget(QLabel("Game"), 1, 0)
+        self.ai_game = QComboBox()
+        for label, value in (
+            ("Valorant", "Valorant"),
+            ("Apex Legends", "Apex Legends"),
+            ("CS2", "Counter-Strike 2"),
+            ("Generic", "generic"),
+        ):
+            self.ai_game.addItem(label, value)
+        self.ai_game.setCurrentIndex(3)
+        ai_controls.addWidget(self.ai_game, 1, 1)
+        left.addLayout(ai_controls)
+        self.ai.setEnabled(self.ai_available)
 
         gpu_row = QHBoxLayout()
         self.gpu = QCheckBox("Use NVIDIA GPU (NVENC)")
@@ -492,28 +646,35 @@ class MainWindow(QMainWindow):
         )
         self.advanced.setVisible(False)
         left.addWidget(self.advanced)
+        left.addStretch(1)
 
+        left_scroll.setWidget(controls)
+        left_shell.addWidget(left_scroll, 1)
+
+        footer = QFrame()
+        footer_layout = QVBoxLayout(footer)
+        footer_layout.setContentsMargins(16, 8, 16, 16)
+        footer_layout.setSpacing(7)
         self.analyze_btn = QPushButton("Detect highlights")
         self.analyze_btn.setObjectName("Primary")
         self.analyze_btn.clicked.connect(self.analyze)
-        left.addWidget(self.analyze_btn)
+        footer_layout.addWidget(self.analyze_btn)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
-        left.addWidget(self.progress)
+        footer_layout.addWidget(self.progress)
         self.status = QLabel("Ready")
         self.status.setObjectName("Status")
         self.status.setWordWrap(True)
-        left.addWidget(self.status)
+        footer_layout.addWidget(self.status)
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.clicked.connect(self.cancel_current)
-        left.addWidget(self.cancel_btn)
-        left.addStretch(1)
+        footer_layout.addWidget(self.cancel_btn)
+        left_shell.addWidget(footer)
 
-        left_scroll.setWidget(left_panel)
-        splitter.addWidget(left_scroll)
+        splitter.addWidget(left_panel)
 
         # ---------------- right results ----------------
         right_panel = QFrame()
@@ -630,6 +791,26 @@ class MainWindow(QMainWindow):
         self.gpu.toggled.connect(self._gpu_changed)
         self.gpu.setEnabled(self.nvenc)
         self._gpu_changed(self.gpu.isChecked())
+
+        if self.ai_available:
+            if self.qsettings.contains("ai_v2"):
+                ai_default = self.qsettings.value("ai_v2", "false") in (True, "true")
+            else:
+                ai_default = True
+            self.ai.setChecked(bool(ai_default))
+            stored_model = str(self.qsettings.value("ai_model", ""))
+            if stored_model and self.ai_model.findText(stored_model) >= 0:
+                self.ai_model.setCurrentText(stored_model)
+            stored_game = str(self.qsettings.value("ai_game", ""))
+            if stored_game:
+                game_index = self.ai_game.findData(stored_game)
+                if game_index >= 0:
+                    self.ai_game.setCurrentIndex(game_index)
+        else:
+            self.ai.setChecked(False)
+        self.ai.toggled.connect(self._ai_changed)
+        self.ai_model.currentTextChanged.connect(lambda _: self._ai_changed(self.ai.isChecked()))
+        self._ai_changed(self.ai.isChecked())
         self.input_edit.setText(str(self.qsettings.value("input", "")))
         self.output_edit.setText(str(self.qsettings.value("output", "")))
         geometry = self.qsettings.value("geometry")
@@ -646,10 +827,163 @@ class MainWindow(QMainWindow):
         self.qsettings.setValue("post", self.post.value())
         self.qsettings.setValue("recursive", self.recursive.isChecked())
         self.qsettings.setValue("gpu_v2", self.gpu.isChecked())
+        self.qsettings.setValue("ai_v2", self.ai.isChecked())
+        self.qsettings.setValue("ai_model", self.ai_model.currentText())
+        self.qsettings.setValue("ai_game", str(self.ai_game.currentData()))
         self.qsettings.setValue("low_power", self.low_power.isChecked())
         self.qsettings.setValue("input", self.input_edit.text())
         self.qsettings.setValue("output", self.output_edit.text())
         self.qsettings.setValue("geometry", self.saveGeometry())
+
+    # --------------------------------------------------------------- updates
+    def check_updates(self, manual: bool = False) -> None:
+        if self.update_check_worker is not None and self.update_check_worker.isRunning():
+            return
+        self._manual_update_check = manual
+        if manual:
+            self.update_label.setText("Checking GitHub for updates…")
+            self.update_action.setText("Checking…")
+            self.update_action.setEnabled(False)
+            self.update_bar.show()
+        worker = UpdateCheckWorker(force=manual)
+        worker.found.connect(self._update_found)
+        worker.failed.connect(self._update_check_failed)
+        worker.finished.connect(worker.deleteLater)
+        self.update_check_worker = worker
+        worker.start()
+
+    def _update_found(self, release: object) -> None:
+        self.update_check_worker = None
+        if release is None:
+            self.update_bar.hide()
+            if self._manual_update_check:
+                QMessageBox.information(
+                    self,
+                    "Updates",
+                    f"Clipper {__version__} is up to date.",
+                )
+            return
+        assert isinstance(release, ReleaseInfo)
+        self.update_release = release
+        self.update_installer = None
+        if release.has_installer:
+            self.update_label.setText(
+                f"Clipper {release.version} is available · you have {__version__}"
+            )
+            self.update_action.setText("Download update")
+        else:
+            self.update_label.setText(
+                f"Clipper {release.version} is available · no installer in this release"
+            )
+            self.update_action.setText("View release")
+        self.update_action.setEnabled(True)
+        self.update_bar.show()
+
+    def _update_check_failed(self, message: str) -> None:
+        self.update_check_worker = None
+        if self._manual_update_check:
+            self.update_bar.hide()
+            QMessageBox.warning(
+                self,
+                "Update check failed",
+                message + "\n\nYou can also download the latest release from GitHub.",
+            )
+
+    def _update_action_clicked(self) -> None:
+        if self.update_installer is not None:
+            self._install_update()
+            return
+        release = self.update_release
+        if release is None:
+            self.check_updates(manual=True)
+            return
+        if not release.has_installer:
+            open_release_page(release)
+            return
+        self._download_update(release)
+
+    def _download_update(self, release: ReleaseInfo) -> None:
+        if self.update_download_worker is not None and self.update_download_worker.isRunning():
+            return
+        self.update_label.setText(f"Downloading Clipper {release.version}…")
+        self.update_action.setText("Downloading…")
+        self.update_action.setEnabled(False)
+        worker = UpdateDownloadWorker(release)
+        worker.progress.connect(self._download_progress)
+        worker.ready.connect(self._download_ready)
+        worker.failed.connect(self._download_failed)
+        worker.finished.connect(worker.deleteLater)
+        self.update_download_worker = worker
+        worker.start()
+
+    def _download_progress(self, done: int, total: int) -> None:
+        release = self.update_release
+        label = f"Clipper {release.version}" if release else "update"
+        if total > 0:
+            percent = min(100, int(done * 100 / total))
+            self.update_label.setText(
+                f"Downloading {label}… {percent}% "
+                f"({done / (1024 * 1024):.0f} of {total / (1024 * 1024):.0f} MB)"
+            )
+        else:
+            self.update_label.setText(f"Downloading {label}… {done / (1024 * 1024):.0f} MB")
+
+    def _download_ready(self, path: str) -> None:
+        self.update_download_worker = None
+        release = self.update_release
+        self.update_installer = Path(path)
+        version = release.version if release else ""
+        self.update_label.setText(
+            f"Update ready · Clipper {version} downloaded and SHA-256 verified"
+        )
+        self.update_action.setText("Restart & install")
+        self.update_action.setEnabled(True)
+        self.update_bar.show()
+
+    def _download_failed(self, message: str) -> None:
+        self.update_download_worker = None
+        self.update_label.setText("Update download failed")
+        self.update_action.setText("Retry")
+        self.update_action.setEnabled(True)
+        self.update_action.setToolTip(message)
+        QMessageBox.warning(
+            self,
+            "Update download failed",
+            message + "\n\nYou can download the release manually from GitHub.",
+        )
+
+    def _install_update(self) -> None:
+        release = self.update_release
+        installer = self.update_installer
+        if release is None or installer is None:
+            return
+        if not is_installed_build():
+            QMessageBox.information(
+                self,
+                "Install update",
+                "This copy is not running from the installed Windows build, so "
+                "Clipper will open the release page instead of replacing it.",
+            )
+            open_release_page(release)
+            return
+        answer = QMessageBox.question(
+            self,
+            "Install update",
+            f"Install Clipper {release.version} now?\n\n"
+            "Clipper will close, install silently, and reopen.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            launch_installer(installer, wait_pid=os.getpid(), relaunch=True)
+        except UpdateError as exc:
+            QMessageBox.critical(self, "Could not start installer", str(exc))
+            return
+        self.update_label.setText(f"Installing Clipper {release.version}…")
+        self.update_action.setEnabled(False)
+        QTimer.singleShot(250, QApplication.instance().quit)
 
     def _update_status(self) -> None:
         if self.ffmpeg_ok:
@@ -660,6 +994,22 @@ class MainWindow(QMainWindow):
             self.ffmpeg_label.setStyleSheet("color: #fb7185;")
             self.ffmpeg_label.setToolTip("Install FFmpeg or use the portable build.")
         self._gpu_changed(self.gpu.isChecked())
+        self._ai_changed(self.ai.isChecked())
+
+    def _ai_changed(self, checked: bool) -> None:
+        if not self.ai_available:
+            self.ai_state.setText("Ollama/model missing")
+            self.ai_state.setToolTip("Install Ollama and run: ollama pull qwen2.5vl:7b")
+            self.ai.setEnabled(False)
+            return
+        self.ai.setEnabled(True)
+        self.ai_model.setEnabled(checked)
+        self.ai_game.setEnabled(checked)
+        if checked:
+            self.ai_state.setText(f"{self.ai_model.currentText()} · local")
+            self.ai_state.setToolTip("Local vision review via Ollama; runs on the GPU when available.")
+        else:
+            self.ai_state.setText("off")
 
     def _gpu_changed(self, checked: bool) -> None:
         if not self.nvenc:
@@ -713,6 +1063,13 @@ class MainWindow(QMainWindow):
             return
         target = Path(cleaned).expanduser()
         self.input_edit.setText(str(target))
+        lowered = str(target).lower()
+        if "valorant" in lowered:
+            self.ai_game.setCurrentIndex(0)
+        elif "apex" in lowered:
+            self.ai_game.setCurrentIndex(1)
+        elif "counter-strike" in lowered or "cs2" in lowered:
+            self.ai_game.setCurrentIndex(2)
         if not self.output_edit.text().strip() or self.output_edit.text().strip() == "trimmed":
             base = target.parent if target.is_file() else target
             self.output_edit.setText(str(base / "trimmed"))
@@ -764,6 +1121,9 @@ class MainWindow(QMainWindow):
             threads=int(self.threads.currentData() or 0),
             gpu=self.gpu.isChecked(),
             preview=True,
+            ai=self.ai.isChecked() and self.ai_available,
+            ai_model=self.ai_model.currentText().replace(" (not installed)", ""),
+            ai_game=str(self.ai_game.currentData() or "generic"),
         )
         if self.low_power.isChecked():
             settings.apply_low_power()
@@ -960,6 +1320,9 @@ class MainWindow(QMainWindow):
         self.cancel_btn.setEnabled(running)
         self.input_edit.setEnabled(not running)
         self.output_edit.setEnabled(not running)
+        self.ai.setEnabled(not running and self.ai_available)
+        self.ai_model.setEnabled(not running and self.ai_available and self.ai.isChecked())
+        self.ai_game.setEnabled(not running and self.ai_available and self.ai.isChecked())
 
     def closeEvent(self, event) -> None:  # noqa: N802
         running = (self.worker and self.worker.isRunning()) or (
@@ -980,6 +1343,12 @@ class MainWindow(QMainWindow):
                 self.worker.wait(5000)
             if self.export_worker:
                 self.export_worker.wait(5000)
+        for worker in (self.update_check_worker, self.update_download_worker):
+            if worker and worker.isRunning():
+                worker.requestInterruption()
+                if not worker.wait(3000):
+                    worker.terminate()
+                    worker.wait(500)
         self._save_settings()
         event.accept()
 

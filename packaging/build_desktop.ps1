@@ -7,6 +7,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $Dist = Join-Path $PSScriptRoot "desktop-dist\Clipper"
 $Build = Join-Path $PSScriptRoot "desktop-build"
+$SpecDir = Join-Path $Build "spec"
 $Release = Join-Path $PSScriptRoot "release"
 $Icon = Join-Path $PSScriptRoot "icon.ico"
 
@@ -20,13 +21,16 @@ if (-not $Version) { throw "Could not read clipper.__version__" }
 Write-Host "Building Clipper $Version native desktop..." -ForegroundColor Cyan
 Remove-Item -Recurse -Force $Dist, $Build, $Release -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $Release | Out-Null
+New-Item -ItemType Directory -Force $SpecDir | Out-Null
+Remove-Item -Force (Join-Path $PSScriptRoot "clipper.spec") -ErrorAction SilentlyContinue
 
+$ErrorActionPreference = "Continue"
 & $Python -m PyInstaller `
     --noconfirm --clean --onedir --windowed `
     --name Clipper `
     --distpath (Join-Path $PSScriptRoot "desktop-dist") `
     --workpath $Build `
-    --specpath $PSScriptRoot `
+    --specpath $SpecDir `
     --icon $Icon `
     --collect-all clipper `
     --hidden-import clipper.desktop `
@@ -34,7 +38,9 @@ New-Item -ItemType Directory -Force $Release | Out-Null
     --exclude-module pytest `
     --exclude-module pip `
     (Join-Path $PSScriptRoot "clipper_desktop_entry.py")
-if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE" }
+$BuildExit = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($BuildExit -ne 0) { throw "PyInstaller failed with exit code $BuildExit" }
 
 $FfmpegBin = if ($env:CLIPPER_FFMPEG_DIR) { $env:CLIPPER_FFMPEG_DIR } else { Join-Path $env:USERPROFILE "tools\ffmpeg\bin" }
 New-Item -ItemType Directory -Force (Join-Path $Dist "bin") | Out-Null

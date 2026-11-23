@@ -25,9 +25,9 @@
     "name": "Clipper",
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Windows, macOS, Linux",
-    "description": "Local-first automatic gaming highlight trimmer with audio spike and motion detection, smart padding, and lossless FFmpeg export.",
+    "description": "Local-first automatic gaming highlight trimmer with audio spike and motion detection, optional local AI review, smart padding, and lossless FFmpeg export.",
     "url": "https://hatermedia.github.io/clipper/",
-    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.2.1",
+    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.3.0",
     "license": "https://opensource.org/licenses/MIT",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Person", "name": "hatermedia", "url": "https://github.com/hatermedia" }
@@ -62,15 +62,16 @@
   <section class="hero container">
     <div class="hero-grid">
       <div>
-        <span class="eyebrow"><span class="dot"></span> Native Windows app · open source · MIT</span>
+        <span class="eyebrow"><span class="dot"></span> Native Windows app · local AI · open source · MIT</span>
         <h1>Raw gameplay in.<br /><span class="grad">Highlights out.</span></h1>
         <p class="lead">
           Clipper is a native Windows app that scans a folder, finds the loud reactions
-          and sudden motion, and cuts the boring parts with FFmpeg. Native folder picker,
-          GPU encoding, CPU caps. No browser, no uploads, no accounts.
+          and sudden motion, and cuts the boring parts with FFmpeg. Add an optional local
+          GPU vision model to skip menus and dead time. Native folder picker, GPU encoding,
+          CPU caps. No browser, no uploads, no accounts.
         </p>
         <div class="cta-row" style="margin-top: 28px;">
-          <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.2.1/clipper-0.2.1-windows-x64-native.zip" target="_blank" rel="noreferrer">
+          <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.3.0/ClipperSetup-0.3.0.exe" target="_blank" rel="noreferrer">
             Download for Windows
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
           </a>
@@ -79,17 +80,17 @@
             Watch web UI demo
           </a>
         </div>
-        <p class="cta-note" style="margin-top: 12px;">Native Windows x64 · no Python, FFmpeg, or console · macOS/Linux via the CLI below</p>
+        <p class="cta-note" style="margin-top: 12px;">Windows 10/11 installer · no admin · auto-updates · macOS/Linux via the CLI below</p>
         <div class="hero-meta">
           <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg> MIT licensed</span>
           <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6"/></svg> Native Windows · CLI everywhere</span>
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> NVENC · CPU caps · low-power</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> NVENC · local AI · CPU caps</span>
         </div>
       </div>
       <div class="hero-visual">
-        <div class="floating-chip chip-top"><strong>2 clips found</strong>audio + motion · 6s</div>
-        <div class="hero-shot"><img src="media/desktop.png" alt="Clipper native Windows desktop app showing detected gameplay highlights" /></div>
-        <div class="floating-chip chip-bottom"><strong>Native app</strong>no browser · no console<div class="bar"><span></span></div></div>
+        <div class="floating-chip chip-top"><strong>AI reviewed</strong>2 clips found · local GPU</div>
+        <div class="hero-shot"><img src="media/desktop.png" alt="Clipper native Windows desktop app showing local AI review controls and detected gameplay highlights" /></div>
+        <div class="floating-chip chip-bottom"><strong>Native app</strong>no browser · auto-updates<div class="bar"><span></span></div></div>
       </div>
     </div>
   </section>
@@ -127,7 +128,7 @@
       <div class="card rose">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h3l2-7 3 14 3-10 2 3h5"/></svg></div>
         <h3>Audio spike detection</h3>
-        <p>Short-time RMS compared to a rolling loudness baseline. Gunfights, reactions, and hype moments surface without a model download.</p>
+        <p>Short-time RMS compared to a rolling loudness baseline. Gunfights, reactions, and hype moments surface without a cloud model.</p>
       </div>
       <div class="card green">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg></div>
@@ -149,6 +150,21 @@
         <h3>Native desktop app</h3>
         <p>Native folder picker, drag-and-drop, preview frames, progress, cancel, and export. No browser tab, no console window, no background command prompt.</p>
       </div>
+      <div class="card green">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg></div>
+        <h3>Local AI review</h3>
+        <p>An optional Ollama vision model runs on your GPU, reads the kill feed and score, and rejects black screens, menus, and loading screens. No frames leave the machine.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
+        <h3>Proper installer</h3>
+        <p>Per-user install with no admin prompt, Desktop and Start Menu shortcuts, and a normal uninstaller. The portable zip is still there if you prefer it.</p>
+      </div>
+      <div class="card rose">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></div>
+        <h3>Updates that verify</h3>
+        <p>The app checks GitHub Releases, downloads the installer, checks its SHA-256, then installs silently and reopens. A bad or missing checksum is refused.</p>
+      </div>
     </div>
   </section>
 
@@ -162,7 +178,7 @@
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg></div>
         <h3>GPU on by default</h3>
-        <p>Clipper runs a real NVENC test encode, not just an encoder-list check. When it passes, GPU is on by default for the analysis proxy and re-encode. If it fails, it falls back to libx264 and tells you.</p>
+        <p>Clipper runs a real NVENC test encode, not just an encoder-list check. When it passes, GPU is on by default for the analysis proxy, re-encode, and local AI runtime. If it fails, it falls back to libx264 and tells you.</p>
       </div>
       <div class="card rose">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
@@ -189,7 +205,7 @@
       </div>
       <div class="step">
         <h3>Score the moment</h3>
-        <p>A 16kHz audio pass and a 320px / 4fps video proxy produce two tracks. Adaptive peak picking turns them into windows.</p>
+        <p>A 16kHz audio pass and a 320px / 4fps video proxy produce two tracks. Adaptive peak picking turns them into windows; optional local AI review drops menus and dead frames.</p>
       </div>
       <div class="step">
         <h3>Export and post</h3>
@@ -247,34 +263,35 @@
   <section class="section container" id="install">
     <div class="section-head">
       <span class="eyebrow">Install</span>
-      <h2>Download the native app, or install the CLI.</h2>
-      <p>Windows users get a native desktop app with no Python, FFmpeg, or console. macOS/Linux use the CLI; the optional web UI remains available for remote/headless use.</p>
+      <h2>Install the native app, or use the CLI.</h2>
+      <p>Windows users get a per-user installer with no admin prompt and automatic updates. macOS/Linux use the CLI; the optional web UI remains available for remote/headless use.</p>
     </div>
     <div class="code-card" style="padding: 20px; margin-bottom: 18px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
       <div style="min-width:240px; flex:1;">
-        <div class="tiny mono dim" style="margin-bottom:4px;">WINDOWS X64 · NATIVE APP</div>
-        <strong style="color:#fff; font-size:15px;">No Python. No FFmpeg. No console. 225 MB.</strong>
-        <p class="small muted" style="margin-top:4px;">Unzip, double-click <span class="mono">Clipper.exe</span>, pick a folder. GPU/NVENC is on by default when the test passes; CPU cap, low-power mode, previews, and export.</p>
+        <div class="tiny mono dim" style="margin-bottom:4px;">WINDOWS 10/11 · X64 INSTALLER</div>
+        <strong style="color:#fff; font-size:15px;">No Python. No FFmpeg. No admin. ~155 MB.</strong>
+        <p class="small muted" style="margin-top:4px;">Installs to <span class="mono">%LOCALAPPDATA%\Programs\Clipper</span>, adds shortcuts, and auto-updates. Pick a folder, review previews, export. GPU/NVENC is on by default when the test passes. Prefer portable? <a href="https://github.com/hatermedia/clipper/releases/download/v0.3.0/clipper-0.3.0-windows-x64-native.zip" target="_blank" rel="noreferrer">Download the zip</a>.</p>
       </div>
-      <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.2.1/clipper-0.2.1-windows-x64-native.zip" target="_blank" rel="noreferrer">Download native app</a>
+      <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.3.0/ClipperSetup-0.3.0.exe" target="_blank" rel="noreferrer">Download installer</a>
     </div>
     <div class="install-grid">
       <div class="install-list">
         <div class="install-item"><span class="num">01</span><div><strong>Install FFmpeg (source/CLI only)</strong><span>Windows: <span class="mono">winget install Gyan.FFmpeg</span> · macOS: <span class="mono">brew install ffmpeg</span> · Ubuntu: <span class="mono">sudo apt install ffmpeg</span></span></div></div>
         <div class="install-item"><span class="num">02</span><div><strong>Install Clipper</strong><span>Use the release wheel, <span class="mono">pipx install git+https://github.com/hatermedia/clipper.git</span>, or the native app above.</span></div></div>
-        <div class="install-item"><span class="num">03</span><div><strong>Dry-run your folder</strong><span>See timestamps and preview frames before rendering anything. Run <span class="mono">clipper gpu</span> to verify NVENC; add <span class="mono">--low-power</span> to cap CPU.</span></div></div>
+        <div class="install-item"><span class="num">03</span><div><strong>Dry-run your folder</strong><span>See timestamps and preview frames before rendering anything. Run <span class="mono">clipper gpu</span> to verify NVENC and Ollama; add <span class="mono">--low-power</span> to cap CPU.</span></div></div>
         <div class="install-item"><span class="num">04</span><div><strong>Open the native app or optional web UI</strong><span><span class="mono">clipper desktop</span> (PySide6) · <span class="mono">clipper ui</span> for the browser UI.</span></div></div>
+        <div class="install-item"><span class="num">05</span><div><strong>Optional: local AI review</strong><span>Install <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a>, run <span class="mono">ollama pull qwen2.5vl:7b</span>, then tick <span class="mono">AI review</span> in the app or add <span class="mono">--ai --ai-game Valorant</span>.</span></div></div>
       </div>
       <div style="display:grid; gap:14px;">
         <div class="code-card">
           <div class="code-head"><span>Windows · PowerShell</span><button class="copy-btn" data-copy="winget install Gyan.FFmpeg
-python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.2.1/clipper_gg-0.2.1-py3-none-any.whl
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.3.0/clipper_gg-0.3.0-py3-none-any.whl
 clipper --input &quot;D:\Captures&quot; --dry-run --low-power">Copy</button></div>
           <pre><span class="cmt"># 1. FFmpeg (source/CLI only)</span>
 <span class="cmd">winget install Gyan.FFmpeg</span>
 
 <span class="cmt"># 2. Clipper release wheel</span>
-<span class="cmd">python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.2.1/clipper_gg-0.2.1-py3-none-any.whl</span>
+<span class="cmd">python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.3.0/clipper_gg-0.3.0-py3-none-any.whl</span>
 
 <span class="cmt"># 3. Dry run with a CPU cap</span>
 <span class="cmd">clipper --input "D:\Captures" --dry-run --low-power</span></pre>
@@ -289,6 +306,15 @@ clipper ui">Copy</button></div>
 <span class="cmt"># Native app (PySide6) or optional web UI</span>
 <span class="cmd">clipper desktop</span>
 <span class="cmd">clipper ui</span></pre>
+        </div>
+        <div class="code-card">
+          <div class="code-head"><span>Optional local AI review</span><button class="copy-btn" data-copy="ollama pull qwen2.5vl:7b
+clipper --input &quot;D:\Captures&quot; --ai --ai-game Valorant --dry-run">Copy</button></div>
+          <pre><span class="cmt"># One-time model pull (runs on the GPU)</span>
+<span class="cmd">ollama pull qwen2.5vl:7b</span>
+
+<span class="cmt"># Review candidates before cutting</span>
+<span class="cmd">clipper --input "D:\Captures" --ai --ai-game Valorant --dry-run</span></pre>
         </div>
         <p class="small dim">For the native app from source: <span class="mono">pip install "clipper-gg[desktop]"</span>. Lost FFmpeg on PATH? Set <span class="mono">CLIPPER_FFMPEG</span>.</p>
       </div>
@@ -380,7 +406,7 @@ clipper ui">Copy</button></div>
     </div>
     <div class="footer-links">
       <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
-      <a href="https://github.com/hatermedia/clipper/releases/tag/v0.2.1" target="_blank" rel="noreferrer">Release</a>
+      <a href="https://github.com/hatermedia/clipper/releases/tag/v0.3.0" target="_blank" rel="noreferrer">Release</a>
       <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">Docs</a>
       <a href="https://github.com/hatermedia/clipper/issues" target="_blank" rel="noreferrer">Issues</a>
       <a href="service/">Service</a>

@@ -95,6 +95,12 @@ def _settings_payload(settings: DetectionSettings) -> dict[str, object]:
         "visual_weight": settings.visual_weight,
         "sample_fps": settings.sample_fps,
         "merge_gap": settings.merge_gap,
+        "threads": settings.threads,
+        "proxy_width": settings.proxy_width,
+        "gpu": settings.gpu,
+        "ai": settings.ai,
+        "ai_model": settings.ai_model,
+        "ai_game": settings.ai_game,
     }
 
 
@@ -182,7 +188,24 @@ def analyze_file(
         )
 
         _report(progress, 0.88, "Selecting and merging clips")
-        clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
+        if settings.ai:
+            try:
+                from .detect.ai import build_candidates, review_candidates
+
+                candidates = build_candidates(grid, audio, visual, combined, settings, info.duration)
+                clips, ai_warnings = review_candidates(
+                    path,
+                    candidates,
+                    settings,
+                    info.duration,
+                    progress=progress,
+                )
+                warnings.extend(ai_warnings)
+            except Exception as exc:
+                warnings.append(f"AI review skipped: {exc}")
+                clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
+        else:
+            clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
 
         if preview_dir is not None and settings.preview:
             preview_dir.mkdir(parents=True, exist_ok=True)

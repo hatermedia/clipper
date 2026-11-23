@@ -19,6 +19,7 @@ packaging/desktop-dist/
 packaging/release/
 packaging/clipper.spec
 packaging/build.log
+packaging/*.log
 .pytest_cache/
 .coverage
 htmlcov/

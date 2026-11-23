@@ -6,6 +6,50 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-24
+
+### Added
+
+- **Windows installer** (`ClipperSetup-0.3.0.exe`): per-user install to
+  `%LOCALAPPDATA%\Programs\Clipper`, no admin prompt, Desktop and Start Menu
+  shortcuts, Add/Remove Programs entry, and a standard uninstaller. Silent
+  install (`/S`) supports in-place upgrades.
+- **Built-in auto-updater**: checks GitHub Releases on launch and from the
+  `Updates` button, downloads the installer, verifies its SHA-256 against the
+  release's `SHA256SUMS.txt`, then installs silently and relaunches. No update
+  is installed without a matching checksum.
+- `clipper update` and `clipper update --install` for checking and installing
+  releases from the terminal.
+- **Optional local AI review** using Ollama vision models (default
+  `qwen2.5vl:7b`, 100% GPU). It center-crops the game viewport, adds a zoomed
+  top-HUD frame for the score and kill feed, rejects black/desktop/menu frames,
+  and reviews candidate windows with structured JSON. Results are cached.
+- CLI flags: `--ai`, `--ai-model`, `--ai-game`, `--ai-min-confidence`, and
+  `--ai-max-candidates`.
+- Native AI controls: model selector, game preset, and a GPU status label.
+- `clipper gpu` now reports Ollama availability and installed vision models.
+
+### Changed
+
+- The primary download is now the installer instead of a zip. The portable zip
+  remains available for users who prefer it.
+- The left control panel keeps Detect/Cancel pinned while settings scroll.
+- Checkbox indicators and the AI/update bars match the dark native theme.
+- AI scores blend model confidence with the audio/motion score so the results
+  table reflects both signals.
+
+### Known limitations
+
+- The local vision pass is a review layer, not a trained kill detector. It
+  reliably skips menus, loading screens, and black frames, but can still
+  misjudge a quiet gameplay moment; keep clips in the results table under
+  review before exporting.
+- `qwen2.5vl:7b` needs roughly 6 GB of VRAM at an 8k context. Smaller GPUs can
+  use `qwen2.5vl:3b` at lower accuracy.
+- OpenCV motion scoring and audio RMS remain CPU work. NVENC accelerates only
+  decode, the analysis proxy encode, re-encode, and the AI runtime.
+- The installer is unsigned, so SmartScreen may warn on first run.
+
 ## [0.2.1] - 2026-11-24
 
 ### Fixed
@@ -90,7 +134,8 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/hatermedia/clipper/releases/tag/v0.3.0
 [0.2.1]: https://github.com/hatermedia/clipper/releases/tag/v0.2.1
 [0.2.0]: https://github.com/hatermedia/clipper/releases/tag/v0.2.0
 [0.1.1]: https://github.com/hatermedia/clipper/releases/tag/v0.1.1

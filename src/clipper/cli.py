@@ -35,7 +35,9 @@ def _build_batch_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  clipper --input ./footage --dry-run\n"
             "  clipper --input ./footage --output ./clips --sensitivity 0.65\n"
+            "  clipper --input ./footage --ai --ai-game Valorant --dry-run\n"
             "  clipper --input ./footage --reencode --encoder h264_nvenc\n"
+            "  clipper update\n"
             "  clipper gpu\n"
             "  clipper ui\n"
         ),
@@ -115,6 +117,33 @@ def _build_batch_parser() -> argparse.ArgumentParser:
         help="2 threads, 2fps/256px proxy, below-normal process priority",
     )
     parser.add_argument(
+        "--ai",
+        action="store_true",
+        help="review candidates with a local vision model via Ollama",
+    )
+    parser.add_argument(
+        "--ai-model",
+        default="qwen2.5vl:7b",
+        help="Ollama vision model (default: qwen2.5vl:7b)",
+    )
+    parser.add_argument(
+        "--ai-game",
+        default="generic",
+        help="game context for the AI prompt, e.g. Valorant or Apex Legends",
+    )
+    parser.add_argument(
+        "--ai-min-confidence",
+        type=float,
+        default=0.55,
+        help="minimum AI confidence to keep a candidate (default: 0.55)",
+    )
+    parser.add_argument(
+        "--ai-max-candidates",
+        type=int,
+        default=60,
+        help="maximum candidates sent to the vision model (default: 60)",
+    )
+    parser.add_argument(
         "--merge-gap",
         type=float,
         default=1.0,
@@ -170,10 +199,18 @@ def _run_gpu_check(argv: list[str]) -> int:
         "nvenc_h264_working": nvenc_available(bins),
         "nvenc_hevc_listed": has_encoder("hevc_nvenc", bins),
         "note": (
-            "GPU acceleration covers the analysis proxy and re-encode. "
+            "GPU acceleration covers the analysis proxy, re-encode, and local AI. "
             "OpenCV motion scoring and audio RMS remain CPU work."
         ),
     }
+    try:
+        from .detect.ai import DEFAULT_MODEL, ollama_status
+
+        info["ollama"] = ollama_status()
+        info["ai_default_model"] = DEFAULT_MODEL
+    except Exception as exc:
+        info["ollama"] = {"ok": False, "models": [], "error": str(exc)}
+        info["ai_default_model"] = "qwen2.5vl:7b"
     smi = shutil.which("nvidia-smi")
     if smi:
         proc = subprocess.run(
@@ -202,6 +239,13 @@ def _run_gpu_check(argv: list[str]) -> int:
         print("nvidia-smi: " + " | ".join(info["nvidia_smi"]))  # type: ignore[arg-type]
     else:
         print("nvidia-smi: not found")
+    ollama = info.get("ollama") or {}
+    if ollama.get("ok"):
+        models = ", ".join(ollama.get("models", [])) or "(none)"
+        print(f"Ollama vision models: {models}")
+        print(f"AI review default: {info['ai_default_model']}")
+    else:
+        print(f"Ollama: unavailable ({ollama.get('error', 'not running')})")
     print(f"note: {info['note']}")
     if not info["nvenc_h264_working"]:
         print("Fix: update the NVIDIA driver, or run on the discrete GPU (laptops may need the NVIDIA GPU forced for this app).")
@@ -310,6 +354,11 @@ def _run_batch(args: argparse.Namespace) -> int:
         threads=args.threads if args.threads is not None else default_threads(),
         proxy_width=args.proxy_width,
         gpu=False,
+        ai=args.ai,
+        ai_model=args.ai_model,
+        ai_game=args.ai_game,
+        ai_min_confidence=args.ai_min_confidence,
+        ai_max_candidates=args.ai_max_candidates,
     )
     if args.low_power:
         settings.apply_low_power()
@@ -340,6 +389,8 @@ def _run_batch(args: argparse.Namespace) -> int:
             f"performance: {settings.threads or 'auto'} threads | "
             f"proxy {settings.proxy_width}px @ {settings.sample_fps:g}fps | GPU: {gpu_label}"
         )
+        if settings.ai:
+            print(f"AI review: {settings.ai_model} | game: {settings.ai_game or 'generic'}")
 
     output_dir = Path(args.output).expanduser().resolve()
     preview_dir = output_dir / "previews" if args.dry_run and settings.preview else None
@@ -411,6 +462,122 @@ def _run_batch(args: argparse.Namespace) -> int:
     return 4 if had_errors else 0
 
 
+def _run_update(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="clipper update",
+        description="Check GitHub for a newer Clipper release and optionally install it.",
+    )
+    parser.add_argument(
+        "--install",
+        action="store_true",
+        help="download, verify, and run the Windows installer",
+    )
+    parser.add_argument("--yes", action="store_true", help="skip the install confirmation")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+
+    try:
+        from .update import (
+            RELEASES_PAGE,
+            UpdateError,
+            check_for_update,
+            download_installer,
+            launch_installer,
+        )
+
+        release = check_for_update()
+    except UpdateError as exc:
+        if args.json:
+            print(json.dumps({"current": __version__, "error": str(exc)}))
+        else:
+            print(f"Update check failed: {exc}", file=sys.stderr)
+            print(f"Releases: {RELEASES_PAGE}", file=sys.stderr)
+        return 1
+
+    if release is None:
+        if args.json:
+            print(json.dumps({"current": __version__, "update": False}))
+        else:
+            print(f"Clipper {__version__} is up to date.")
+        return 0
+
+    if args.json and not args.install:
+        print(
+            json.dumps(
+                {
+                    "current": __version__,
+                    "update": True,
+                    "version": release.version,
+                    "page_url": release.page_url,
+                    "installer": release.installer_name,
+                    "installer_size": release.installer_size,
+                    "sha256_listed": release.has_checksums,
+                }
+            )
+        )
+        return 0
+
+    print(f"Clipper {release.version} is available (you have {__version__}).")
+    print(f"Release: {release.page_url}")
+    if release.has_installer:
+        size = release.installer_size / (1024 * 1024)
+        print(f"Installer: {release.installer_name} ({size:.1f} MB)")
+    else:
+        print("This release has no Windows installer; download it from the release page.")
+    notes = release.notes.strip()
+    if notes:
+        print("\nRelease notes:")
+        for line in notes.splitlines()[:12]:
+            print(f"  {line}")
+
+    if not args.install:
+        if release.has_installer:
+            print("\nInstall it with: clipper update --install")
+        return 0
+
+    if not release.has_installer:
+        print("Nothing to install automatically.", file=sys.stderr)
+        return 1
+    if sys.platform != "win32":
+        print("The silent installer is Windows-only.", file=sys.stderr)
+        return 1
+    if not args.yes:
+        try:
+            answer = input("\nDownload and install now? [y/N] ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer not in {"y", "yes"}:
+            print("Cancelled.")
+            return 1
+
+    last = [-1]
+
+    def progress(done: int, total: int) -> None:
+        percent = int(done * 100 / total) if total else 0
+        if percent != last[0]:
+            last[0] = percent
+            print(f"\r  downloading {percent:3d}%", end="", flush=True)
+
+    try:
+        installer = download_installer(release, progress=progress)
+    except UpdateError as exc:
+        print(f"\nDownload failed: {exc}", file=sys.stderr)
+        return 1
+    print("\r  download complete; SHA-256 verified.          ")
+    print(f"  {installer}")
+    try:
+        relaunch = bool(getattr(sys, "frozen", False))
+        launch_installer(installer, relaunch=relaunch)
+    except UpdateError as exc:
+        print(f"Could not start the installer: {exc}", file=sys.stderr)
+        return 1
+    if relaunch:
+        print("Installer started. Clipper will reopen when it finishes.")
+    else:
+        print("Installer started. Open Clipper from the Start Menu when it finishes.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
 
@@ -421,6 +588,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Could not launch the desktop app: {exc}", file=sys.stderr)
             _build_batch_parser().print_help()
             return 1
+
+    if raw[0] in {"update", "upgrade"}:
+        return _run_update(raw[1:])
 
     if raw[0] in {"desktop", "app"}:
         return _run_desktop(raw[1:])

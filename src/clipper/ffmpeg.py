@@ -313,10 +313,16 @@ def make_thumbnail(
     output_jpg: Path | str,
     width: int = 480,
     bins: FFmpegBinaries | None = None,
+    crop: tuple[float, float, float, float] | None = None,
 ) -> Path:
     bins = _bins(bins)
     out = Path(output_jpg)
     out.parent.mkdir(parents=True, exist_ok=True)
+    if crop is not None:
+        x, y, w, h = crop
+        video_filter = f"crop=iw*{w:.4f}:ih*{h:.4f}:iw*{x:.4f}:ih*{y:.4f},scale={width}:-2"
+    else:
+        video_filter = f"scale={width}:-2"
     _checked(
         [
             bins.ffmpeg,
@@ -333,7 +339,7 @@ def make_thumbnail(
             "-frames:v",
             "1",
             "-vf",
-            f"scale={width}:-2",
+            video_filter,
             "-q:v",
             "3",
             str(out),
