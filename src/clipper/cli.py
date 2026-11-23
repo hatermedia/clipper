@@ -581,6 +581,10 @@ def _run_update(argv: list[str]) -> int:
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
 
+    if raw and raw[0] in {"--version", "-V", "version"}:
+        print(f"Clipper {__version__}")
+        return 0
+
     if not raw:
         try:
             return _run_desktop([])

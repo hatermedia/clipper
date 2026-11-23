@@ -6,6 +6,22 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-24
+
+### Added
+
+- `clipper --version` / `clipper -V`.
+- Live auto-update path verified end to end: an installed 0.3.0 build detects
+  0.3.1, downloads the installer, verifies its SHA-256, installs silently, and
+  reopens as 0.3.1.
+
+### Fixed
+
+- The portable README bundled in the native zip and installer now documents the
+  installer/auto-update flow, GPU-on-by-default behavior, and optional local AI.
+- Launching the installer from a source/pip CLI no longer tries to reopen
+  `python.exe`; it leaves the installed app on the Start Menu.
+
 ## [0.3.0] - 2026-11-24
 
 ### Added
@@ -134,7 +150,8 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/hatermedia/clipper/releases/tag/v0.3.1
 [0.3.0]: https://github.com/hatermedia/clipper/releases/tag/v0.3.0
 [0.2.1]: https://github.com/hatermedia/clipper/releases/tag/v0.2.1
 [0.2.0]: https://github.com/hatermedia/clipper/releases/tag/v0.2.0
