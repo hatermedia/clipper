@@ -983,7 +983,7 @@ class MainWindow(QMainWindow):
             return
         self.update_label.setText(f"Installing Clipper {release.version}…")
         self.update_action.setEnabled(False)
-        QTimer.singleShot(250, QApplication.instance().quit)
+        QTimer.singleShot(1200, QApplication.instance().quit)
 
     def _update_status(self) -> None:
         if self.ffmpeg_ok:

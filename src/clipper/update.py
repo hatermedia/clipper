@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -383,6 +384,17 @@ def _ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _update_log(message: str) -> None:
+    base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
+    path = Path(base) / "Clipper" / "update.log"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+    except OSError:
+        pass
+
+
 def launch_installer(
     installer: Path | str,
     *,
@@ -404,9 +416,14 @@ def launch_installer(
     # shortcut instead of opening python.exe with no arguments.
     if relaunch and not getattr(sys, "frozen", False):
         relaunch = False
+    log_path = (Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir())
+                / "Clipper" / "update.log")
+    _update_log(f"install requested: {installer_path} relaunch={relaunch} wait_pid={wait_pid}")
 
     lines = [
         "$ErrorActionPreference = 'SilentlyContinue'",
+        f"$log = {_ps_quote(str(log_path))}",
+        f"Add-Content -LiteralPath $log -Value \"$(Get-Date -Format o) helper start\"",
         f"$targetPid = {int(wait_pid or 0)}",
         "$deadline = (Get-Date).AddSeconds(90)",
         "while ($targetPid -gt 0 -and (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) "
@@ -414,8 +431,10 @@ def launch_installer(
         "$deadline = (Get-Date).AddSeconds(90)",
         "while ((Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue) "
         "-and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }",
+        f"Add-Content -LiteralPath $log -Value \"$(Get-Date -Format o) running installer\"",
         f"Start-Process -FilePath {_ps_quote(str(installer_path))} -ArgumentList '/S' -Wait",
         "Start-Sleep -Milliseconds 1200",
+        f"Add-Content -LiteralPath $log -Value \"$(Get-Date -Format o) installer finished\"",
     ]
     if relaunch:
         lines.append(
@@ -428,6 +447,46 @@ def launch_installer(
     helper.parent.mkdir(parents=True, exist_ok=True)
     helper.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
 
+    powershell = shutil.which("powershell.exe") or str(
+        Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        / "System32"
+        / "WindowsPowerShell"
+        / "v1.0"
+        / "powershell.exe"
+    )
+    command = [
+        powershell,
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-File",
+        str(helper),
+    ]
+    # ShellExecute hands the helper to Explorer, outside this process's job
+    # object. A plain Popen child can be killed when the app exits, and an
+    # installer cannot replace a running Clipper.exe.
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            parameters = subprocess.list2cmdline(command[1:])
+            result = ctypes.windll.shell32.ShellExecuteW(
+                None,
+                "open",
+                command[0],
+                parameters,
+                None,
+                0,  # SW_HIDE
+            )
+            _update_log(f"ShellExecute result={result} powershell={powershell}")
+            if result > 32:
+                return helper
+        except Exception as exc:
+            _update_log(f"ShellExecute failed: {exc}")
+
     creationflags = 0
     if os.name == "nt":
         creationflags = (
@@ -435,22 +494,14 @@ def launch_installer(
             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         )
     try:
-        subprocess.Popen(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-WindowStyle",
-                "Hidden",
-                "-File",
-                str(helper),
-            ],
+        process = subprocess.Popen(
+            command,
             creationflags=creationflags,
             close_fds=True,
         )
+        _update_log(f"Popen helper pid={process.pid}")
     except OSError as exc:
+        _update_log(f"Popen helper failed: {exc}")
         raise UpdateError(f"Could not start the installer helper: {exc}") from exc
     return helper
 

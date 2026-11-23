@@ -6,14 +6,25 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-24
+
+### Fixed
+
+- The detached update helper now launches through the Windows shell with the
+  full PowerShell path, so it survives the app closing and can replace a running
+  install. It writes a short diagnostic trail to
+  `%LOCALAPPDATA%\Clipper\update.log`.
+- The app waits 1.2 seconds before quitting after starting the helper, giving
+  Windows time to hand off the process.
+
 ## [0.3.1] - 2026-11-24
 
 ### Added
 
 - `clipper --version` / `clipper -V`.
-- Live auto-update path verified end to end: an installed 0.3.0 build detects
-  0.3.1, downloads the installer, verifies its SHA-256, installs silently, and
-  reopens as 0.3.1.
+- The release flow was exercised from an installed 0.3.0 build: it detected
+  0.3.1, downloaded the installer, and verified its SHA-256. The helper handoff
+  that performs the silent install was hardened in 0.3.2.
 
 ### Fixed
 
@@ -150,7 +161,8 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/hatermedia/clipper/releases/tag/v0.3.2
 [0.3.1]: https://github.com/hatermedia/clipper/releases/tag/v0.3.1
 [0.3.0]: https://github.com/hatermedia/clipper/releases/tag/v0.3.0
 [0.2.1]: https://github.com/hatermedia/clipper/releases/tag/v0.2.1
