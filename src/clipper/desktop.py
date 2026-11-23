@@ -56,7 +56,7 @@ from .config import (
     find_ffmpeg,
     set_low_priority,
 )
-from .ffmpeg import FFmpegError, ffmpeg_version, has_encoder
+from .ffmpeg import FFmpegError, ffmpeg_version, nvenc_available
 from .models import AnalysisSummary
 from .pipeline import analyze_target, export_analysis, scan_inputs
 
@@ -307,7 +307,7 @@ class MainWindow(QMainWindow):
             bins = find_ffmpeg()
             self.ffmpeg_ok = True
             self.ffmpeg_text = ffmpeg_version(bins)
-            self.nvenc = has_encoder("h264_nvenc", bins)
+            self.nvenc = nvenc_available(bins)
         except Exception:
             self.ffmpeg_ok = False
             self.ffmpeg_text = "FFmpeg not found"
@@ -435,6 +435,21 @@ class MainWindow(QMainWindow):
         pad.addWidget(self.post, 1, 1)
         left.addLayout(pad)
 
+        gpu_row = QHBoxLayout()
+        self.gpu = QCheckBox("Use NVIDIA GPU (NVENC)")
+        self.gpu.setToolTip(
+            "Hardware decode + NVENC for the analysis proxy and re-encode. "
+            "OpenCV motion scoring and audio analysis stay on the CPU."
+        )
+        self.gpu_state = QLabel("")
+        self.gpu_state.setObjectName("Muted")
+        self.gpu_state.setToolTip("OpenCV motion scoring and audio RMS stay on the CPU.")
+        gpu_row.addWidget(self.gpu)
+        gpu_row.addWidget(self.gpu_state)
+        gpu_row.addStretch(1)
+        left.addLayout(gpu_row)
+        self.gpu.setEnabled(self.nvenc)
+
         self.advanced_toggle = QPushButton("Advanced tuning  ▾")
         self.advanced_toggle.setCheckable(True)
         self.advanced_toggle.toggled.connect(self._toggle_advanced)
@@ -468,15 +483,12 @@ class MainWindow(QMainWindow):
         self.threads.addItem("Low (2)", 2)
         self.threads.addItem("Max (all)", 0)
         advanced_layout.addWidget(self.threads, 3, 1)
-        self.gpu = QCheckBox("Use NVIDIA GPU (NVENC)")
-        self.gpu.setToolTip("Hardware decode + NVENC for the analysis proxy; NVENC for re-encode.")
-        advanced_layout.addWidget(self.gpu, 4, 0, 1, 2)
         self.low_power = QCheckBox("Low-power mode")
         self.low_power.setToolTip("Caps threads at 2, uses a 256px/2fps proxy, and lowers process priority.")
-        advanced_layout.addWidget(self.low_power, 5, 0, 1, 2)
+        advanced_layout.addWidget(self.low_power, 4, 0, 1, 2)
         advanced_layout.addWidget(
-            QLabel("GPU helps encoding; decoding may still use CPU depending on the codec."),
-            6, 0, 1, 2,
+            QLabel("GPU helps decode/encode; motion scoring remains CPU-bound."),
+            5, 0, 1, 2,
         )
         self.advanced.setVisible(False)
         left.addWidget(self.advanced)
@@ -607,12 +619,17 @@ class MainWindow(QMainWindow):
         self.pre.setValue(int(self.qsettings.value("pre", 8)))
         self.post.setValue(int(self.qsettings.value("post", 5)))
         self.recursive.setChecked(self.qsettings.value("recursive", "false") in (True, "true"))
-        self.gpu.setChecked(self.qsettings.value("gpu", "false") in (True, "true"))
+        # New key so the old "off by default" setting does not stick after upgrade.
+        if self.qsettings.contains("gpu_v2"):
+            gpu_default = self.qsettings.value("gpu_v2", "false") in (True, "true")
+        else:
+            gpu_default = self.nvenc
+        self.gpu.setChecked(bool(gpu_default) and self.nvenc)
         self.low_power.setChecked(self.qsettings.value("low_power", "false") in (True, "true"))
         self.low_power.toggled.connect(self._low_power_changed)
+        self.gpu.toggled.connect(self._gpu_changed)
         self.gpu.setEnabled(self.nvenc)
-        if not self.nvenc:
-            self.gpu.setChecked(False)
+        self._gpu_changed(self.gpu.isChecked())
         self.input_edit.setText(str(self.qsettings.value("input", "")))
         self.output_edit.setText(str(self.qsettings.value("output", "")))
         geometry = self.qsettings.value("geometry")
@@ -628,7 +645,7 @@ class MainWindow(QMainWindow):
         self.qsettings.setValue("pre", self.pre.value())
         self.qsettings.setValue("post", self.post.value())
         self.qsettings.setValue("recursive", self.recursive.isChecked())
-        self.qsettings.setValue("gpu", self.gpu.isChecked())
+        self.qsettings.setValue("gpu_v2", self.gpu.isChecked())
         self.qsettings.setValue("low_power", self.low_power.isChecked())
         self.qsettings.setValue("input", self.input_edit.text())
         self.qsettings.setValue("output", self.output_edit.text())
@@ -642,9 +659,22 @@ class MainWindow(QMainWindow):
             self.ffmpeg_label.setText("FFmpeg missing")
             self.ffmpeg_label.setStyleSheet("color: #fb7185;")
             self.ffmpeg_label.setToolTip("Install FFmpeg or use the portable build.")
-        self.gpu_label.setText("GPU: NVENC" if self.nvenc else "GPU: CPU mode")
+        self._gpu_changed(self.gpu.isChecked())
+
+    def _gpu_changed(self, checked: bool) -> None:
         if not self.nvenc:
+            self.gpu_label.setText("GPU: unavailable")
             self.gpu_label.setStyleSheet("color: #94a3b8;")
+            self.gpu_state.setText("CPU only")
+            return
+        if checked:
+            self.gpu_label.setText("GPU: NVENC on")
+            self.gpu_label.setStyleSheet("color: #67e8f9;")
+            self.gpu_state.setText("proxy/re-encode")
+        else:
+            self.gpu_label.setText("GPU: NVENC off")
+            self.gpu_label.setStyleSheet("color: #94a3b8;")
+            self.gpu_state.setText("CPU proxy")
 
     def _sensitivity_changed(self, value: int) -> None:
         self.sensitivity_value.setText(f"{value}%")

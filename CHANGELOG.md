@@ -6,6 +6,23 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-24
+
+### Fixed
+
+- GPU is now **enabled by default in the native app and CLI when a real
+  one-frame NVENC test passes**, instead of being off by default or trusting
+  the encoder list.
+- The NVENC capability probe used a 128×128 test frame, which NVIDIA rejects as
+  below its minimum supported dimension. It now uses 256×144 and correctly
+  reports `NVENC H.264 test encode: PASS` on an RTX 3080.
+- Analysis progress now reports the actual proxy backend (`NVENC`,
+  `NVENC + hardware decode`, or CPU fallback), and a requested GPU that falls
+  back to CPU produces a visible warning.
+- Added `clipper gpu` diagnostics with the NVENC test result, `nvidia-smi`
+  summary, and a clear note that OpenCV motion scoring/audio RMS remain CPU
+  work.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added
@@ -73,7 +90,8 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/hatermedia/clipper/releases/tag/v0.2.1
 [0.2.0]: https://github.com/hatermedia/clipper/releases/tag/v0.2.0
 [0.1.1]: https://github.com/hatermedia/clipper/releases/tag/v0.1.1
 [0.1.0]: https://github.com/hatermedia/clipper/releases/tag/v0.1.0

@@ -1,4 +1,4 @@
-Clipper 0.2.0 - Windows x64 native
+Clipper 0.2.1 - Windows x64 native
 =================================
 
 No Python. No FFmpeg. No browser. No console window.

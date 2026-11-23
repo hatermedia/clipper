@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 import threading
 import webbrowser
@@ -16,7 +18,7 @@ from .config import (
     default_threads,
     find_ffmpeg,
 )
-from .ffmpeg import ffmpeg_version, has_encoder
+from .ffmpeg import ffmpeg_version, has_encoder, nvenc_available
 from .models import AnalysisSummary, fmt_short, fmt_time
 from .pipeline import analyze_target, export_analysis
 
@@ -34,6 +36,7 @@ def _build_batch_parser() -> argparse.ArgumentParser:
             "  clipper --input ./footage --dry-run\n"
             "  clipper --input ./footage --output ./clips --sensitivity 0.65\n"
             "  clipper --input ./footage --reencode --encoder h264_nvenc\n"
+            "  clipper gpu\n"
             "  clipper ui\n"
         ),
     )
@@ -102,8 +105,9 @@ def _build_batch_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--gpu",
-        action="store_true",
-        help="try hardware decode + NVENC for the analysis proxy and re-encode",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="use hardware decode + NVENC when available (default: auto)",
     )
     parser.add_argument(
         "--low-power",
@@ -154,6 +158,54 @@ def _build_ui_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-browser", action="store_true", help="do not open a browser tab")
     parser.add_argument("--reload", action="store_true", help="auto-reload for development")
     return parser
+
+
+def _run_gpu_check(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="clipper gpu", description="Check FFmpeg/NVENC/GPU capability")
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    args = parser.parse_args(argv)
+    bins = find_ffmpeg()
+    info: dict[str, object] = {
+        "ffmpeg": ffmpeg_version(bins),
+        "nvenc_h264_working": nvenc_available(bins),
+        "nvenc_hevc_listed": has_encoder("hevc_nvenc", bins),
+        "note": (
+            "GPU acceleration covers the analysis proxy and re-encode. "
+            "OpenCV motion scoring and audio RMS remain CPU work."
+        ),
+    }
+    smi = shutil.which("nvidia-smi")
+    if smi:
+        proc = subprocess.run(
+            [
+                smi,
+                "--query-gpu=name,driver_version,utilization.gpu,utilization.encoder,utilization.decoder",
+                "--format=csv,noheader",
+            ],
+            capture_output=True,
+            text=True,
+            errors="replace",
+        )
+        info["nvidia_smi"] = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
+    else:
+        info["nvidia_smi"] = []
+
+    if args.as_json:
+        print(json.dumps(info, indent=2))
+        return 0
+
+    print(f"Clipper {__version__}")
+    print(f"ffmpeg: {info['ffmpeg']}")
+    print(f"NVENC H.264 test encode: {'PASS' if info['nvenc_h264_working'] else 'FAIL'}")
+    print(f"NVENC HEVC encoder listed: {'yes' if info['nvenc_hevc_listed'] else 'no'}")
+    if info["nvidia_smi"]:
+        print("nvidia-smi: " + " | ".join(info["nvidia_smi"]))  # type: ignore[arg-type]
+    else:
+        print("nvidia-smi: not found")
+    print(f"note: {info['note']}")
+    if not info["nvenc_h264_working"]:
+        print("Fix: update the NVIDIA driver, or run on the discrete GPU (laptops may need the NVIDIA GPU forced for this app).")
+    return 0
 
 
 def _run_desktop(argv: list[str]) -> int:
@@ -257,14 +309,20 @@ def _run_batch(args: argparse.Namespace) -> int:
         preview=not args.no_previews,
         threads=args.threads if args.threads is not None else default_threads(),
         proxy_width=args.proxy_width,
-        gpu=args.gpu,
+        gpu=False,
     )
     if args.low_power:
         settings.apply_low_power()
     settings.validate()
 
     bins = find_ffmpeg()
-    nvenc = has_encoder("h264_nvenc", bins)
+    nvenc = nvenc_available(bins)
+    # Auto-enable GPU when it actually works; respect an explicit --no-gpu.
+    gpu_enabled = bool(args.gpu) if args.gpu is not None else nvenc
+    if gpu_enabled and not nvenc:
+        print("! NVENC is not usable on this machine; the analysis proxy will use CPU.")
+        gpu_enabled = False
+    settings.gpu = gpu_enabled
     if args.reencode:
         if args.encoder == "auto":
             args.encoder = "h264_nvenc" if nvenc else "libx264"
@@ -274,13 +332,14 @@ def _run_batch(args: argparse.Namespace) -> int:
     if not args.quiet and not args.as_json:
         print(f"Clipper {__version__}")
         print(f"ffmpeg: {ffmpeg_version(bins)}")
-        gpu_label = "NVENC available" if nvenc else "CPU only"
+        gpu_label = (
+            "enabled (NVENC)" if gpu_enabled
+            else ("available (off)" if nvenc else "unavailable")
+        )
         print(
             f"performance: {settings.threads or 'auto'} threads | "
             f"proxy {settings.proxy_width}px @ {settings.sample_fps:g}fps | GPU: {gpu_label}"
         )
-        if args.gpu and not nvenc:
-            print("! No NVENC encoder found; the analysis proxy will use CPU.")
 
     output_dir = Path(args.output).expanduser().resolve()
     preview_dir = output_dir / "previews" if args.dry_run and settings.preview else None
@@ -365,6 +424,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if raw[0] in {"desktop", "app"}:
         return _run_desktop(raw[1:])
+
+    if raw[0] in {"gpu", "doctor"}:
+        return _run_gpu_check(raw[1:])
 
     if raw[0] in {"ui", "serve", "web"}:
         return _run_ui(raw[1:])

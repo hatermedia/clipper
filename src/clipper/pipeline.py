@@ -23,6 +23,7 @@ from .detect.visual import analyze_visual
 from .ffmpeg import (
     FFmpegError,
     extract_audio,
+    last_proxy_backend,
     make_proxy,
     make_thumbnail,
     probe_media,
@@ -141,12 +142,18 @@ def analyze_file(
                 threads=settings.threads,
                 gpu=settings.gpu,
             )
-            _report(progress, 0.58, "Detecting motion")
+            _report(progress, 0.58, f"Detecting motion ({last_proxy_backend() or 'proxy'})")
             visual_track = analyze_visual(
                 proxy,
                 sample_fps=settings.sample_fps,
                 threads=settings.threads,
             )
+            backend = last_proxy_backend()
+            if settings.gpu and backend and "NVENC" not in backend:
+                warnings.append(
+                    f"GPU proxy requested, but FFmpeg used {backend}. "
+                    "Check the driver/encoder or run `clipper gpu`."
+                )
             if visual_track.empty:
                 warnings.append("Visual track is flat; relying on audio.")
         except (FFmpegError, OSError, RuntimeError) as exc:

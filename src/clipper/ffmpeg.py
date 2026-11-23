@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 from typing import Sequence
 
@@ -20,6 +21,13 @@ class FFmpegError(ClipperError):
 
 
 _NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+_LAST_PROXY_BACKEND = ""
+
+
+def last_proxy_backend() -> str:
+    """The backend that produced the most recent analysis proxy."""
+
+    return _LAST_PROXY_BACKEND
 
 
 def _run(cmd: Sequence[str], timeout: float | None = None) -> subprocess.CompletedProcess[str]:
@@ -63,17 +71,54 @@ def ffmpeg_version(binaries: FFmpegBinaries | None = None) -> str:
     return (proc.stdout or "").splitlines()[0].strip()
 
 
+@lru_cache(maxsize=32)
 def has_encoder(name: str, binaries: FFmpegBinaries | None = None) -> bool:
     bins = _bins(binaries)
     proc = _run([bins.ffmpeg, "-hide_banner", "-encoders"])
     return name in (proc.stdout or "")
 
 
+@lru_cache(maxsize=8)
+def _nvenc_probe(ffmpeg_path: str) -> bool:
+    """Actually try a one-frame NVENC encode; listed != usable."""
+
+    proc = _run(
+        [
+            ffmpeg_path,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=256x144:d=0.2",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "h264_nvenc",
+            "-f",
+            "null",
+            "-",
+        ],
+        timeout=30,
+    )
+    return proc.returncode == 0
+
+
+def nvenc_available(binaries: FFmpegBinaries | None = None) -> bool:
+    """Return True only when the H.264 NVENC encoder can actually encode."""
+
+    bins = _bins(binaries)
+    if not has_encoder("h264_nvenc", bins):
+        return False
+    return _nvenc_probe(str(bins.ffmpeg))
+
+
 def resolve_encoder(encoder: str, binaries: FFmpegBinaries | None = None) -> str:
-    """Resolve 'auto' to NVENC when available, otherwise libx264."""
+    """Resolve 'auto' to NVENC when it actually works, otherwise libx264."""
 
     if encoder in {"auto", "gpu"}:
-        return "h264_nvenc" if has_encoder("h264_nvenc", binaries) else "libx264"
+        return "h264_nvenc" if nvenc_available(binaries) else "libx264"
     return encoder
 
 
@@ -224,7 +269,7 @@ def make_proxy(
     bins = _bins(bins)
     out = Path(output_mp4)
     out.parent.mkdir(parents=True, exist_ok=True)
-    nvenc = gpu and has_encoder("h264_nvenc", bins)
+    nvenc = gpu and nvenc_available(bins)
 
     def command(use_hwaccel: bool, use_nvenc: bool, codec: str) -> list[str]:
         cmd = [bins.ffmpeg, "-hide_banner", "-loglevel", "error", "-y"]
@@ -242,20 +287,23 @@ def make_proxy(
         cmd.extend(["-pix_fmt", "yuv420p", *_thread_args(threads), str(out)])
         return cmd
 
-    attempts: list[list[str]] = []
+    attempts: list[tuple[str, list[str]]] = []
     if nvenc:
-        attempts.append(command(use_hwaccel=True, use_nvenc=True, codec="h264_nvenc"))
-        attempts.append(command(use_hwaccel=False, use_nvenc=True, codec="h264_nvenc"))
-    attempts.append(command(use_hwaccel=False, use_nvenc=False, codec="libx264"))
-    attempts.append(command(use_hwaccel=False, use_nvenc=False, codec="mjpeg"))
+        attempts.append(("NVENC + hardware decode", command(use_hwaccel=True, use_nvenc=True, codec="h264_nvenc")))
+        attempts.append(("NVENC", command(use_hwaccel=False, use_nvenc=True, codec="h264_nvenc")))
+    attempts.append(("libx264 (CPU)", command(use_hwaccel=False, use_nvenc=False, codec="libx264")))
+    attempts.append(("mjpeg (CPU)", command(use_hwaccel=False, use_nvenc=False, codec="mjpeg")))
 
+    global _LAST_PROXY_BACKEND
     last_error = ""
-    for cmd in attempts:
+    for label, cmd in attempts:
         out.unlink(missing_ok=True)
         proc = _run(cmd, timeout=3600)
         if proc.returncode == 0 and out.is_file() and out.stat().st_size > 0:
+            _LAST_PROXY_BACKEND = label
             return out
         last_error = _tail(proc.stderr or proc.stdout)
+    _LAST_PROXY_BACKEND = "failed"
     raise FFmpegError(last_error or "Could not build the analysis proxy")
 
 

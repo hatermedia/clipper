@@ -1,4 +1,4 @@
-# Launch kit — Clipper v0.2.0
+# Launch kit — Clipper v0.2.1
 
 Everything is built. This file is the 20-minute execution path once you are
 logged in to the relevant accounts.
@@ -15,8 +15,8 @@ logged in to the relevant accounts.
 
 - Site: https://hatermedia.github.io/clipper/
 - Repo: https://github.com/hatermedia/clipper
-- Release: https://github.com/hatermedia/clipper/releases/tag/v0.2.0
-- Native Windows app: [clipper-0.2.0-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper-0.2.0-windows-x64-native.zip)
+- Release: https://github.com/hatermedia/clipper/releases/tag/v0.2.1
+- Native Windows app: [clipper-0.2.1-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.2.1/clipper-0.2.1-windows-x64-native.zip)
 - Service page: https://hatermedia.github.io/clipper/service/
 - Fiverr copy: `docs/service/FIVERR_GIG.md`
 - Gumroad copy: `docs/service/GUMROAD_PRODUCT.md`
@@ -64,7 +64,7 @@ included.
 
 There is a native Windows zip with Python, PySide6, and FFmpeg bundled, because
 install friction was the obvious problem:
-https://github.com/hatermedia/clipper/releases/tag/v0.2.0
+https://github.com/hatermedia/clipper/releases/tag/v0.2.1
 
 `clipper --input <folder> --dry-run` shows timestamps and previews first. Demo
 footage is synthetic and labeled.
@@ -89,7 +89,7 @@ not included.
 
 There is a native Windows zip with Python, PySide6, and FFmpeg bundled, plus a
 source install for macOS/Linux:
-https://github.com/hatermedia/clipper/releases/tag/v0.2.0
+https://github.com/hatermedia/clipper/releases/tag/v0.2.1
 
 `clipper --input ... --dry-run` shows cuts first. MIT.
 
@@ -113,7 +113,7 @@ useful edit decision list:
 No ML model, no cloud, no telemetry. CLI + FastAPI local UI. MIT.
 
 Portable Windows build (Python/FFmpeg bundled):
-https://github.com/hatermedia/clipper/releases/tag/v0.2.0
+https://github.com/hatermedia/clipper/releases/tag/v0.2.1
 
 Source and architecture: https://github.com/hatermedia/clipper
 

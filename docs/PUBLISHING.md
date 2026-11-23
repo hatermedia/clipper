@@ -33,10 +33,10 @@ python -m twine check dist\*
 # Option A: environment variable (current shell only)
 $env:TWINE_USERNAME = "__token__"
 $env:TWINE_PASSWORD = "pypi-..."
-python -m twine upload dist\clipper_gg-0.2.0-py3-none-any.whl dist\clipper_gg-0.2.0.tar.gz
+python -m twine upload dist\clipper_gg-0.2.1-py3-none-any.whl dist\clipper_gg-0.2.1.tar.gz
 
 # Option B: prompt (no shell history)
-python -m twine upload dist\clipper_gg-0.2.0-py3-none-any.whl dist\clipper_gg-0.2.0.tar.gz
+python -m twine upload dist\clipper_gg-0.2.1-py3-none-any.whl dist\clipper_gg-0.2.1.tar.gz
 ```
 
 ## Verify

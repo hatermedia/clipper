@@ -9,7 +9,7 @@ Clipper is a native Windows desktop app and Python CLI that scans a folder of ga
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![Local-first](https://img.shields.io/badge/local--first-no%20uploads-22d3ee.svg)](#privacy)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.2.0](https://github.com/hatermedia/clipper/releases/tag/v0.2.0)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.2.1](https://github.com/hatermedia/clipper/releases/tag/v0.2.1)
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
@@ -28,7 +28,7 @@ Clipper is a native Windows desktop app and Python CLI that scans a folder of ga
 - **Smart padding and merging** — 8s before / 5s after by default; overlapping windows merge so a continuous fight stays one clip.
 - **Fast exports** — stream copy by default (`ffmpeg -c copy`), optional frame-accurate re-encode with `libx264`, `h264_nvenc`, `hevc_nvenc`, or `libx265`.
 - **Native Windows app** — Qt desktop UI with a native folder picker, drag-and-drop, preview frames, progress, cancel, and export. No browser tab, no console window, no background command prompt.
-- **GPU + CPU controls** — NVENC for the analysis proxy and re-encode, a balanced thread cap by default, Low (2 threads) and Max options, and a low-power mode that lowers process priority and uses a 256px/2fps proxy.
+- **GPU + CPU controls** — GPU is enabled by default when a real one-frame NVENC test passes; NVENC handles the analysis proxy and re-encode. CPU defaults to a balanced thread cap, with Low (2 threads), Max, and a low-power mode that lowers process priority and uses a 256px/2fps proxy.
 - **Dry run** — see timestamps and preview frames before rendering anything.
 - **Optional local web UI** — FastAPI + one HTML file for browser/remote use. No Node build pipeline.
 - **No database, no telemetry.**
@@ -55,7 +55,7 @@ No shade to the bigger tools — they do things Clipper doesn't. Clipper is for 
 No Python install. No FFmpeg install. No console. Download the Windows x64 zip,
 unzip it, and double-click `Clipper.exe`.
 
-**[Download clipper-0.2.0-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper-0.2.0-windows-x64-native.zip)** (225 MB)
+**[Download clipper-0.2.1-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.2.1/clipper-0.2.1-windows-x64-native.zip)** (225 MB)
 
 The zip bundles Python 3.13, PySide6, FFmpeg, and FFprobe. The app has a native
 folder picker, drag-and-drop, GPU/NVENC toggle, CPU cap, low-power mode, previews,
@@ -125,7 +125,7 @@ Drop `[desktop]` if you only want the CLI.
 ### Release wheel
 
 ```bash
-python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper_gg-0.2.0-py3-none-any.whl
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.2.1/clipper_gg-0.2.1-py3-none-any.whl
 ```
 
 ### pipx
@@ -152,10 +152,13 @@ clipper --input "D:\Captures" --dry-run --low-power
 # 3. Export the highlights. Default output: ./trimmed
 clipper --input "D:\Captures" --output "D:\Highlights"
 
-# 4. Use NVENC for the proxy/re-encode
+# 4. Use NVENC for the proxy/re-encode (default when available)
 clipper --input "D:\Captures" --gpu --reencode --encoder auto
 
-# 5. Optional local web UI
+# 5. Diagnose GPU/NVENC
+clipper gpu
+
+# 6. Optional local web UI
 clipper ui
 ```
 
@@ -196,7 +199,7 @@ Every run also writes `clipper-report-*.json` with per-file media info, clips, s
 | `--sample-fps` | `4` | Visual sampling rate (2 with `--low-power`) |
 | `--proxy-width` | `320` | Analysis proxy width (256 with `--low-power`) |
 | `--threads` | balanced | CPU thread cap; `0` = let FFmpeg decide |
-| `--gpu` | off | Hardware decode + NVENC proxy/re-encode attempt |
+| `--gpu` | auto | Hardware decode + NVENC proxy/re-encode when the NVENC test passes; use `--no-gpu` to force CPU |
 | `--low-power` | off | 2 threads, 2fps/256px proxy, below-normal priority |
 | `--merge-gap` | `1.0` | Merge clips closer than this |
 | `--reencode` | off | Frame-accurate encode instead of copy |
@@ -355,7 +358,7 @@ The image runs as a non-root user. If your mounted folders are not writable, adj
 
 - Analysis is one audio pass + one proxy pass + OpenCV scanning. The proxy is 320px at 4fps by default; `--proxy-width` and `--sample-fps` change it. A 46-second 720p clip takes a few seconds here; 4K and long VODs take longer.
 - **The default CPU behavior is balanced, not “all cores.”** Threads default to about half the logical cores. Use `--threads 2`, `--low-power`, or the native app’s Low setting to keep the machine usable while gaming/streaming. Use `--threads 0` or Max only when you want the whole CPU.
-- **GPU:** `--gpu` tries hardware decode + NVENC for the proxy and `--encoder auto` uses NVENC for re-encode when available. If NVENC is listed but unusable, Clipper falls back to libx264. Decode may still be CPU-bound depending on the codec.
+- **GPU:** enabled by default when a **real one-frame NVENC test** passes, not merely because the encoder is listed. It handles the proxy and `--encoder auto` re-encode. If NVENC is listed but unusable, Clipper falls back to libx264 and reports it. `clipper gpu` prints the test result and `nvidia-smi` summary. OpenCV motion scoring and audio RMS remain CPU work; decode may still be CPU-bound depending on the codec.
 - Stream-copy export is nearly instant and uses almost no CPU.
 - Re-encoding is the slow path. `h264_nvenc` is much faster than `libx264` when it works.
 - Preview thumbnails are cached by file mtime + timestamp in the OS temp folder.
@@ -373,9 +376,9 @@ Input containers: `.mp4`, `.mkv`, `.mov`, `.avi`. If FFmpeg can decode it, Clipp
 | No clips detected | Raise `--sensitivity`, check the audio track, or raise `--visual-weight` |
 | Clips start a second early | Expected with stream copy; use `--reencode` |
 | Export says “re-encoded because stream copy was not compatible” | Container/codec mismatch; this is automatic and safe |
-| NVENC fails at runtime | Update GPU drivers; Clipper falls back to `libx264` |
+| NVENC fails at runtime | Run `clipper gpu`; update GPU drivers; Clipper falls back to `libx264` |
 | CPU is pinned during analysis | Use `--low-power`, `--threads 2`, a lower `--sample-fps`/`--proxy-width`, or the native app's Low-power toggle |
-| GPU toggle shows CPU mode | The FFmpeg build may lack NVENC, or the GPU/driver is unavailable; CPU still works |
+| GPU toggle shows CPU mode | Run `clipper gpu`; the NVENC test failed or the FFmpeg build lacks NVENC. CPU still works |
 | Native app says PySide6 missing | `pip install "clipper-gg[desktop]"` or use the Windows portable build |
 | UI says FFmpeg missing | Restart the terminal after installing FFmpeg, then restart `clipper ui` |
 | Very long Windows paths fail | Enable Win32 long paths or use a shorter output path |
@@ -431,7 +434,7 @@ packaging/          Windows native/CLI build scripts
 - Scene-cut-aware lossless splitting.
 - Per-game presets (Apex, Valorant, CS2, Fortnite, racing).
 - Vertical crop + captions (9:16) as an optional second stage.
-- GPU-accelerated proxy decode.
+- Full GPU motion scoring (OpenCV scoring is CPU today; NVENC covers decode/encode).
 - Whisper-based reaction/speech cues as an optional third detector.
 - Twitch/YouTube VOD import (explicitly opt-in, local download).
 - Drag-and-drop UI for individual clips.

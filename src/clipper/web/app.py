@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__
 from ..config import VIDEO_EXTENSIONS, Cancelled, ClipperError, DetectionSettings, find_ffmpeg
-from ..ffmpeg import ffmpeg_version, has_encoder, make_thumbnail
+from ..ffmpeg import ffmpeg_version, make_thumbnail, nvenc_available
 from ..models import AnalysisSummary
 from ..pipeline import analyze_target, export_analysis, scan_inputs
 
@@ -242,7 +242,7 @@ def health() -> dict[str, Any]:
     try:
         bins = find_ffmpeg()
         version = ffmpeg_version(bins)
-        nvenc = has_encoder("h264_nvenc", bins)
+        nvenc = nvenc_available(bins)
         return {
             "ok": True,
             "version": __version__,
