@@ -2,6 +2,10 @@
 
 Windows portable build, public landing page, and a lower-friction download path.
 
+![Clipper demo](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/demo.gif)
+
+**SHA-256 checksums:** [SHA256SUMS.txt](https://github.com/hatermedia/clipper/releases/download/v0.1.1/SHA256SUMS.txt)
+
 ## Highlights
 
 - **Windows x64 portable zip** — bundles Python 3.13, FFmpeg, FFprobe, the local

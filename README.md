@@ -57,7 +57,8 @@ and double-click `Clipper UI.cmd`.
 
 The zip bundles Python 3.13, FFmpeg, FFprobe, the local UI, and CLI launchers.
 Windows SmartScreen may warn because the executable is unsigned; the source and
-reproducible build script are in [`packaging/`](packaging/).
+reproducible build script are in [`packaging/`](packaging/). SHA-256 checksums are
+attached to the release as `SHA256SUMS.txt`.
 
 ### Requirements for source installs
 
