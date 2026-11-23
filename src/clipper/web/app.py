@@ -113,9 +113,13 @@ class AnalyzeRequest(ScanRequest):
     visual_weight: float = Field(0.4, ge=0.0, le=1.0)
     sample_fps: float = Field(4.0, ge=1.0, le=15.0)
     merge_gap: float = Field(1.0, ge=0.0, le=10.0)
+    threads: int = Field(0, ge=0, le=256)
+    proxy_width: int = Field(320, ge=160, le=1280)
+    gpu: bool = False
+    low_power: bool = False
 
     def settings(self) -> DetectionSettings:
-        return DetectionSettings(
+        settings = DetectionSettings(
             sensitivity=self.sensitivity,
             pre=self.pre,
             post=self.post,
@@ -126,16 +130,23 @@ class AnalyzeRequest(ScanRequest):
             sample_fps=self.sample_fps,
             merge_gap=self.merge_gap,
             preview=False,
+            threads=self.threads,
+            proxy_width=self.proxy_width,
+            gpu=self.gpu,
         )
+        if self.low_power:
+            settings.apply_low_power()
+        return settings
 
 
 class ExportRequest(BaseModel):
     analysis_id: str = Field(min_length=1)
     output: str = Field(default="./trimmed", min_length=1)
     reencode: bool = False
-    encoder: str = "libx264"
+    encoder: str = "auto"
     crf: int = Field(20, ge=0, le=51)
     preset: str = "veryfast"
+    threads: int = Field(0, ge=0, le=256)
 
 
 def _run_analysis_job(job: Job, request: AnalyzeRequest) -> None:
@@ -188,6 +199,7 @@ def _run_export_job(job: Job, request: ExportRequest, summary: AnalysisSummary) 
             crf=request.crf,
             preset=request.preset,
             progress=progress,
+            threads=request.threads,
         )
         job.result = {"export": result.to_dict(), "output": str(Path(request.output).resolve())}
         job.progress = 1.0

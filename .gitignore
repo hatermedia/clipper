@@ -14,6 +14,8 @@ dist/
 # Portable build artifacts
 packaging/build/
 packaging/dist/
+packaging/desktop-build/
+packaging/desktop-dist/
 packaging/release/
 packaging/clipper.spec
 packaging/build.log

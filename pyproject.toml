@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clipper-gg"
-version = "0.1.1"
+version = "0.2.0"
 description = "Automatic gaming highlight trimmer: audio + motion detection, lossless FFmpeg cuts, local web UI."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+desktop = ["PySide6>=6.7"]
 dev = [
   "pytest>=8.0",
   "httpx>=0.27",
@@ -52,6 +53,7 @@ dev = [
 
 [project.scripts]
 clipper = "clipper.cli:main"
+clipper-desktop = "clipper.desktop:main"
 
 [project.urls]
 Homepage = "https://github.com/hatermedia/clipper"
@@ -62,6 +64,7 @@ Issues = "https://github.com/hatermedia/clipper/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"clipper" = ["assets/*"]
 "clipper.web" = ["static/*"]
 
 [tool.pytest.ini_options]

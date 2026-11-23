@@ -6,6 +6,29 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-24
+
+### Added
+
+- Native Qt desktop app (`clipper-desktop` / `Clipper.exe`) with:
+  - native folder picker and drag-and-drop,
+  - sensitivity/padding controls and advanced tuning,
+  - GPU/NVENC toggle for proxy encode and optional re-encode,
+  - CPU thread cap, proxy size/FPS controls, and a low-power mode,
+  - in-app progress, previews, results table, cancel, and export.
+- Native Windows portable build now ships `Clipper.exe` (windowed, no console)
+  with Python, PySide6, FFmpeg, and FFprobe bundled.
+- CLI hardware controls: `--threads`, `--proxy-width`, `--gpu`, `--low-power`,
+  and `--encoder auto`.
+- Analysis defaults to a balanced half-core thread cap instead of using every
+  core; low-power mode lowers process priority and caps threads/FPS/proxy size.
+
+### Changed
+
+- `clipper` with no arguments now opens the native desktop app when PySide6 is
+  installed. `clipper ui` remains available as the optional local web UI.
+- Re-encode defaults to `auto` (NVENC when available, libx264 fallback).
+
 ## [0.1.1] - 2026-11-23
 
 ### Added
@@ -50,6 +73,7 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/hatermedia/clipper/releases/tag/v0.2.0
 [0.1.1]: https://github.com/hatermedia/clipper/releases/tag/v0.1.1
 [0.1.0]: https://github.com/hatermedia/clipper/releases/tag/v0.1.0

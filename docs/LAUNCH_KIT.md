@@ -1,4 +1,4 @@
-# Launch kit — Clipper v0.1.1
+# Launch kit — Clipper v0.2.0
 
 Everything is built. This file is the 20-minute execution path once you are
 logged in to the relevant accounts.
@@ -15,8 +15,8 @@ logged in to the relevant accounts.
 
 - Site: https://hatermedia.github.io/clipper/
 - Repo: https://github.com/hatermedia/clipper
-- Release: https://github.com/hatermedia/clipper/releases/tag/v0.1.1
-- Portable Windows: [clipper-0.1.1-windows-x64-portable.zip](https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper-0.1.1-windows-x64-portable.zip)
+- Release: https://github.com/hatermedia/clipper/releases/tag/v0.2.0
+- Native Windows app: [clipper-0.2.0-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper-0.2.0-windows-x64-native.zip)
 - Service page: https://hatermedia.github.io/clipper/service/
 - Fiverr copy: `docs/service/FIVERR_GIG.md`
 - Gumroad copy: `docs/service/GUMROAD_PRODUCT.md`
@@ -62,9 +62,9 @@ It is heuristic: it does not understand kills, objectives, or speech, and stream
 copy can start on an earlier keyframe. Captions and vertical crop are not
 included.
 
-There is a Windows portable zip with Python/FFmpeg bundled, because install
-friction was the obvious problem:
-https://github.com/hatermedia/clipper/releases/tag/v0.1.1
+There is a native Windows zip with Python, PySide6, and FFmpeg bundled, because
+install friction was the obvious problem:
+https://github.com/hatermedia/clipper/releases/tag/v0.2.0
 
 `clipper --input <folder> --dry-run` shows timestamps and previews first. Demo
 footage is synthetic and labeled.
@@ -87,9 +87,9 @@ It is not a semantic editor: quiet tactical plays can be missed, loud menus can
 score, and stream copy can include pre-roll. Captions and vertical reframing are
 not included.
 
-There is a Windows portable zip with Python and FFmpeg bundled, plus a source
-install for macOS/Linux:
-https://github.com/hatermedia/clipper/releases/tag/v0.1.1
+There is a native Windows zip with Python, PySide6, and FFmpeg bundled, plus a
+source install for macOS/Linux:
+https://github.com/hatermedia/clipper/releases/tag/v0.2.0
 
 `clipper --input ... --dry-run` shows cuts first. MIT.
 
@@ -113,7 +113,7 @@ useful edit decision list:
 No ML model, no cloud, no telemetry. CLI + FastAPI local UI. MIT.
 
 Portable Windows build (Python/FFmpeg bundled):
-https://github.com/hatermedia/clipper/releases/tag/v0.1.1
+https://github.com/hatermedia/clipper/releases/tag/v0.2.0
 
 Source and architecture: https://github.com/hatermedia/clipper
 
@@ -130,7 +130,7 @@ false positives/negatives is more useful than stars.
    `Motion: 320px/4fps OpenCV proxy.`
    `Fusion: weighted score + adaptive peaks + overlap merging.`
    `No model. No upload.`
-3. `Windows portable zip: Python + FFmpeg bundled. Unzip, double-click, pick a folder.`
+3. `Native Windows app: Python + PySide6 + FFmpeg bundled. Unzip, double-click Clipper.exe, pick a folder.`
    `MIT. Repo + demo: https://hatermedia.github.io/clipper/`
 
 ## LinkedIn
@@ -141,8 +141,8 @@ that scans a gameplay folder, finds audio spikes and visual motion, and cuts the
 shortlist with FFmpeg.
 
 The interesting engineering was not the model. It was the packaging: a Windows
-portable build with Python and FFmpeg bundled, so a gamer can unzip and run
-instead of installing a toolchain.
+native build with Python, PySide6, and FFmpeg bundled, so a gamer can unzip and
+run instead of installing a toolchain.
 
 Open source, MIT. Demo: https://hatermedia.github.io/clipper/
 ```
@@ -174,7 +174,7 @@ footage.
 ## Metrics to log weekly
 
 - GitHub stars, forks, watchers
-- Release asset downloads (portable, wheel, sdist)
+- Release asset downloads (native zip, wheel, sdist)
 - GitHub traffic views/uniques/referrers (14-day retention; export every Monday)
 - Inbound issues and substantive replies
 - Service requests and paid orders

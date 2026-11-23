@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -28,6 +28,48 @@ class FFmpegBinaries:
     ffprobe: Path
 
 
+def default_threads() -> int:
+    """A balanced default so a batch run does not pin every core."""
+
+    cores = os.cpu_count() or 4
+    return max(2, min(8, cores // 2))
+
+
+def configure_cpu_limits(threads: int) -> None:
+    """Set BLAS/OpenMP thread caps before heavy numeric work where possible."""
+
+    if threads <= 0:
+        return
+    value = str(max(1, int(threads)))
+    for name in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+    ):
+        os.environ.setdefault(name, value)
+
+
+def set_low_priority() -> None:
+    """Lower the current process priority. Child FFmpeg processes inherit it."""
+
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+            handle = ctypes.windll.kernel32.GetCurrentProcess()
+            ctypes.windll.kernel32.SetPriorityClass(handle, BELOW_NORMAL_PRIORITY_CLASS)
+        except Exception:
+            pass
+    else:
+        try:
+            os.nice(10)
+        except Exception:
+            pass
+
+
 @dataclass
 class DetectionSettings:
     """Tunables for the hybrid highlight detector."""
@@ -42,6 +84,10 @@ class DetectionSettings:
     sample_fps: float = 4.0
     merge_gap: float = 1.0
     preview: bool = True
+    threads: int = field(default_factory=default_threads)
+    proxy_width: int = 320
+    gpu: bool = False
+    low_power: bool = False
 
     def validate(self) -> None:
         if not 0.0 <= self.sensitivity <= 1.0:
@@ -58,9 +104,24 @@ class DetectionSettings:
             raise ValueError("at least one detector weight must be positive")
         if not 1.0 <= self.sample_fps <= 30.0:
             raise ValueError("sample_fps must be between 1 and 30")
+        if self.threads < 0:
+            raise ValueError("threads cannot be negative")
+        if not 160 <= self.proxy_width <= 1280:
+            raise ValueError("proxy_width must be between 160 and 1280")
         self.min_clip = float(self.min_clip)
         self.max_clips = int(self.max_clips)
         self.sample_fps = float(self.sample_fps)
+        self.threads = int(self.threads)
+        self.proxy_width = int(self.proxy_width)
+
+    def apply_low_power(self) -> "DetectionSettings":
+        self.low_power = True
+        self.threads = 2
+        self.sample_fps = min(self.sample_fps, 2.0)
+        self.proxy_width = min(self.proxy_width, 256)
+        set_low_priority()
+        configure_cpu_limits(self.threads)
+        return self
 
     def normalized_weights(self) -> tuple[float, float]:
         total = self.audio_weight + self.visual_weight

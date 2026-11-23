@@ -65,6 +65,22 @@ class ClipWindow:
     def score_pct(self) -> int:
         return int(round(float(self.score) * 100))
 
+    @property
+    def start_label(self) -> str:
+        return fmt_time(self.start)
+
+    @property
+    def end_label(self) -> str:
+        return fmt_time(self.end)
+
+    @property
+    def duration_label(self) -> str:
+        return fmt_short(self.duration)
+
+    @property
+    def peak_label(self) -> str:
+        return fmt_time(self.peak)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "start": round(self.start, 3),

@@ -27,7 +27,7 @@
     "operatingSystem": "Windows, macOS, Linux",
     "description": "Local-first automatic gaming highlight trimmer with audio spike and motion detection, smart padding, and lossless FFmpeg export.",
     "url": "https://hatermedia.github.io/clipper/",
-    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.1.1",
+    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.2.0",
     "license": "https://opensource.org/licenses/MIT",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Person", "name": "hatermedia", "url": "https://github.com/hatermedia" }
@@ -62,43 +62,43 @@
   <section class="hero container">
     <div class="hero-grid">
       <div>
-        <span class="eyebrow"><span class="dot"></span> Open source · MIT · local-first</span>
+        <span class="eyebrow"><span class="dot"></span> Native Windows app · open source · MIT</span>
         <h1>Raw gameplay in.<br /><span class="grad">Highlights out.</span></h1>
         <p class="lead">
-          Clipper scans a folder of gameplay, finds the loud reactions and sudden motion,
-          merges the good parts, and cuts them with FFmpeg. No uploads. No accounts.
-          No model downloads.
+          Clipper is a native Windows app that scans a folder, finds the loud reactions
+          and sudden motion, and cuts the boring parts with FFmpeg. Native folder picker,
+          GPU encoding, CPU caps. No browser, no uploads, no accounts.
         </p>
         <div class="cta-row" style="margin-top: 28px;">
-          <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper-0.1.1-windows-x64-portable.zip" target="_blank" rel="noreferrer">
+          <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper-0.2.0-windows-x64-native.zip" target="_blank" rel="noreferrer">
             Download for Windows
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
           </a>
           <a class="btn btn-ghost" href="#demo">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5Z"/></svg>
-            Watch 20s demo
+            Watch web UI demo
           </a>
         </div>
-        <p class="cta-note" style="margin-top: 12px;">Windows x64 portable · no Python or FFmpeg install · macOS/Linux via pipx below</p>
+        <p class="cta-note" style="margin-top: 12px;">Native Windows x64 · no Python, FFmpeg, or console · macOS/Linux via the CLI below</p>
         <div class="hero-meta">
           <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg> MIT licensed</span>
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6"/></svg> Windows · macOS · Linux</span>
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 8l7-5 7 5v8l-7 5-7-5Z"/></svg> Python 3.10+ · FFmpeg</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6"/></svg> Native Windows · CLI everywhere</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> NVENC · CPU caps · low-power</span>
         </div>
       </div>
       <div class="hero-visual">
         <div class="floating-chip chip-top"><strong>2 clips found</strong>audio + motion · 6s</div>
-        <div class="hero-shot"><img src="screenshot.png" alt="Clipper local web UI showing detected gameplay highlights" /></div>
-        <div class="floating-chip chip-bottom"><strong>Lossless export</strong>stream copy · no quality loss<div class="bar"><span></span></div></div>
+        <div class="hero-shot"><img src="media/desktop.png" alt="Clipper native Windows desktop app showing detected gameplay highlights" /></div>
+        <div class="floating-chip chip-bottom"><strong>Native app</strong>no browser · no console<div class="bar"><span></span></div></div>
       </div>
     </div>
   </section>
 
   <section class="section-tight container" id="demo">
     <div class="section-head">
-      <span class="eyebrow">20-second demo</span>
+      <span class="eyebrow">20-second optional web UI demo</span>
       <h2>See it find the good parts.</h2>
-      <p>This is the real local UI, not a mockup. A synthetic 46-second clip is scanned, two action windows are detected, and the clips are exported.</p>
+      <p>The native app does this with a folder picker, previews, GPU toggle, and CPU caps. This recording is the optional local web UI (same engine) doing scan → detect → export on a synthetic 46-second clip.</p>
     </div>
     <div class="demo-frame">
       <video controls preload="metadata" poster="media/demo-poster.jpg" width="1440" height="900">
@@ -145,9 +145,34 @@
         <p>Stream copy by default for instant, quality-preserving exports. Add <span class="mono">--reencode</span> for exact edges with libx264 or NVENC.</p>
       </div>
       <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg></div>
+        <h3>Native desktop app</h3>
+        <p>Native folder picker, drag-and-drop, preview frames, progress, cancel, and export. No browser tab, no console window, no background command prompt.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight container" id="performance">
+    <div class="section-head">
+      <span class="eyebrow">Hardware controls</span>
+      <h2>Built for a PC you are actually using.</h2>
+      <p>The old version could pin every core. The native app defaults to a balanced thread cap and exposes the knobs.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg></div>
+        <h3>GPU when you want it</h3>
+        <p>NVENC can encode the analysis proxy and re-encoded clips. If the encoder is listed but unusable, Clipper falls back to libx264 instead of failing the batch.</p>
+      </div>
+      <div class="card rose">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+        <h3>Cap the CPU</h3>
+        <p>Choose Balanced (half the cores), Low (2 threads), or Max. The default is balanced, so a folder scan does not take over your machine.</p>
+      </div>
+      <div class="card green">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 8l7-5 7 5v8l-7 5-7-5Z"/></svg></div>
-        <h3>Local web UI</h3>
-        <p>Folder browser, sensitivity sliders, preview thumbnails, batch progress. FastAPI + one HTML file; no Node build pipeline.</p>
+        <h3>Low-power mode</h3>
+        <p>2 threads, a 256px / 2fps analysis proxy, and below-normal process priority. Use it while gaming, streaming, or on battery.</p>
       </div>
     </div>
   </section>
@@ -222,48 +247,50 @@
   <section class="section container" id="install">
     <div class="section-head">
       <span class="eyebrow">Install</span>
-      <h2>Unzip and run, or install from source.</h2>
-      <p>Windows users can skip Python and FFmpeg entirely. macOS/Linux use the release wheel or pipx; the PyPI package <span class="mono">clipper-gg</span> is pending.</p>
+      <h2>Download the native app, or install the CLI.</h2>
+      <p>Windows users get a native desktop app with no Python, FFmpeg, or console. macOS/Linux use the CLI; the optional web UI remains available for remote/headless use.</p>
     </div>
     <div class="code-card" style="padding: 20px; margin-bottom: 18px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
       <div style="min-width:240px; flex:1;">
-        <div class="tiny mono dim" style="margin-bottom:4px;">WINDOWS X64 · PORTABLE</div>
-        <strong style="color:#fff; font-size:15px;">No Python. No FFmpeg. 188 MB.</strong>
-        <p class="small muted" style="margin-top:4px;">Unzip, double-click <span class="mono">Clipper UI.cmd</span>, pick a folder. The bundle includes Python 3.13, FFmpeg, and the UI.</p>
+        <div class="tiny mono dim" style="margin-bottom:4px;">WINDOWS X64 · NATIVE APP</div>
+        <strong style="color:#fff; font-size:15px;">No Python. No FFmpeg. No console. 225 MB.</strong>
+        <p class="small muted" style="margin-top:4px;">Unzip, double-click <span class="mono">Clipper.exe</span>, pick a folder. GPU/NVENC toggle, CPU cap, low-power mode, previews, and export.</p>
       </div>
-      <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper-0.1.1-windows-x64-portable.zip" target="_blank" rel="noreferrer">Download ZIP</a>
+      <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper-0.2.0-windows-x64-native.zip" target="_blank" rel="noreferrer">Download native app</a>
     </div>
     <div class="install-grid">
       <div class="install-list">
-        <div class="install-item"><span class="num">01</span><div><strong>Install FFmpeg</strong><span>Windows: <span class="mono">winget install Gyan.FFmpeg</span> · macOS: <span class="mono">brew install ffmpeg</span> · Ubuntu: <span class="mono">sudo apt install ffmpeg</span></span></div></div>
-        <div class="install-item"><span class="num">02</span><div><strong>Install Clipper</strong><span>Use the release wheel or <span class="mono">pipx install git+https://github.com/hatermedia/clipper.git</span>.</span></div></div>
-        <div class="install-item"><span class="num">03</span><div><strong>Dry-run your folder</strong><span>See timestamps and preview frames before rendering anything.</span></div></div>
-        <div class="install-item"><span class="num">04</span><div><strong>Open the UI</strong><span><span class="mono">clipper ui</span> starts at <span class="mono">127.0.0.1:8765</span>.</span></div></div>
+        <div class="install-item"><span class="num">01</span><div><strong>Install FFmpeg (source/CLI only)</strong><span>Windows: <span class="mono">winget install Gyan.FFmpeg</span> · macOS: <span class="mono">brew install ffmpeg</span> · Ubuntu: <span class="mono">sudo apt install ffmpeg</span></span></div></div>
+        <div class="install-item"><span class="num">02</span><div><strong>Install Clipper</strong><span>Use the release wheel, <span class="mono">pipx install git+https://github.com/hatermedia/clipper.git</span>, or the native app above.</span></div></div>
+        <div class="install-item"><span class="num">03</span><div><strong>Dry-run your folder</strong><span>See timestamps and preview frames before rendering anything. Add <span class="mono">--low-power</span> or <span class="mono">--gpu</span>.</span></div></div>
+        <div class="install-item"><span class="num">04</span><div><strong>Open the native app or optional web UI</strong><span><span class="mono">clipper desktop</span> (PySide6) · <span class="mono">clipper ui</span> for the browser UI.</span></div></div>
       </div>
       <div style="display:grid; gap:14px;">
         <div class="code-card">
           <div class="code-head"><span>Windows · PowerShell</span><button class="copy-btn" data-copy="winget install Gyan.FFmpeg
-python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper_gg-0.1.1-py3-none-any.whl
-clipper --input &quot;D:\Captures&quot; --dry-run">Copy</button></div>
-          <pre><span class="cmt"># 1. FFmpeg</span>
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper_gg-0.2.0-py3-none-any.whl
+clipper --input &quot;D:\Captures&quot; --dry-run --low-power">Copy</button></div>
+          <pre><span class="cmt"># 1. FFmpeg (source/CLI only)</span>
 <span class="cmd">winget install Gyan.FFmpeg</span>
 
 <span class="cmt"># 2. Clipper release wheel</span>
-<span class="cmd">python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper_gg-0.1.1-py3-none-any.whl</span>
+<span class="cmd">python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper_gg-0.2.0-py3-none-any.whl</span>
 
-<span class="cmt"># 3. See what it would cut</span>
-<span class="cmd">clipper --input "D:\Captures" --dry-run</span></pre>
+<span class="cmt"># 3. Dry run with a CPU cap</span>
+<span class="cmd">clipper --input "D:\Captures" --dry-run --low-power</span></pre>
         </div>
         <div class="code-card">
-          <div class="code-head"><span>Export + UI</span><button class="copy-btn" data-copy="clipper --input &quot;D:\Captures&quot; --output &quot;D:\Highlights&quot;
+          <div class="code-head"><span>Export + native/web UI</span><button class="copy-btn" data-copy="clipper --input &quot;D:\Captures&quot; --output &quot;D:\Highlights&quot; --gpu
+clipper desktop
 clipper ui">Copy</button></div>
-          <pre><span class="cmt"># Export the highlights</span>
-<span class="cmd">clipper --input "D:\Captures" --output "D:\Highlights"</span>
+          <pre><span class="cmt"># Export with NVENC when available</span>
+<span class="cmd">clipper --input "D:\Captures" --output "D:\Highlights" --gpu</span>
 
-<span class="cmt"># Local web UI</span>
+<span class="cmt"># Native app (PySide6) or optional web UI</span>
+<span class="cmd">clipper desktop</span>
 <span class="cmd">clipper ui</span></pre>
         </div>
-        <p class="small dim">Lost FFmpeg on PATH? Set <span class="mono">CLIPPER_FFMPEG</span> to the executable. The README covers NVENC, Docker, and troubleshooting.</p>
+        <p class="small dim">For the native app from source: <span class="mono">pip install "clipper-gg[desktop]"</span>. Lost FFmpeg on PATH? Set <span class="mono">CLIPPER_FFMPEG</span>.</p>
       </div>
     </div>
   </section>
@@ -313,16 +340,20 @@ clipper ui">Copy</button></div>
         <p>Yes. The code is MIT licensed and the release wheel is free. The done-for-you service is separate and optional; you can always run the tool yourself.</p>
       </details>
       <details>
+        <summary>Is it really a native app?</summary>
+        <p>Yes. The Windows download is a windowed Qt app (`Clipper.exe`) with a native folder picker, drag-and-drop, previews, progress, and export. There is no browser tab and no console window left running. The optional web UI is still available with <span class="mono">clipper ui</span>.</p>
+      </details>
+      <details>
         <summary>Does it upload my footage?</summary>
-        <p>No. Analysis and export run locally with FFmpeg and OpenCV. The web UI binds to 127.0.0.1 by default. There are no accounts and no telemetry.</p>
+        <p>No. Analysis and export run locally with FFmpeg and OpenCV. There are no accounts and no telemetry.</p>
       </details>
       <details>
         <summary>Does it work with any game?</summary>
         <p>If FFmpeg can decode it, Clipper can usually analyze it. It understands loud and fast-moving, not game-specific context. Quiet tactical gameplay may need a higher motion weight.</p>
       </details>
       <details>
-        <summary>Do I need a GPU?</summary>
-        <p>No. The default export is stream copy and the analysis uses a small proxy. NVENC is optional for faster re-encoding; Clipper falls back to libx264 if the encoder is unusable.</p>
+        <summary>Will it use my GPU and max out my CPU?</summary>
+        <p>Enable the GPU/NVENC toggle to use hardware encoding for the analysis proxy and optional re-encode. Decoding may still use the CPU depending on the codec. CPU defaults to a balanced half-core cap; choose Low (2 threads) or low-power mode to keep the machine usable. Max is available if you want it.</p>
       </details>
       <details>
         <summary>Why isn't it on PyPI yet?</summary>
@@ -349,13 +380,13 @@ clipper ui">Copy</button></div>
     </div>
     <div class="footer-links">
       <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
-      <a href="https://github.com/hatermedia/clipper/releases/tag/v0.1.1" target="_blank" rel="noreferrer">Release</a>
+      <a href="https://github.com/hatermedia/clipper/releases/tag/v0.2.0" target="_blank" rel="noreferrer">Release</a>
       <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">Docs</a>
       <a href="https://github.com/hatermedia/clipper/issues" target="_blank" rel="noreferrer">Issues</a>
       <a href="service/">Service</a>
       <a href="https://github.com/hatermedia/clipper/blob/main/SERVICE.md" target="_blank" rel="noreferrer">Service terms</a>
       <a href="guides/batch-trim-shadowplay.html">ShadowPlay guide</a>
-      <span>© <span id="year">2026</span></span>
+      <span>Native app + optional web UI · © <span id="year">2026</span></span>
     </div>
   </div>
 </footer>

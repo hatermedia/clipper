@@ -14,6 +14,7 @@ from .config import (
     ClipperError,
     DetectionSettings,
     FFmpegBinaries,
+    configure_cpu_limits,
     find_ffmpeg,
 )
 from .detect.audio import ScoreTrack, analyze_wav
@@ -119,7 +120,7 @@ def analyze_file(
         if info.has_audio:
             try:
                 _report(progress, 0.08, "Extracting audio")
-                wav = extract_audio(path, temp / "audio.wav", bins)
+                wav = extract_audio(path, temp / "audio.wav", bins, threads=settings.threads)
                 _report(progress, 0.22, "Detecting audio spikes")
                 audio_track = analyze_wav(wav)
                 if audio_track.empty:
@@ -131,9 +132,21 @@ def analyze_file(
 
         try:
             _report(progress, 0.30, "Building low-res video proxy")
-            proxy = make_proxy(path, temp / "proxy.mp4", fps=settings.sample_fps, bins=bins)
+            proxy = make_proxy(
+                path,
+                temp / "proxy.mp4",
+                fps=settings.sample_fps,
+                width=settings.proxy_width,
+                bins=bins,
+                threads=settings.threads,
+                gpu=settings.gpu,
+            )
             _report(progress, 0.58, "Detecting motion")
-            visual_track = analyze_visual(proxy, sample_fps=settings.sample_fps)
+            visual_track = analyze_visual(
+                proxy,
+                sample_fps=settings.sample_fps,
+                threads=settings.threads,
+            )
             if visual_track.empty:
                 warnings.append("Visual track is flat; relying on audio.")
         except (FFmpegError, OSError, RuntimeError) as exc:
@@ -195,6 +208,7 @@ def analyze_target(
     progress: ProgressFn | None = None,
 ) -> AnalysisSummary:
     settings.validate()
+    configure_cpu_limits(settings.threads)
     bins = find_ffmpeg()
     files = scan_inputs(input_path, recursive=recursive, exclude=exclude)
     if not files:
@@ -262,7 +276,9 @@ def export_analysis(
     crf: int = 20,
     preset: str = "veryfast",
     progress: ProgressFn | None = None,
+    threads: int = 0,
 ) -> ExportResult:
+    configure_cpu_limits(threads)
     bins = find_ffmpeg()
     destination = Path(output_dir).expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
@@ -302,6 +318,7 @@ def export_analysis(
                 crf=crf,
                 preset=preset,
                 bins=bins,
+                threads=threads,
             )
             result.outputs.append(rendered)
             if used_reencode:

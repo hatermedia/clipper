@@ -69,9 +69,11 @@ def _normalise(scores: np.ndarray, sample_fps: float) -> np.ndarray:
     return gaussian_filter1d(combined, sigma=sigma, mode="nearest").astype(np.float32)
 
 
-def analyze_visual(proxy_path: Path | str, sample_fps: float = 4.0) -> ScoreTrack:
+def analyze_visual(proxy_path: Path | str, sample_fps: float = 4.0, threads: int = 0) -> ScoreTrack:
     """Read the low-fps proxy with OpenCV and score visual activity."""
 
+    if threads > 0:
+        cv2.setNumThreads(max(1, int(threads)))
     cap = cv2.VideoCapture(str(proxy_path))
     if not cap.isOpened():
         raise RuntimeError(f"OpenCV could not open proxy video: {proxy_path}")

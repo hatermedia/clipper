@@ -2,20 +2,20 @@
 
 **Raw gameplay in. Highlights out.**
 
-Clipper scans a folder of gameplay footage, finds the loud reactions and sudden motion, merges overlapping moments, and cuts them into ready-to-post clips with FFmpeg. It runs entirely on your machine — no uploads, no accounts, no cloud, no model downloads.
+Clipper is a native Windows desktop app and Python CLI that scans a folder of gameplay, finds the loud reactions and sudden motion, merges overlapping moments, and cuts them into ready-to-post clips with FFmpeg. It runs entirely on your machine — no browser, no uploads, no accounts, no cloud, no model downloads.
 
 [![CI](https://github.com/hatermedia/clipper/actions/workflows/ci.yml/badge.svg)](https://github.com/hatermedia/clipper/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22d3ee.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![Local-first](https://img.shields.io/badge/local--first-no%20uploads-22d3ee.svg)](#privacy)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.1.1](https://github.com/hatermedia/clipper/releases/tag/v0.1.1)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.2.0](https://github.com/hatermedia/clipper/releases/tag/v0.2.0)
 
-![Clipper web UI](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/screenshot.png)
+![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
-[![Watch the 20-second demo](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/demo-poster.jpg)](https://github.com/hatermedia/clipper/blob/main/docs/media/demo.mp4)
+[![Watch the optional web UI demo](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/demo-poster.jpg)](https://github.com/hatermedia/clipper/blob/main/docs/media/demo.mp4)
 
-*20-second demo: scan → detect → export. Real UI, synthetic demo footage.*
+*Optional web UI demo: scan → detect → export. The native app uses the same engine. Synthetic demo footage.*
 
 ---
 
@@ -27,9 +27,11 @@ Clipper scans a folder of gameplay footage, finds the loud reactions and sudden 
 - **Hybrid excitement score** — blends both signals, rewards agreement, smooths the result, and adapts its threshold to each video.
 - **Smart padding and merging** — 8s before / 5s after by default; overlapping windows merge so a continuous fight stays one clip.
 - **Fast exports** — stream copy by default (`ffmpeg -c copy`), optional frame-accurate re-encode with `libx264`, `h264_nvenc`, `hevc_nvenc`, or `libx265`.
-- **Local web UI** — FastAPI + one HTML file with Tailwind and Alpine. Folder browser, sliders, preview thumbnails, batch progress, cancel.
+- **Native Windows app** — Qt desktop UI with a native folder picker, drag-and-drop, preview frames, progress, cancel, and export. No browser tab, no console window, no background command prompt.
+- **GPU + CPU controls** — NVENC for the analysis proxy and re-encode, a balanced thread cap by default, Low (2 threads) and Max options, and a low-power mode that lowers process priority and uses a 256px/2fps proxy.
 - **Dry run** — see timestamps and preview frames before rendering anything.
-- **No Node build pipeline**, no database, no telemetry.
+- **Optional local web UI** — FastAPI + one HTML file for browser/remote use. No Node build pipeline.
+- **No database, no telemetry.**
 
 ## Why another clip tool?
 
@@ -39,7 +41,7 @@ Most auto-clippers are built around one game, one streaming platform, or one ver
 |---|---|---|
 | Input | Any local gameplay folder | One platform / one game |
 | Detection | Audio + motion, no ML model | Chat reactions, speech models, or cloud AI |
-| Setup | Python + FFmpeg | Node, API keys, browser sessions, model downloads |
+| Setup | Native Windows app, or Python + FFmpeg | Node, API keys, browser sessions, model downloads |
 | Export | Lossless stream copy by default | Re-encode everything |
 | Privacy | 100% local | Often uploads footage |
 | License | MIT | Varies |
@@ -48,17 +50,28 @@ No shade to the bigger tools — they do things Clipper doesn't. Clipper is for 
 
 ## Install
 
-### Windows portable (recommended)
+### Windows native app (recommended)
 
-No Python install. No FFmpeg install. Download the Windows x64 zip, unzip it,
-and double-click `Clipper UI.cmd`.
+No Python install. No FFmpeg install. No console. Download the Windows x64 zip,
+unzip it, and double-click `Clipper.exe`.
 
-**[Download clipper-0.1.1-windows-x64-portable.zip](https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper-0.1.1-windows-x64-portable.zip)** (188 MB)
+**[Download clipper-0.2.0-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper-0.2.0-windows-x64-native.zip)** (225 MB)
 
-The zip bundles Python 3.13, FFmpeg, FFprobe, the local UI, and CLI launchers.
-Windows SmartScreen may warn because the executable is unsigned; the source and
-reproducible build script are in [`packaging/`](packaging/). SHA-256 checksums are
-attached to the release as `SHA256SUMS.txt`.
+The zip bundles Python 3.13, PySide6, FFmpeg, and FFprobe. The app has a native
+folder picker, drag-and-drop, GPU/NVENC toggle, CPU cap, low-power mode, previews,
+progress, cancel, and export. Windows SmartScreen may warn because the executable
+is unsigned; the source and reproducible build script are in
+[`packaging/`](packaging/). SHA-256 checksums are attached to the release as
+`SHA256SUMS.txt`.
+
+### Native app from source
+
+```bash
+pip install "clipper-gg[desktop]"
+clipper desktop
+```
+
+`clipper` with no arguments opens the native app when PySide6 is installed.
 
 ### Requirements for source installs
 
@@ -104,13 +117,15 @@ python -m venv .venv
 # macOS / Linux
 source .venv/bin/activate
 
-pip install -e .
+pip install -e ".[desktop]"
 ```
+
+Drop `[desktop]` if you only want the CLI.
 
 ### Release wheel
 
 ```bash
-python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.1.1/clipper_gg-0.1.1-py3-none-any.whl
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.2.0/clipper_gg-0.2.0-py3-none-any.whl
 ```
 
 ### pipx
@@ -128,23 +143,25 @@ The installed command is `clipper`; the Python import is `clipper`; the PyPI dis
 ## Quick start
 
 ```bash
-# 1. See what Clipper would cut. No video rendered.
-clipper --input "D:\Captures" --dry-run
+# 1. Native app (Windows portable or `pip install "clipper-gg[desktop]"`)
+clipper
 
-# 2. Export the highlights. Default output: ./trimmed
+# 2. See what Clipper would cut, without pinning the CPU
+clipper --input "D:\Captures" --dry-run --low-power
+
+# 3. Export the highlights. Default output: ./trimmed
 clipper --input "D:\Captures" --output "D:\Highlights"
 
-# 3. More clips, tighter padding
-clipper --input "D:\Captures" --sensitivity 0.7 --pre 6 --post 4
+# 4. Use NVENC for the proxy/re-encode
+clipper --input "D:\Captures" --gpu --reencode --encoder auto
 
-# 4. Frame-accurate cuts with NVENC
-clipper --input "D:\Captures" --reencode --encoder h264_nvenc
-
-# 5. Local web UI
+# 5. Optional local web UI
 clipper ui
 ```
 
-`clipper ui` starts at **http://127.0.0.1:8765** and opens a browser tab. The server binds to localhost by default. Footage never leaves the machine.
+`clipper` with no arguments opens the native app when PySide6 is installed. The
+optional web UI starts at **http://127.0.0.1:8765** and binds to localhost.
+Footage never leaves the machine.
 
 ### Dry run
 
@@ -176,10 +193,14 @@ Every run also writes `clipper-report-*.json` with per-file media info, clips, s
 | `--max-clips` | `30` | Cap per video |
 | `--audio-weight` | `0.6` | Audio contribution |
 | `--visual-weight` | `0.4` | Motion contribution |
-| `--sample-fps` | `4` | Visual sampling rate |
+| `--sample-fps` | `4` | Visual sampling rate (2 with `--low-power`) |
+| `--proxy-width` | `320` | Analysis proxy width (256 with `--low-power`) |
+| `--threads` | balanced | CPU thread cap; `0` = let FFmpeg decide |
+| `--gpu` | off | Hardware decode + NVENC proxy/re-encode attempt |
+| `--low-power` | off | 2 threads, 2fps/256px proxy, below-normal priority |
 | `--merge-gap` | `1.0` | Merge clips closer than this |
 | `--reencode` | off | Frame-accurate encode instead of copy |
-| `--encoder` | `libx264` | `libx264`, `h264_nvenc`, `hevc_nvenc`, `libx265` |
+| `--encoder` | `auto` | `auto`, `libx264`, `h264_nvenc`, `hevc_nvenc`, `libx265` |
 | `--crf` | `20` | Quality for re-encode |
 | `--preset` | `veryfast` | x264/x265 preset |
 | `--no-previews` | off | Skip dry-run thumbnails |
@@ -190,7 +211,7 @@ Subcommands `batch`, `run`, `trim`, and `detect` are accepted as aliases for the
 
 ## How detection works
 
-Clipper is a heuristic engine, not a semantic model. That is intentional: no GPU, no downloads, predictable behavior, and it works on any game.
+Clipper is a heuristic engine, not a semantic model. That is intentional: no model downloads, predictable behavior, and it works on any game. The GPU is used for encoding/proxy acceleration, not for semantic detection.
 
 ### 1. Audio spikes
 
@@ -204,8 +225,8 @@ A quiet tactical stretch with one loud reload will score differently from a cons
 
 ### 2. Visual activity
 
-- Build a temporary **320px-wide, 4fps proxy** with FFmpeg.
-- Read it with OpenCV.
+- Build a temporary **320px-wide, 4fps proxy** with FFmpeg (configurable; 256px/2fps in low-power mode).
+- Read it with OpenCV, with its thread count capped.
 - Per frame: grayscale, blur, absolute difference against the previous frame.
 - Score = mean difference + 90th-percentile difference + brightness flash.
 - Normalize with a p95 scale plus percentile rank, so both sustained motion and one-frame flashes register.
@@ -247,15 +268,35 @@ This is effectively instant and does not touch quality. The trade-off: copy can 
 Use `--reencode` when the edges matter:
 
 ```bash
+clipper --input ./footage --reencode --encoder auto
 clipper --input ./footage --reencode --encoder libx264 --crf 20
-clipper --input ./footage --reencode --encoder h264_nvenc
+clipper --input ./footage --gpu --reencode --encoder h264_nvenc
 ```
 
+- `auto`: NVENC when available, otherwise libx264.
 - `libx264` / `libx265`: CPU, predictable, works everywhere.
-- `h264_nvenc` / `hevc_nvenc`: NVIDIA GPU. If the encoder is listed but unusable (driver/GPU mismatch), Clipper automatically retries with `libx264` and reports it.
+- `h264_nvenc` / `hevc_nvenc`: NVIDIA GPU. If the encoder is listed but unusable (driver/GPU mismatch), Clipper automatically retries with `libx264`.
 - Re-encoded output is always `.mp4` (H.264/HEVC + AAC).
 
-## Web UI
+## Native desktop app
+
+The Windows portable zip ships `Clipper.exe` — a windowed Qt app with:
+
+- Native folder picker and drag-and-drop.
+- Sensitivity, padding, max clips, sample FPS, and proxy width.
+- GPU/NVENC toggle, CPU thread cap (Balanced / Low / Max), and low-power mode.
+- Results table with peak-frame previews.
+- Re-encode toggle, encoder picker, CRF, export progress, and “Open output folder”.
+- No browser, no console window, no background command prompt.
+
+From source:
+
+```bash
+pip install "clipper-gg[desktop]"
+clipper desktop
+```
+
+## Optional web UI
 
 ```bash
 clipper ui
@@ -312,7 +353,9 @@ The image runs as a non-root user. If your mounted folders are not writable, adj
 
 ## Performance notes
 
-- Analysis is one audio pass + one proxy pass + OpenCV scanning. The proxy is 320px at 4fps, so analysis is mostly decode-bound; a 46-second 720p clip takes a few seconds here, while 4K and long VODs take longer.
+- Analysis is one audio pass + one proxy pass + OpenCV scanning. The proxy is 320px at 4fps by default; `--proxy-width` and `--sample-fps` change it. A 46-second 720p clip takes a few seconds here; 4K and long VODs take longer.
+- **The default CPU behavior is balanced, not “all cores.”** Threads default to about half the logical cores. Use `--threads 2`, `--low-power`, or the native app’s Low setting to keep the machine usable while gaming/streaming. Use `--threads 0` or Max only when you want the whole CPU.
+- **GPU:** `--gpu` tries hardware decode + NVENC for the proxy and `--encoder auto` uses NVENC for re-encode when available. If NVENC is listed but unusable, Clipper falls back to libx264. Decode may still be CPU-bound depending on the codec.
 - Stream-copy export is nearly instant and uses almost no CPU.
 - Re-encoding is the slow path. `h264_nvenc` is much faster than `libx264` when it works.
 - Preview thumbnails are cached by file mtime + timestamp in the OS temp folder.
@@ -331,6 +374,9 @@ Input containers: `.mp4`, `.mkv`, `.mov`, `.avi`. If FFmpeg can decode it, Clipp
 | Clips start a second early | Expected with stream copy; use `--reencode` |
 | Export says “re-encoded because stream copy was not compatible” | Container/codec mismatch; this is automatic and safe |
 | NVENC fails at runtime | Update GPU drivers; Clipper falls back to `libx264` |
+| CPU is pinned during analysis | Use `--low-power`, `--threads 2`, a lower `--sample-fps`/`--proxy-width`, or the native app's Low-power toggle |
+| GPU toggle shows CPU mode | The FFmpeg build may lack NVENC, or the GPU/driver is unavailable; CPU still works |
+| Native app says PySide6 missing | `pip install "clipper-gg[desktop]"` or use the Windows portable build |
 | UI says FFmpeg missing | Restart the terminal after installing FFmpeg, then restart `clipper ui` |
 | Very long Windows paths fail | Enable Win32 long paths or use a shorter output path |
 | Web UI port busy | `clipper ui --port 9000` |
@@ -342,7 +388,7 @@ git clone https://github.com/hatermedia/clipper.git
 cd clipper
 python -m venv .venv
 .venv\Scripts\activate        # Windows
-pip install -e ".[dev]"
+pip install -e ".[dev,desktop]"
 
 pytest -q
 ```
@@ -365,15 +411,18 @@ Project layout:
 ```text
 src/clipper/
   cli.py            argparse CLI, dry-run report, export
+  desktop.py        native PySide6 app (folder picker, GPU/CPU controls)
+  assets/           app icon and desktop assets
   ffmpeg.py         probe / PCM / proxy / thumbnail / render
   pipeline.py       scan → analyze → export
   detect/audio.py   RMS spike scoring
   detect/visual.py  OpenCV motion scoring
   detect/merge.py   fusion, peak picking, window merging
-  web/app.py        FastAPI API + job manager
-  web/static/       single-page UI
-tests/              unit + API + gated end-to-end
+  web/app.py        optional FastAPI API + job manager
+  web/static/       optional single-page web UI
+tests/              unit + API + desktop smoke + gated end-to-end
 scripts/            synthetic footage generator
+packaging/          Windows native/CLI build scripts
 ```
 
 ## Roadmap

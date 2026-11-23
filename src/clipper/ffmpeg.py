@@ -69,6 +69,26 @@ def has_encoder(name: str, binaries: FFmpegBinaries | None = None) -> bool:
     return name in (proc.stdout or "")
 
 
+def resolve_encoder(encoder: str, binaries: FFmpegBinaries | None = None) -> str:
+    """Resolve 'auto' to NVENC when available, otherwise libx264."""
+
+    if encoder in {"auto", "gpu"}:
+        return "h264_nvenc" if has_encoder("h264_nvenc", binaries) else "libx264"
+    return encoder
+
+
+def _thread_args(threads: int) -> list[str]:
+    if threads <= 0:
+        return []
+    return ["-threads", str(max(1, int(threads)))]
+
+
+def _filter_thread_args(threads: int) -> list[str]:
+    if threads <= 0:
+        return []
+    return ["-filter_threads", str(max(1, int(threads)))]
+
+
 def _parse_fps(value: str | None) -> float:
     if not value or value in {"0/0", "N/A"}:
         return 0.0
@@ -152,6 +172,7 @@ def extract_audio(
     path: Path | str,
     output_wav: Path | str,
     bins: FFmpegBinaries | None = None,
+    threads: int = 0,
 ) -> Path:
     """Extract mono 16 kHz PCM audio for lightweight RMS analysis."""
 
@@ -165,6 +186,7 @@ def extract_audio(
             "-loglevel",
             "error",
             "-y",
+            *_thread_args(threads),
             "-i",
             str(path),
             "-vn",
@@ -174,6 +196,7 @@ def extract_audio(
             "16000",
             "-c:a",
             "pcm_s16le",
+            *_thread_args(threads),
             str(out),
         ],
         timeout=900,
@@ -189,55 +212,51 @@ def make_proxy(
     fps: float = 4.0,
     width: int = 320,
     bins: FFmpegBinaries | None = None,
+    threads: int = 0,
+    gpu: bool = False,
 ) -> Path:
-    """Create a tiny low-fps proxy so OpenCV can scan long footage quickly."""
+    """Create a tiny low-fps proxy so OpenCV can scan long footage quickly.
+
+    With ``gpu=True`` this tries a hardware decode + NVENC proxy, then falls
+    back to NVENC without hardware decode, then CPU libx264, then mjpeg.
+    """
 
     bins = _bins(bins)
     out = Path(output_mp4)
     out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        bins.ffmpeg,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-i",
-        str(path),
-        "-an",
-        "-vf",
-        f"fps={fps},scale={width}:-2",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-crf",
-        "30",
-        "-pix_fmt",
-        "yuv420p",
-        str(out),
-    ]
-    proc = _run(cmd, timeout=3600)
-    if proc.returncode != 0 or not out.is_file() or out.stat().st_size == 0:
-        # Fallback for minimal ffmpeg builds without libx264.
-        fallback = [
-            bins.ffmpeg,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            str(path),
-            "-an",
-            "-vf",
-            f"fps={fps},scale={width}:-2",
-            "-c:v",
-            "mjpeg",
-            "-q:v",
-            "6",
-            str(out),
-        ]
-        _checked(fallback, timeout=3600)
-    return out
+    nvenc = gpu and has_encoder("h264_nvenc", bins)
+
+    def command(use_hwaccel: bool, use_nvenc: bool, codec: str) -> list[str]:
+        cmd = [bins.ffmpeg, "-hide_banner", "-loglevel", "error", "-y"]
+        if use_hwaccel:
+            cmd.extend(["-hwaccel", "auto"])
+        cmd.extend(_thread_args(threads))
+        cmd.extend(_filter_thread_args(threads))
+        cmd.extend(["-i", str(path), "-an", "-vf", f"fps={fps},scale={width}:-2"])
+        if use_nvenc:
+            cmd.extend(["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "30"])
+        elif codec == "libx264":
+            cmd.extend(["-c:v", "libx264", "-preset", "ultrafast", "-crf", "30"])
+        else:
+            cmd.extend(["-c:v", "mjpeg", "-q:v", "6"])
+        cmd.extend(["-pix_fmt", "yuv420p", *_thread_args(threads), str(out)])
+        return cmd
+
+    attempts: list[list[str]] = []
+    if nvenc:
+        attempts.append(command(use_hwaccel=True, use_nvenc=True, codec="h264_nvenc"))
+        attempts.append(command(use_hwaccel=False, use_nvenc=True, codec="h264_nvenc"))
+    attempts.append(command(use_hwaccel=False, use_nvenc=False, codec="libx264"))
+    attempts.append(command(use_hwaccel=False, use_nvenc=False, codec="mjpeg"))
+
+    last_error = ""
+    for cmd in attempts:
+        out.unlink(missing_ok=True)
+        proc = _run(cmd, timeout=3600)
+        if proc.returncode == 0 and out.is_file() and out.stat().st_size > 0:
+            return out
+        last_error = _tail(proc.stderr or proc.stdout)
+    raise FFmpegError(last_error or "Could not build the analysis proxy")
 
 
 def make_thumbnail(
@@ -257,6 +276,8 @@ def make_thumbnail(
             "-loglevel",
             "error",
             "-y",
+            "-threads",
+            "1",
             "-ss",
             f"{max(0.0, timestamp):.3f}",
             "-i",
@@ -291,6 +312,7 @@ def render_clip(
     crf: int = 20,
     preset: str = "veryfast",
     bins: FFmpegBinaries | None = None,
+    threads: int = 0,
 ) -> tuple[Path, bool]:
     """Render one clip. Returns (output_path, used_reencode).
 
@@ -303,14 +325,16 @@ def render_clip(
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0.05, clip.end - clip.start)
+    resolved_encoder = resolve_encoder(encoder, bins)
 
-    def build(force_reencode: bool, video_encoder: str = encoder) -> list[str]:
+    def build(force_reencode: bool, video_encoder: str = resolved_encoder) -> list[str]:
         cmd = [
             bins.ffmpeg,
             "-hide_banner",
             "-loglevel",
             "error",
             "-y",
+            *_thread_args(threads),
             "-ss",
             f"{clip.start:.3f}",
             "-i",
@@ -327,6 +351,7 @@ def render_clip(
         if force_reencode:
             cmd.extend(_video_encode_args(video_encoder, crf, preset))
             cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+            cmd.extend(_thread_args(threads))
         else:
             cmd.extend(["-c", "copy"])
         if out.suffix.lower() in {".mp4", ".mov", ".m4v"}:
@@ -337,7 +362,7 @@ def render_clip(
     proc = _run(build(reencode), timeout=3600)
     used_reencode = reencode
     failed = proc.returncode != 0 or not out.is_file() or out.stat().st_size == 0
-    if failed and (not reencode or encoder in {"h264_nvenc", "hevc_nvenc"}):
+    if failed and (not reencode or resolved_encoder in {"h264_nvenc", "hevc_nvenc"}):
         # Container/codec mismatch, or a GPU encoder that is listed but unusable
         # on this machine: retry with a clean libx264/AAC output.
         out.unlink(missing_ok=True)

@@ -9,7 +9,13 @@ from datetime import datetime
 from pathlib import Path
 
 from . import __version__
-from .config import ClipperError, DetectionSettings, FFmpegNotFound, find_ffmpeg
+from .config import (
+    ClipperError,
+    DetectionSettings,
+    FFmpegNotFound,
+    default_threads,
+    find_ffmpeg,
+)
 from .ffmpeg import ffmpeg_version, has_encoder
 from .models import AnalysisSummary, fmt_short, fmt_time
 from .pipeline import analyze_target, export_analysis
@@ -83,6 +89,28 @@ def _build_batch_parser() -> argparse.ArgumentParser:
         help="visual sampling rate for the proxy (default: 4)",
     )
     parser.add_argument(
+        "--proxy-width",
+        type=int,
+        default=320,
+        help="width of the low-res analysis proxy in pixels (default: 320)",
+    )
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=None,
+        help="CPU thread cap; 0 = let FFmpeg decide (default: balanced half-core cap)",
+    )
+    parser.add_argument(
+        "--gpu",
+        action="store_true",
+        help="try hardware decode + NVENC for the analysis proxy and re-encode",
+    )
+    parser.add_argument(
+        "--low-power",
+        action="store_true",
+        help="2 threads, 2fps/256px proxy, below-normal process priority",
+    )
+    parser.add_argument(
         "--merge-gap",
         type=float,
         default=1.0,
@@ -95,9 +123,9 @@ def _build_batch_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--encoder",
-        default="libx264",
-        choices=["libx264", "h264_nvenc", "hevc_nvenc", "libx265"],
-        help="video encoder used with --reencode (default: libx264)",
+        default="auto",
+        choices=["auto", "libx264", "h264_nvenc", "hevc_nvenc", "libx265"],
+        help="video encoder used with --reencode (default: auto = NVENC if available)",
     )
     parser.add_argument("--crf", type=int, default=20, help="quality for re-encode (default: 20)")
     parser.add_argument(
@@ -126,6 +154,20 @@ def _build_ui_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-browser", action="store_true", help="do not open a browser tab")
     parser.add_argument("--reload", action="store_true", help="auto-reload for development")
     return parser
+
+
+def _run_desktop(argv: list[str]) -> int:
+    try:
+        from .desktop import main as desktop_main
+    except ImportError:
+        print(
+            "The native desktop app needs PySide6. Install it with:\n"
+            "  pip install 'clipper-gg[desktop]'\n"
+            "or use the Windows portable build.",
+            file=sys.stderr,
+        )
+        return 2
+    return desktop_main(argv)
 
 
 def _run_ui(argv: list[str]) -> int:
@@ -213,16 +255,32 @@ def _run_batch(args: argparse.Namespace) -> int:
         sample_fps=args.sample_fps,
         merge_gap=args.merge_gap,
         preview=not args.no_previews,
+        threads=args.threads if args.threads is not None else default_threads(),
+        proxy_width=args.proxy_width,
+        gpu=args.gpu,
     )
+    if args.low_power:
+        settings.apply_low_power()
     settings.validate()
 
     bins = find_ffmpeg()
+    nvenc = has_encoder("h264_nvenc", bins)
+    if args.reencode:
+        if args.encoder == "auto":
+            args.encoder = "h264_nvenc" if nvenc else "libx264"
+        elif args.encoder in {"h264_nvenc", "hevc_nvenc"} and not has_encoder(args.encoder, bins):
+            print(f"! {args.encoder} not available in this ffmpeg build; falling back to libx264")
+            args.encoder = "libx264"
     if not args.quiet and not args.as_json:
         print(f"Clipper {__version__}")
         print(f"ffmpeg: {ffmpeg_version(bins)}")
-        if args.reencode and args.encoder != "libx264" and not has_encoder(args.encoder, bins):
-            print(f"! {args.encoder} not available in this ffmpeg build; falling back to libx264")
-            args.encoder = "libx264"
+        gpu_label = "NVENC available" if nvenc else "CPU only"
+        print(
+            f"performance: {settings.threads or 'auto'} threads | "
+            f"proxy {settings.proxy_width}px @ {settings.sample_fps:g}fps | GPU: {gpu_label}"
+        )
+        if args.gpu and not nvenc:
+            print("! No NVENC encoder found; the analysis proxy will use CPU.")
 
     output_dir = Path(args.output).expanduser().resolve()
     preview_dir = output_dir / "previews" if args.dry_run and settings.preview else None
@@ -256,6 +314,7 @@ def _run_batch(args: argparse.Namespace) -> int:
                 crf=args.crf,
                 preset=args.preset,
                 progress=progress,
+                threads=settings.threads,
             )
             payload["export"] = export_result.to_dict()
         else:
@@ -276,7 +335,7 @@ def _run_batch(args: argparse.Namespace) -> int:
             print(f"\nExported {len(export_result.outputs)} clip(s) to {output_dir}")
             for output in export_result.outputs:
                 print(f"  {output}")
-            if export_result.reencoded:
+            if export_result.reencoded and not args.reencode:
                 print(
                     f"  ({len(export_result.reencoded)} clip(s) were re-encoded because "
                     "stream copy was not container-compatible.)"
@@ -296,7 +355,18 @@ def _run_batch(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
 
-    if raw and raw[0] in {"ui", "serve", "web"}:
+    if not raw:
+        try:
+            return _run_desktop([])
+        except Exception as exc:
+            print(f"Could not launch the desktop app: {exc}", file=sys.stderr)
+            _build_batch_parser().print_help()
+            return 1
+
+    if raw[0] in {"desktop", "app"}:
+        return _run_desktop(raw[1:])
+
+    if raw[0] in {"ui", "serve", "web"}:
         return _run_ui(raw[1:])
 
     if raw and raw[0] in {"detect", "batch", "run", "trim"}:
