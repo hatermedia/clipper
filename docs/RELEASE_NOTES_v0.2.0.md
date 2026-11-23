@@ -4,6 +4,8 @@ The native desktop release.
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
+**SHA-256 checksums:** [SHA256SUMS.txt](https://github.com/hatermedia/clipper/releases/download/v0.2.0/SHA256SUMS.txt)
+
 ## Highlights
 
 - **Native Windows app** — `Clipper.exe`, a windowed PySide6/Qt application with
