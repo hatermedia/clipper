@@ -241,8 +241,16 @@ def _run_gpu_check(argv: list[str]) -> int:
         print("nvidia-smi: not found")
     ollama = info.get("ollama") or {}
     if ollama.get("ok"):
-        models = ", ".join(ollama.get("models", [])) or "(none)"
-        print(f"Ollama vision models: {models}")
+        models = [str(name) for name in ollama.get("models", [])]
+        vision = [
+            name
+            for name in models
+            if any(
+                token in name.lower()
+                for token in ("vl", "llava", "minicpm", "moondream", "gemma3")
+            )
+        ]
+        print(f"Ollama vision models: {', '.join(vision) or '(none)'}")
         print(f"AI review default: {info['ai_default_model']}")
     else:
         print(f"Ollama: unavailable ({ollama.get('error', 'not running')})")
