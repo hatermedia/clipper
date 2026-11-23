@@ -3,6 +3,14 @@
 Everything is built. This file is the 20-minute execution path once you are
 logged in to the relevant accounts.
 
+## Assets
+
+- 16:9 demo (19.5s, 630 KB): `docs/media/demo.mp4`
+- 9:16 demo (7.5s, 1080×1920): `docs/media/demo-vertical.mp4`
+- GIF (3.7 MB): `docs/media/demo.gif`
+- Social preview: `docs/og.png`
+- Fiverr/Gumroad images: `docs/service/assets/`
+
 ## Links
 
 - Site: https://hatermedia.github.io/clipper/
