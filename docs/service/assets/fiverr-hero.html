@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1280px; height: 769px; overflow: hidden; }
+  body {
+    font-family: Inter, "Segoe UI", system-ui, sans-serif;
+    color: #e2e8f0;
+    background:
+      radial-gradient(60% 55% at 15% 0%, rgba(34,211,238,.18), transparent 70%),
+      radial-gradient(45% 45% at 100% 100%, rgba(244,63,94,.1), transparent 70%),
+      #06090f;
+    padding: 56px 60px;
+    display: flex; gap: 38px;
+  }
+  .left { width: 540px; flex-shrink: 0; display: flex; flex-direction: column; }
+  .brand { display:flex; align-items:center; gap:12px; margin-bottom: 34px; }
+  .mark { width:44px; height:44px; border-radius:13px; display:grid; place-items:center; background:rgba(34,211,238,.12); border:1px solid rgba(34,211,238,.35); }
+  .mark svg { width:23px; height:23px; color:#22d3ee; }
+  .name { font-weight:800; letter-spacing:.2em; font-size:16px; color:#fff; }
+  .sub { font-size:10px; color:#64748b; }
+  h1 { margin: 0 0 18px; font-size: 48px; line-height:1.04; letter-spacing:-.04em; color:#fff; font-weight:800; }
+  h1 span { background: linear-gradient(100deg, #67e8f9, #fda4af); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  p { margin:0; color:#94a3b8; font-size:17px; line-height:1.55; }
+  .price { display:inline-flex; align-items:baseline; gap:8px; margin-top:24px; }
+  .price strong { font-size:34px; color:#fff; letter-spacing:-.04em; }
+  .price span { color:#64748b; font-size:12px; }
+  .bullets { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+  .pill { border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.03); border-radius:999px; padding:7px 11px; font-size:11px; color:#94a3b8; }
+  .pill.cyan { color:#a5f3fc; border-color:rgba(34,211,238,.25); background:rgba(34,211,238,.07); }
+  .foot { margin-top:auto; font-size:11px; color:#475569; }
+  .right { flex:1; display:flex; align-items:center; }
+  .shot { width:100%; border:1px solid rgba(255,255,255,.14); border-radius:16px; overflow:hidden; box-shadow:0 40px 90px -30px #000, 0 0 0 1px rgba(34,211,238,.06); transform: perspective(1200px) rotateY(-6deg); }
+  .shot img { width:100%; display:block; }
+  .badge { position:absolute; right:52px; top:46px; background:#22d3ee; color:#041018; font-weight:800; font-size:12px; border-radius:999px; padding:7px 13px; letter-spacing:.04em; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="brand">
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"></path></svg></div>
+      <div><div class="name">CLIPPER</div><div class="sub">done-for-you highlight pack</div></div>
+    </div>
+    <h1>I turn raw gameplay into <span>10 highlight clips.</span></h1>
+    <p>Send a folder link. Get trimmed, named clips in 48 hours. Local FFmpeg pipeline, every cut reviewed. No watermark, no subscription.</p>
+    <div class="price"><strong>$29</strong><span>intro · then $49</span></div>
+    <div class="bullets">
+      <span class="pill cyan">10 clips</span>
+      <span class="pill">up to 2 hours</span>
+      <span class="pill">48 hours</span>
+      <span class="pill">any game</span>
+      <span class="pill">16:9 lossless</span>
+    </div>
+    <div class="foot">Demo UI shown. Sample footage is synthetic and labeled. You keep the rights.</div>
+  </div>
+  <div class="right">
+    <div class="badge">FIVERR / GUMROAD READY</div>
+    <div class="shot"><img src="../../screenshot.png" alt="" /></div>
+  </div>
+</body>
+</html>

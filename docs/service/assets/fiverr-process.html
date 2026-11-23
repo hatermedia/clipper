@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin:0; width:1280px; height:769px; overflow:hidden; }
+  body {
+    font-family: Inter, "Segoe UI", system-ui, sans-serif; color:#e2e8f0;
+    background: radial-gradient(60% 55% at 15% 0%, rgba(34,211,238,.16), transparent 70%), #06090f;
+    padding: 54px 60px; display:flex; flex-direction:column;
+  }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .mark { width:44px; height:44px; border-radius:13px; display:grid; place-items:center; background:rgba(34,211,238,.12); border:1px solid rgba(34,211,238,.35); }
+  .mark svg { width:23px; height:23px; color:#22d3ee; }
+  .name { font-weight:800; letter-spacing:.2em; font-size:16px; color:#fff; }
+  .sub { font-size:10px; color:#64748b; }
+  h1 { margin: 30px 0 10px; font-size: 42px; letter-spacing:-.04em; line-height:1.05; color:#fff; }
+  h1 span { color:#67e8f9; }
+  p.lead { margin:0; color:#94a3b8; font-size:16px; }
+  .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:32px; }
+  .step { border:1px solid rgba(255,255,255,.08); background:rgba(15,23,36,.6); border-radius:16px; padding:24px; position:relative; }
+  .num { width:32px; height:32px; border-radius:9px; display:grid; place-items:center; background:rgba(34,211,238,.1); color:#67e8f9; border:1px solid rgba(34,211,238,.2); font-weight:800; font-size:13px; margin-bottom:18px; }
+  .step h3 { margin:0 0 8px; color:#fff; font-size:17px; }
+  .step p { margin:0; color:#94a3b8; font-size:13px; line-height:1.6; }
+  .tiers { display:flex; gap:12px; margin-top:28px; }
+  .tier { flex:1; border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:15px 18px; background:rgba(255,255,255,.02); }
+  .tier.featured { border-color:rgba(34,211,238,.4); background:rgba(34,211,238,.06); }
+  .tier .label { font-size:10px; color:#64748b; letter-spacing:.1em; text-transform:uppercase; }
+  .tier .price { font-size:24px; font-weight:800; color:#fff; margin-top:4px; }
+  .tier .detail { font-size:11px; color:#94a3b8; margin-top:2px; }
+  .foot { margin-top:auto; display:flex; justify-content:space-between; color:#475569; font-size:11px; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"></path></svg></div>
+    <div><div class="name">CLIPPER</div><div class="sub">how the highlight pack works</div></div>
+  </div>
+  <h1>Send footage. Get <span>clips worth posting.</span></h1>
+  <p class="lead">A human reviews every cut. The heavy lifting is a local FFmpeg pipeline — no AI SaaS, no watermark, no subscription.</p>
+  <div class="steps">
+    <div class="step"><div class="num">1</div><h3>Send a folder link</h3><p>Game, runtime, deadline, and what counts as a highlight. Confirm you own the footage. Private intake after scope.</p></div>
+    <div class="step"><div class="num">2</div><h3>I cut + review</h3><p>Audio spikes and motion propose windows. I review the timestamps and export 10 named clips in lossless or MP4.</p></div>
+    <div class="step"><div class="num">3</div><h3>Download + revise</h3><p>You get a folder, a clip list, and one revision round. Footage is deleted 7 days after delivery.</p></div>
+  </div>
+  <div class="tiers">
+    <div class="tier featured"><div class="label">Warm-up · intro</div><div class="price">$29</div><div class="detail">10 clips · 2h · 48h</div></div>
+    <div class="tier"><div class="label">Session</div><div class="price">$99</div><div class="detail">25 clips · 6h · 72h</div></div>
+    <div class="tier"><div class="label">Grind</div><div class="price">$249</div><div class="detail">60 clips · 20h · 5 days</div></div>
+  </div>
+  <div class="foot"><span>github.com/hatermedia/clipper</span><span>No payment collected on the website · scope confirmed first</span></div>
+</body>
+</html>
