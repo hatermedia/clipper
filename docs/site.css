@@ -25,6 +25,7 @@ body {
   font-size: 16px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 body::before {
   content: "";
@@ -112,7 +113,7 @@ p { margin: 0; }
 .cta-note { color: var(--dim); font-size: 12px; }
 
 /* Hero */
-.hero { padding: 92px 0 44px; }
+.hero { padding-top: 92px; padding-bottom: 44px; }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 54px; align-items: center; }
 .hero h1 { font-size: clamp(42px, 6vw, 72px); margin: 22px 0 20px; color: #fff; font-weight: 800; }
 .hero h1 .grad { background: linear-gradient(100deg, #67e8f9, #7dd3fc 45%, #fda4af); -webkit-background-clip: text; background-clip: text; color: transparent; }
