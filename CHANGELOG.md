@@ -6,6 +6,32 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-24
+
+### Added
+
+- **In-app clip preview.** Click any clip row (or double-click it) to open a
+  local video player for that exact segment, with play/pause, -5s/+5s, a seek
+  bar, segment time, and an Open button for the source file.
+- **Live batch results.** Each file appears in the results table as soon as its
+  AI scan finishes, with its clips and previews. You can review and preview
+  earlier files while the rest of the batch is still running.
+- **Export selected or all.** Every clip row has a checkbox. Select all/None,
+  see `N of M selected`, and choose Export selected or Export all. Clicking the
+  row outside the checkbox opens the preview.
+- **Auto game detection.** The Game selector defaults to Auto and reads the game
+  per file from the folder/name, so one NVIDIA parent folder can contain Rocket
+  League, Mimesis, Valorant, etc. without changing a setting.
+- **Help tooltips.** Question-mark icons next to AI model, game, mode, Game
+  Guard, sensitivity, pre/post-roll, GPU, and advanced tuning explain what each
+  option does on hover.
+
+### Fixed
+
+- The encoder dropdown no longer looks disabled when re-encode is off. It opens
+  normally; choosing a concrete encoder automatically turns re-encode on, and
+  switching re-encode off resets it to Auto.
+
 ## [0.5.0] - 2026-11-24
 
 ### Added
@@ -281,7 +307,8 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/hatermedia/clipper/releases/tag/v0.6.0
 [0.5.0]: https://github.com/hatermedia/clipper/releases/tag/v0.5.0
 [0.4.0]: https://github.com/hatermedia/clipper/releases/tag/v0.4.0
 [0.3.5]: https://github.com/hatermedia/clipper/releases/tag/v0.3.5

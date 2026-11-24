@@ -16,8 +16,15 @@ import traceback
 from dataclasses import replace
 from pathlib import Path
 
+# Windows Media Foundation is the native backend and avoids FFmpeg plugin
+# crashes on some NVIDIA-trimmed captures. Must be set before QtMultimedia loads.
+if os.name == "nt":
+    os.environ.setdefault("QT_MEDIA_BACKEND", "windows")
+
 from PySide6.QtCore import QEvent, QPoint, QSettings, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPixmap
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -75,6 +82,12 @@ from .update import (
 
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 VIDEO_ICON = ASSET_DIR / "icon.png"
+ROLE_PREVIEW = int(Qt.UserRole)
+ROLE_VIDEO = ROLE_PREVIEW + 1
+ROLE_START = ROLE_PREVIEW + 2
+ROLE_END = ROLE_PREVIEW + 3
+ROLE_INDEX = ROLE_PREVIEW + 4
+ROLE_NAME = ROLE_PREVIEW + 5
 
 
 STYLESHEET = """
@@ -193,6 +206,25 @@ QPushButton#IconButton {
     padding: 0;
 }
 QPushButton#IconButton:hover { background: #1c1c1f; color: #ffffff; }
+QLabel#Help {
+    color: #a1a1a6;
+    border: 1px solid #38383a;
+    border-radius: 7px;
+    min-width: 14px;
+    max-width: 14px;
+    min-height: 14px;
+    max-height: 14px;
+    font-family: "IBM Plex Mono";
+    font-size: 9px;
+    background: #121214;
+}
+QLabel#Help:hover { color: #ffffff; border-color: #4f8bff; background: #1c1c1f; }
+QVideoWidget { background: #000000; }
+QLabel#PreviewTime {
+    font-family: "IBM Plex Mono";
+    font-size: 10px;
+    color: #a1a1a6;
+}
 QCheckBox { color: #c7c7cc; spacing: 7px; }
 QCheckBox::indicator {
     width: 14px;
@@ -343,6 +375,7 @@ QLabel#DialogMessage {
 
 class AnalyzeWorker(QThread):
     progress = Signal(float, str)
+    file_done = Signal(object)
     done = Signal(object)
     failed = Signal(str)
 
@@ -370,6 +403,7 @@ class AnalyzeWorker(QThread):
                 recursive=self.recursive,
                 preview_dir=self.preview_dir,
                 progress=self._progress,
+                on_file_done=self.file_done.emit,
             )
             self.done.emit(summary)
         except Cancelled:
@@ -669,6 +703,214 @@ def ask_confirm(
     return dialog.exec() == QDialog.Accepted
 
 
+class ClipPreviewDialog(QDialog):
+    """In-app playback of one detected clip before export."""
+
+    def __init__(
+        self,
+        parent: QWidget | None,
+        video_path: str,
+        start: float,
+        end: float,
+        caption: str,
+        reason: str = "",
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setModal(True)
+        self.setWindowTitle(f"Preview · {caption}")
+        self.video_path = video_path
+        self.start_ms = max(0, int(start * 1000))
+        self.end_ms = max(self.start_ms + 250, int(end * 1000))
+        self._at_end = False
+        self._seeked = False
+        self._dragging = False
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(20, 20, 20, 20)
+        panel = QFrame()
+        panel.setObjectName("DialogPanel")
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(36)
+        shadow.setColor(QColor(0, 0, 0, 190))
+        shadow.setOffset(0, 10)
+        panel.setGraphicsEffect(shadow)
+        outer.addWidget(panel)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+
+        top = QHBoxLayout()
+        heading = QLabel("PREVIEW")
+        heading.setObjectName("DialogTitle")
+        top.addWidget(heading)
+        self.caption_label = QLabel(caption)
+        self.caption_label.setObjectName("Muted")
+        top.addWidget(self.caption_label)
+        top.addStretch(1)
+        close = QPushButton("×")
+        close.setObjectName("IconButton")
+        close.setFixedSize(24, 24)
+        close.clicked.connect(self.reject)
+        top.addWidget(close)
+        layout.addLayout(top)
+
+        self.video = QVideoWidget()
+        self.video.setMinimumHeight(430)
+        layout.addWidget(self.video, 1)
+        self.error_label = QLabel("")
+        self.error_label.setObjectName("Muted")
+        self.error_label.setWordWrap(True)
+        self.error_label.hide()
+        layout.addWidget(self.error_label)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+        self.play_btn = QPushButton("Play")
+        self.play_btn.setFixedWidth(74)
+        self.play_btn.clicked.connect(self._toggle_play)
+        controls.addWidget(self.play_btn)
+        back_btn = QPushButton("−5s")
+        back_btn.setFixedWidth(54)
+        back_btn.clicked.connect(lambda: self._seek_relative(-5000))
+        controls.addWidget(back_btn)
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(0, max(1, self.end_ms - self.start_ms))
+        self.slider.sliderPressed.connect(self._slider_pressed)
+        self.slider.sliderReleased.connect(self._slider_released)
+        self.slider.sliderMoved.connect(self._slider_moved)
+        controls.addWidget(self.slider, 1)
+        ahead_btn = QPushButton("+5s")
+        ahead_btn.setFixedWidth(54)
+        ahead_btn.clicked.connect(lambda: self._seek_relative(5000))
+        controls.addWidget(ahead_btn)
+        self.time_label = QLabel("0:00 / 0:00")
+        self.time_label.setObjectName("PreviewTime")
+        self.time_label.setMinimumWidth(96)
+        controls.addWidget(self.time_label)
+        open_btn = QPushButton("Open")
+        open_btn.setToolTip("Open the source video in the default player")
+        open_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.video_path))
+        )
+        controls.addWidget(open_btn)
+        layout.addLayout(controls)
+
+        if reason:
+            reason_label = QLabel(reason)
+            reason_label.setObjectName("Muted")
+            reason_label.setWordWrap(True)
+            layout.addWidget(reason_label)
+
+        self.player = QMediaPlayer(self)
+        self.audio = QAudioOutput(self)
+        self.audio.setVolume(0.85)
+        self.player.setAudioOutput(self.audio)
+        self.player.setVideoOutput(self.video)
+        self.player.positionChanged.connect(self._position_changed)
+        self.player.playbackStateChanged.connect(self._state_changed)
+        self.player.mediaStatusChanged.connect(self._media_status)
+        self.player.errorOccurred.connect(self._player_error)
+        self.player.setSource(QUrl.fromLocalFile(str(Path(video_path))))
+
+        self.resize(1000, 680)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        parent = self.parentWidget()
+        if parent is not None:
+            center = parent.window().frameGeometry().center()
+            self.move(center.x() - self.width() // 2, center.y() - self.height() // 2)
+
+    def _media_status(self, status) -> None:
+        if status in {
+            QMediaPlayer.MediaStatus.LoadedMedia,
+            QMediaPlayer.MediaStatus.BufferedMedia,
+        } and not self._seeked:
+            self._seeked = True
+            self.player.setPosition(self.start_ms)
+            self.player.play()
+        elif status == QMediaPlayer.MediaStatus.InvalidMedia:
+            self._player_error(None, "This video codec cannot be previewed here.")
+
+    def _player_error(self, error, message: str) -> None:
+        self.error_label.setText(
+            f"Preview unavailable: {message or 'codec not supported'}. "
+            "Use Open to play the source file."
+        )
+        self.error_label.show()
+
+    def _toggle_play(self) -> None:
+        if self._at_end:
+            self._at_end = False
+            self.player.setPosition(self.start_ms)
+            self.player.play()
+            return
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        else:
+            if self.player.position() < self.start_ms or self.player.position() >= self.end_ms:
+                self.player.setPosition(self.start_ms)
+            self.player.play()
+
+    def _seek_relative(self, delta_ms: int) -> None:
+        position = self.player.position() + delta_ms
+        position = max(self.start_ms, min(self.end_ms - 100, position))
+        self._at_end = False
+        self.player.setPosition(position)
+
+    def _slider_pressed(self) -> None:
+        self._dragging = True
+
+    def _slider_released(self) -> None:
+        self._dragging = False
+        self._at_end = False
+        self.player.setPosition(self.start_ms + self.slider.value())
+
+    def _slider_moved(self, value: int) -> None:
+        self._at_end = False
+        self.player.setPosition(self.start_ms + value)
+
+    def _position_changed(self, position: int) -> None:
+        if not self._seeked:
+            return
+        if not self._dragging:
+            self.slider.setValue(max(0, min(self.end_ms - self.start_ms, position - self.start_ms)))
+        self.time_label.setText(
+            f"{self._mmss(max(0, position - self.start_ms))} / "
+            f"{self._mmss(self.end_ms - self.start_ms)}"
+        )
+        if position >= self.end_ms - 80 and not self._at_end:
+            self._at_end = True
+            self.player.pause()
+
+    def _state_changed(self, state) -> None:
+        self.play_btn.setText(
+            "Pause" if state == QMediaPlayer.PlaybackState.PlayingState else "Play"
+        )
+
+    @staticmethod
+    def _mmss(ms: int) -> str:
+        seconds = max(0, int(ms / 1000))
+        return f"{seconds // 60}:{seconds % 60:02d}"
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() == Qt.Key_Escape:
+            self.reject()
+            return
+        if event.key() == Qt.Key_Space:
+            self._toggle_play()
+            return
+        super().keyPressEvent(event)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self.player.stop()
+        self.player.setSource(QUrl())
+        super().closeEvent(event)
+
+
+
 class MainWindow(QMainWindow):
     def __init__(self, initial_input: str | None = None) -> None:
         super().__init__()
@@ -682,6 +924,9 @@ class MainWindow(QMainWindow):
         self.qsettings = QSettings("hatermedia", "Clipper")
         load_app_fonts()
         self.summary: AnalysisSummary | None = None
+        self._live_done = 0
+        self._live_total = 0
+        self._live_clips = 0
         self.worker: AnalyzeWorker | None = None
         self.export_worker: ExportWorker | None = None
         self.preview_dir = Path(tempfile.mkdtemp(prefix="clipper-desktop-"))
@@ -709,6 +954,7 @@ class MainWindow(QMainWindow):
         self.update_check_worker: UpdateCheckWorker | None = None
         self.update_download_worker: UpdateDownloadWorker | None = None
         self._manual_update_check = False
+        self._job_running = False
 
         try:
             bins = find_ffmpeg()
@@ -876,6 +1122,12 @@ class MainWindow(QMainWindow):
         self.sensitivity_value = QLabel("50%")
         self.sensitivity_value.setObjectName("Status")
         sensitivity_row.addWidget(self.sensitivity_value)
+        sensitivity_row.addWidget(
+            self._help(
+                "Higher sensitivity finds more moments; lower is stricter. "
+                "The director uses this as its keep threshold too."
+            )
+        )
         left.addLayout(sensitivity_row)
         self.sensitivity = QSlider(Qt.Horizontal)
         self.sensitivity.setRange(0, 100)
@@ -884,15 +1136,32 @@ class MainWindow(QMainWindow):
         left.addWidget(self.sensitivity)
 
         presets = QHBoxLayout()
-        for label, value in (("Strict", 32), ("Balanced", 50), ("Loose", 78)):
+        for label, value, tip in (
+            ("Strict", 32, "Fewer clips, higher confidence."),
+            ("Balanced", 50, "The default mix of recall and precision."),
+            ("Loose", 78, "More clips; expect more false positives."),
+        ):
             button = QPushButton(label)
+            button.setToolTip(tip)
             button.clicked.connect(lambda _=False, v=value: self.sensitivity.setValue(v))
             presets.addWidget(button)
         left.addLayout(presets)
 
         pad = QGridLayout()
-        pad.addWidget(QLabel("Pre-roll (s)"), 0, 0)
-        pad.addWidget(QLabel("Post-roll (s)"), 0, 1)
+        pre_labels = QHBoxLayout()
+        pre_labels.addWidget(QLabel("Pre-roll (s)"))
+        pre_labels.addWidget(
+            self._help("Seconds kept before a detected peak. The director trims conversation clips to the spoken exchange instead.")
+        )
+        pre_labels.addStretch(1)
+        pad.addLayout(pre_labels, 0, 0)
+        post_labels = QHBoxLayout()
+        post_labels.addWidget(QLabel("Post-roll (s)"))
+        post_labels.addWidget(
+            self._help("Seconds kept after a detected peak. The director uses its own story boundaries for long interactions.")
+        )
+        post_labels.addStretch(1)
+        pad.addLayout(post_labels, 0, 1)
         self.pre = QSpinBox()
         self.pre.setRange(0, 120)
         self.pre.setValue(8)
@@ -913,12 +1182,20 @@ class MainWindow(QMainWindow):
         self.ai_state.setObjectName("Status")
         ai_row.addWidget(self.ai)
         ai_row.addWidget(self.ai_state)
+        ai_row.addWidget(
+            self._help(
+                "The local AI director transcribes the clip with Whisper, watches every window, "
+                "and keeps funny interactions, banter, reactions, goals, and big plays. "
+                "It runs locally; nothing is uploaded."
+            )
+        )
         ai_row.addStretch(1)
         left.addLayout(ai_row)
 
         ai_controls = QGridLayout()
         ai_controls.setHorizontalSpacing(8)
         ai_controls.setVerticalSpacing(3)
+        ai_controls.setColumnStretch(1, 1)
         ai_controls.addWidget(QLabel("AI model"), 0, 0)
         self.ai_model = QComboBox()
         for model in (self.ai_models or [f"{DEFAULT_MODEL} (not installed)"]):
@@ -932,9 +1209,18 @@ class MainWindow(QMainWindow):
                 f"{self.gpu_vram_mb} MB VRAM detected. Use qwen2.5vl:3b for a 6 GB card."
             )
         ai_controls.addWidget(self.ai_model, 0, 1)
+        ai_controls.addWidget(
+            self._help(
+                "Ollama vision model. qwen2.5vl:7b is the best local default and needs ~6 GB VRAM; "
+                "qwen2.5vl:3b is the 6 GB-card fallback and is less accurate."
+            ),
+            0,
+            2,
+        )
         ai_controls.addWidget(QLabel("Game"), 1, 0)
         self.ai_game = QComboBox()
         for label, value in (
+            ("Auto (from folder)", "auto"),
             ("Valorant", "Valorant"),
             ("Apex Legends", "Apex Legends"),
             ("CS2", "Counter-Strike 2"),
@@ -943,8 +1229,16 @@ class MainWindow(QMainWindow):
             ("Generic", "generic"),
         ):
             self.ai_game.addItem(label, value)
-        self.ai_game.setCurrentIndex(max(0, self.ai_game.findData("generic")))
+        self.ai_game.setCurrentIndex(0)
         ai_controls.addWidget(self.ai_game, 1, 1)
+        ai_controls.addWidget(
+            self._help(
+                "Auto reads the game from each file's folder or name, so one NVIDIA parent folder "
+                "can contain Rocket League, Mimesis, Valorant, etc. Pick a preset to override it."
+            ),
+            1,
+            2,
+        )
         ai_controls.addWidget(QLabel("AI mode"), 2, 0)
         self.ai_mode = QComboBox()
         self.ai_mode.addItem("Director · whole clip", "director")
@@ -954,6 +1248,14 @@ class MainWindow(QMainWindow):
             "Review is the older, faster pass over audio/motion peaks."
         )
         ai_controls.addWidget(self.ai_mode, 2, 1)
+        ai_controls.addWidget(
+            self._help(
+                "Director: whole-clip audio + frame review, can keep a 30-90s interaction. "
+                "Review: only checks the audio/motion peaks, faster but misses context."
+            ),
+            2,
+            2,
+        )
         left.addLayout(ai_controls)
         self.ai.setEnabled(self.ai_available)
 
@@ -969,6 +1271,12 @@ class MainWindow(QMainWindow):
         self.game_state.setObjectName("Status")
         game_row.addWidget(self.game_guard)
         game_row.addWidget(self.game_state)
+        game_row.addWidget(
+            self._help(
+                "Detects known games from the local process list and unloads the Ollama model "
+                "while a game is running. It checks before analysis and between director windows."
+            )
+        )
         game_row.addStretch(1)
         left.addLayout(game_row)
 
@@ -983,14 +1291,28 @@ class MainWindow(QMainWindow):
         self.gpu_state.setToolTip("OpenCV motion scoring and audio RMS stay on the CPU.")
         gpu_row.addWidget(self.gpu)
         gpu_row.addWidget(self.gpu_state)
+        gpu_row.addWidget(
+            self._help(
+                "NVENC handles proxy encode and optional re-encode. OpenCV motion scoring "
+                "and audio RMS stay on the CPU."
+            )
+        )
         gpu_row.addStretch(1)
         left.addLayout(gpu_row)
         self.gpu.setEnabled(self.nvenc)
 
+        adv_row = QHBoxLayout()
         self.advanced_toggle = QPushButton("Advanced tuning  ▾")
         self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setToolTip("Max clips, sample rate, proxy size, CPU cap, and low-power mode.")
         self.advanced_toggle.toggled.connect(self._toggle_advanced)
-        left.addWidget(self.advanced_toggle)
+        adv_row.addWidget(self.advanced_toggle, 1)
+        adv_row.addWidget(
+            self._help(
+                "Performance and clip-count controls. Low-power mode caps CPU usage while gaming."
+            )
+        )
+        left.addLayout(adv_row)
 
         self.advanced = QFrame()
         advanced_layout = QGridLayout(self.advanced)
@@ -1069,6 +1391,16 @@ class MainWindow(QMainWindow):
         results_header = QHBoxLayout()
         results_header.addWidget(self._section("HIGHLIGHTS"))
         results_header.addStretch(1)
+        self.select_all_btn = QPushButton("Select all")
+        self.select_all_btn.setObjectName("Mono")
+        self.select_all_btn.clicked.connect(lambda: self._set_all_checked(True))
+        self.select_all_btn.hide()
+        results_header.addWidget(self.select_all_btn)
+        self.select_none_btn = QPushButton("None")
+        self.select_none_btn.setObjectName("Mono")
+        self.select_none_btn.clicked.connect(lambda: self._set_all_checked(False))
+        self.select_none_btn.hide()
+        results_header.addWidget(self.select_none_btn)
         self.summary_label = QLabel("Nothing analyzed yet")
         self.summary_label.setObjectName("Summary")
         results_header.addWidget(self.summary_label)
@@ -1089,6 +1421,9 @@ class MainWindow(QMainWindow):
         self.tree.header().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(5, QHeaderView.Stretch)
         self.tree.currentItemChanged.connect(self._show_preview)
+        self.tree.itemClicked.connect(self._tree_clicked)
+        self.tree.itemDoubleClicked.connect(self._tree_double_clicked)
+        self.tree.itemChanged.connect(self._clip_check_changed)
         right.addWidget(self.tree, 1)
 
         self.preview = QLabel("Select a clip to preview its peak frame")
@@ -1110,31 +1445,50 @@ class MainWindow(QMainWindow):
         out_browse.clicked.connect(self.choose_output)
         export_layout.addWidget(out_browse, 0, 2)
         self.reencode = QCheckBox("Frame-accurate re-encode")
+        self.reencode.setToolTip("Re-encode for exact cut edges instead of stream copy.")
         self.reencode.toggled.connect(self._update_encoder_state)
         export_layout.addWidget(self.reencode, 1, 0, 1, 2)
         self.encoder = QComboBox()
         for label, value in (
-            ("Auto (GPU if available)", "auto"),
+            ("Auto", "auto"),
             ("libx264 (CPU)", "libx264"),
             ("H.264 NVENC", "h264_nvenc"),
             ("HEVC NVENC", "hevc_nvenc"),
             ("libx265 (CPU)", "libx265"),
         ):
             self.encoder.addItem(label, value)
+        self.encoder.setToolTip(
+            "Auto uses stream copy by default and hardware encode when needed. "
+            "Choosing a specific encoder turns on frame-accurate re-encode."
+        )
+        self.encoder.currentIndexChanged.connect(self._encoder_changed)
         export_layout.addWidget(self.encoder, 1, 2)
         export_layout.addWidget(QLabel("CRF"), 2, 0)
         self.crf = QSpinBox()
         self.crf.setRange(0, 51)
         self.crf.setValue(20)
+        self.crf.setToolTip("Quality for re-encode; lower is higher quality.")
         export_layout.addWidget(self.crf, 2, 1)
-        self.export_btn = QPushButton("Export clips")
+        export_actions = QHBoxLayout()
+        export_actions.setSpacing(6)
+        self.export_all_btn = QPushButton("Export all")
+        self.export_all_btn.setToolTip("Export every detected clip.")
+        self.export_all_btn.clicked.connect(lambda: self.export(selected_only=False))
+        self.export_all_btn.setEnabled(False)
+        export_actions.addWidget(self.export_all_btn)
+        self.export_btn = QPushButton("Export selected")
         self.export_btn.setObjectName("Primary")
-        self.export_btn.clicked.connect(self.export)
+        self.export_btn.setToolTip("Export only the checked clips.")
+        self.export_btn.clicked.connect(lambda: self.export(selected_only=True))
         self.export_btn.setEnabled(False)
-        export_layout.addWidget(self.export_btn, 2, 2)
+        export_actions.addWidget(self.export_btn)
+        export_layout.addLayout(export_actions, 2, 2)
         right.addWidget(export_group)
 
         export_footer = QHBoxLayout()
+        self.selection_label = QLabel("")
+        self.selection_label.setObjectName("Muted")
+        export_footer.addWidget(self.selection_label)
         self.export_status = QLabel("")
         self.export_status.setObjectName("Status")
         self.export_status.setWordWrap(True)
@@ -1155,6 +1509,15 @@ class MainWindow(QMainWindow):
     def _section(self, text: str) -> QLabel:
         label = QLabel(text)
         label.setObjectName("Section")
+        return label
+
+    def _help(self, text: str) -> QLabel:
+        label = QLabel("?")
+        label.setObjectName("Help")
+        label.setToolTip(text)
+        label.setAlignment(Qt.AlignCenter)
+        label.setFixedSize(16, 16)
+        label.setCursor(Qt.WhatsThisCursor)
         return label
 
     # ------------------------------------------------------------- settings
@@ -1447,9 +1810,19 @@ class MainWindow(QMainWindow):
             self.proxy_width.setCurrentIndex(0)
 
     def _update_encoder_state(self) -> None:
-        enabled = self.reencode.isChecked()
-        self.encoder.setEnabled(enabled)
-        self.crf.setEnabled(enabled)
+        if not self.reencode.isChecked() and self.encoder.currentData() != "auto":
+            self.encoder.blockSignals(True)
+            self.encoder.setCurrentIndex(0)
+            self.encoder.blockSignals(False)
+        self.encoder.setEnabled(True)
+        self.crf.setEnabled(self.reencode.isChecked())
+
+    def _encoder_changed(self, _index: int) -> None:
+        # Picking a concrete encoder only matters when re-encoding; turn it on
+        # instead of leaving a dead-looking control.
+        if self.encoder.currentData() != "auto" and not self.reencode.isChecked():
+            self.reencode.setChecked(True)
+        self._update_encoder_state()
 
     def _choose_start(self) -> str:
         current = self.input_edit.text().strip()
@@ -1470,21 +1843,8 @@ class MainWindow(QMainWindow):
         target = Path(cleaned).expanduser()
         self.input_edit.setText(str(target))
         self.input_edit.setCursorPosition(0)
-        lowered = str(target).lower()
-        for token, preset in (
-            ("valorant", "Valorant"),
-            ("apex", "Apex Legends"),
-            ("counter-strike", "Counter-Strike 2"),
-            ("cs2", "Counter-Strike 2"),
-            ("rocket league", "Rocket League"),
-            ("rocketleague", "Rocket League"),
-            ("mimesis", "Mimesis"),
-        ):
-            if token in lowered:
-                index = self.ai_game.findData(preset)
-                if index >= 0:
-                    self.ai_game.setCurrentIndex(index)
-                break
+        # Auto mode resolves each file's game in the pipeline. Do not rewrite
+        # the preset here: one NVIDIA parent folder can contain many games.
         if not self.output_edit.text().strip() or self.output_edit.text().strip() == "trimmed":
             base = target.parent if target.is_file() else target
             self.output_edit.setText(str(base / "trimmed"))
@@ -1600,6 +1960,7 @@ class MainWindow(QMainWindow):
             self.preview_dir,
         )
         self.worker.progress.connect(self._on_progress)
+        self.worker.file_done.connect(self._on_file_analyzed)
         self.worker.done.connect(self._on_analyzed)
         self.worker.failed.connect(self._on_failed)
         self.worker.start()
@@ -1608,15 +1969,32 @@ class MainWindow(QMainWindow):
         self.progress.setValue(int(max(0.0, min(1.0, fraction)) * 100))
         self.status.setText(message)
 
+    def _on_file_analyzed(self, analysis) -> None:
+        self._live_done += 1
+        self._live_clips += len(analysis.clips)
+        self._append_analysis(analysis)
+        total = self._live_total or self._live_done
+        self.summary_label.setText(
+            f"{self._live_clips} clips · {self._live_done}/{total} files"
+        )
+        if analysis.error:
+            self.status.setText(f"Scanned {analysis.name}: failed")
+        else:
+            self.status.setText(f"Scanned {analysis.name}: {len(analysis.clips)} clip(s)")
+
     def _on_analyzed(self, summary: AnalysisSummary) -> None:
         self.summary = summary
         self._set_running(False)
         self.progress.setValue(100)
+        if self.tree.topLevelItemCount() == 0:
+            self._populate(summary)
+        else:
+            self.summary_label.setText(
+                f"{summary.total_clips} clips · {len(summary.files)} files"
+            )
+            self._update_selection_label()
         self.status.setText(f"Found {summary.total_clips} clip(s) in {len(summary.files)} file(s).")
-        self._populate(summary)
-        self.export_btn.setEnabled(summary.total_clips > 0)
-        if summary.total_clips > 0:
-            self.open_folder.setEnabled(True)
+        self.open_folder.setEnabled(summary.total_clips > 0)
         if self._screenshot_path:
             QTimer.singleShot(1200, self._capture_screenshot)
 
@@ -1642,24 +2020,36 @@ class MainWindow(QMainWindow):
 
     def _populate(self, summary: AnalysisSummary) -> None:
         self.tree.clear()
+        for analysis in summary.files:
+            self._append_analysis(analysis, select_first=False)
+        self.tree.expandAll()
+        self.summary_label.setText(f"{summary.total_clips} clips · {len(summary.files)} files")
+        self._update_selection_label()
+        for index in range(self.tree.topLevelItemCount()):
+            top = self.tree.topLevelItem(index)
+            if top.childCount():
+                self.tree.setCurrentItem(top.child(0))
+                break
+
+    def _append_analysis(self, analysis, select_first: bool = True) -> None:
+        self.tree.blockSignals(True)
         mono = QFont("IBM Plex Mono")
         mono.setPixelSize(12)
-        for analysis in summary.files:
-            top = QTreeWidgetItem(
-                [
-                    analysis.name,
-                    "",
-                    "",
-                    "",
-                    f"{len(analysis.clips)} clips" if not analysis.error else "error",
-                    analysis.error or "",
-                ]
-            )
-            top.setToolTip(0, analysis.path)
-            self.tree.addTopLevelItem(top)
-            if analysis.error:
-                top.setForeground(5, Qt.red)
-                continue
+        top = QTreeWidgetItem(
+            [
+                analysis.name,
+                "",
+                "",
+                "",
+                f"{len(analysis.clips)} clips" if not analysis.error else "error",
+                analysis.error or "",
+            ]
+        )
+        top.setToolTip(0, analysis.path)
+        self.tree.addTopLevelItem(top)
+        if analysis.error:
+            top.setForeground(5, Qt.red)
+        else:
             for index, clip in enumerate(analysis.clips, start=1):
                 child = QTreeWidgetItem(
                     [
@@ -1671,23 +2061,127 @@ class MainWindow(QMainWindow):
                         clip.reason,
                     ]
                 )
+                child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                child.setCheckState(0, Qt.Checked)
                 for column in range(5):
                     child.setFont(column, mono)
                 child.setTextAlignment(4, Qt.AlignCenter)
+                child.setData(0, ROLE_VIDEO, analysis.path)
+                child.setData(0, ROLE_START, float(clip.start))
+                child.setData(0, ROLE_END, float(clip.end))
+                child.setData(0, ROLE_INDEX, index - 1)
+                child.setData(0, ROLE_NAME, analysis.name)
                 if index - 1 < len(analysis.previews):
                     preview = analysis.previews[index - 1]
                     if Path(preview).is_file():
                         child.setIcon(0, QIcon(preview))
-                        child.setData(0, Qt.UserRole, preview)
-                child.setToolTip(0, f"{analysis.name} · peak {clip.peak_label}")
+                        child.setData(0, ROLE_PREVIEW, preview)
+                child.setToolTip(
+                    0,
+                    f"{analysis.name} · {clip.start_label}–{clip.end_label} "
+                    "· click to preview",
+                )
+                child.setToolTip(5, clip.reason)
                 top.addChild(child)
-        self.tree.expandAll()
-        self.summary_label.setText(f"{summary.total_clips} clips · {len(summary.files)} files")
+            top.setExpanded(True)
+        self.tree.blockSignals(False)
+        self.select_all_btn.show()
+        self.select_none_btn.show()
+        self._update_selection_label()
+        if select_first:
+            current = self.tree.currentItem()
+            if current is None and top.childCount():
+                self.tree.setCurrentItem(top.child(0))
+                self._show_preview(top.child(0))
+
+    def _clip_check_changed(self, item: QTreeWidgetItem, column: int) -> None:
+        if column == 0 and item.parent() is not None:
+            self._update_selection_label()
+
+    def _set_all_checked(self, checked: bool) -> None:
+        self.tree.blockSignals(True)
         for index in range(self.tree.topLevelItemCount()):
             top = self.tree.topLevelItem(index)
-            if top.childCount():
-                self.tree.setCurrentItem(top.child(0))
-                break
+            for child_index in range(top.childCount()):
+                top.child(child_index).setCheckState(
+                    0, Qt.Checked if checked else Qt.Unchecked
+                )
+        self.tree.blockSignals(False)
+        self._update_selection_label()
+
+    def _update_selection_label(self) -> None:
+        total = 0
+        selected = 0
+        for index in range(self.tree.topLevelItemCount()):
+            top = self.tree.topLevelItem(index)
+            for child_index in range(top.childCount()):
+                total += 1
+                if top.child(child_index).checkState(0) == Qt.Checked:
+                    selected += 1
+        if total:
+            self.selection_label.setText(f"{selected} of {total} selected")
+        else:
+            self.selection_label.setText("")
+        running = self._job_running
+        has_summary = bool(self.summary and self.summary.total_clips)
+        self.export_btn.setEnabled(selected > 0 and has_summary and not running)
+        self.export_all_btn.setEnabled(has_summary and not running)
+
+    def _selected_summary(self) -> AnalysisSummary | None:
+        if self.summary is None:
+            return None
+        selected: dict[str, list[int]] = {}
+        for index in range(self.tree.topLevelItemCount()):
+            top = self.tree.topLevelItem(index)
+            for child_index in range(top.childCount()):
+                child = top.child(child_index)
+                if child.checkState(0) != Qt.Checked:
+                    continue
+                video = child.data(0, ROLE_VIDEO)
+                clip_index = child.data(0, ROLE_INDEX)
+                if video is None or clip_index is None:
+                    continue
+                selected.setdefault(str(video), []).append(int(clip_index))
+        files = []
+        for analysis in self.summary.files:
+            indices = sorted(set(selected.get(analysis.path, [])))
+            if not indices:
+                continue
+            clips = [analysis.clips[i] for i in indices if i < len(analysis.clips)]
+            previews = [
+                analysis.previews[i]
+                for i in indices
+                if i < len(analysis.previews)
+            ]
+            files.append(replace(analysis, clips=clips, previews=previews))
+        if not files:
+            return None
+        return replace(self.summary, files=files)
+
+    def _tree_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        if item.parent() is not None and column > 0:
+            self._open_clip_preview(item)
+
+    def _tree_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        if item.parent() is not None:
+            self._open_clip_preview(item)
+
+    def _open_clip_preview(self, item: QTreeWidgetItem) -> None:
+        video = item.data(0, ROLE_VIDEO)
+        start = item.data(0, ROLE_START)
+        end = item.data(0, ROLE_END)
+        if not video or start is None or end is None:
+            return
+        name = item.data(0, ROLE_NAME) or ""
+        caption = f"{name} · {item.text(1)}–{item.text(2)}"
+        ClipPreviewDialog(
+            self,
+            str(video),
+            float(start),
+            float(end),
+            caption,
+            item.text(5),
+        ).exec()
 
     def _show_preview(self, current: QTreeWidgetItem | None, previous=None) -> None:
         if current is None:
@@ -1704,8 +2198,15 @@ class MainWindow(QMainWindow):
         self.preview.setText("")
 
     # ---------------------------------------------------------------- export
-    def export(self) -> None:
-        if not self.summary or self.summary.total_clips == 0:
+    def export(self, selected_only: bool = True) -> None:
+        summary = self._selected_summary() if selected_only else self.summary
+        if not summary or summary.total_clips == 0:
+            if selected_only:
+                show_message(
+                    self,
+                    "No clips selected",
+                    "Tick at least one clip checkbox, or use Export all.",
+                )
             return
         output = self.output_edit.text().strip()
         if not output:
@@ -1717,9 +2218,13 @@ class MainWindow(QMainWindow):
         settings = self._build_settings()
         self._set_running(True)
         self.progress.setValue(0)
-        self.export_status.setText("Starting export…")
+        self.export_status.setText(
+            f"Exporting {summary.total_clips} selected clip(s)…"
+            if selected_only
+            else f"Exporting all {summary.total_clips} clip(s)…"
+        )
         self.export_worker = ExportWorker(
-            self.summary,
+            summary,
             output,
             self.reencode.isChecked(),
             str(self.encoder.currentData()),
@@ -1768,8 +2273,16 @@ class MainWindow(QMainWindow):
         self.status.setText("Cancelling…")
 
     def _set_running(self, running: bool) -> None:
+        self._job_running = running
         self.analyze_btn.setEnabled(not running)
-        self.export_btn.setEnabled(not running and bool(self.summary and self.summary.total_clips))
+        if running:
+            self.export_btn.setEnabled(False)
+            self.export_all_btn.setEnabled(False)
+        else:
+            self._update_selection_label()
+        self.reencode.setEnabled(not running)
+        self.encoder.setEnabled(not running)
+        self.crf.setEnabled(not running and self.reencode.isChecked())
         self.scan_btn.setEnabled(not running)
         self.cancel_btn.setEnabled(running)
         self.input_edit.setEnabled(not running)
@@ -1920,6 +2433,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--demo-shot", default=None, help="analyze --input, save a window screenshot, exit")
     parser.add_argument("--story-test", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--story-game", default="generic", help=argparse.SUPPRESS)
+    parser.add_argument("--preview-test", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--preview-start", type=float, default=0.0, help=argparse.SUPPRESS)
+    parser.add_argument("--preview-end", type=float, default=10.0, help=argparse.SUPPRESS)
     args, qt_args = parser.parse_known_args(argv)
 
     if args.story_test:
@@ -1978,6 +2494,40 @@ def main(argv: list[str] | None = None) -> int:
     app.setStyle("Fusion")
     load_app_fonts()
     app.setStyleSheet(STYLESHEET)
+
+    if args.preview_test:
+        if not args.input:
+            parser.error("--preview-test requires --input")
+        dialog = ClipPreviewDialog(
+            None,
+            args.input,
+            args.preview_start,
+            args.preview_end,
+            "Preview test",
+        )
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+        def capture_preview() -> None:
+            screen = app.primaryScreen()
+            if screen is not None:
+                screen.grabWindow(0).save(args.preview_test)
+            try:
+                Path(args.preview_test).with_suffix(".txt").write_text(
+                    f"status={dialog.player.mediaStatus()}\n"
+                    f"state={dialog.player.playbackState()}\n"
+                    f"error={dialog.error_label.text()}\n",
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
+            dialog.close()
+            app.quit()
+
+        QTimer.singleShot(4500, capture_preview)
+        return app.exec()
+
     window = MainWindow(initial_input=args.input)
     window.show()
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
@@ -191,6 +191,13 @@ def analyze_file(
 
         _report(progress, 0.88, "Selecting and merging clips")
         if settings.ai:
+            file_settings = settings
+            if settings.ai_game.strip().lower() == "auto":
+                from .gameguard import detect_game_from_path
+
+                guessed = detect_game_from_path(path)
+                if guessed:
+                    file_settings = replace(settings, ai_game=guessed)
             if settings.ai_mode == "director":
                 try:
                     from .detect.story import direct_clip
@@ -198,7 +205,7 @@ def analyze_file(
                     clips, ai_warnings = direct_clip(
                         path,
                         info.duration,
-                        settings,
+                        file_settings,
                         wav,
                         audio_track,
                         bins,
@@ -212,11 +219,11 @@ def analyze_file(
                 try:
                     from .detect.ai import build_candidates, review_candidates
 
-                    candidates = build_candidates(grid, audio, visual, combined, settings, info.duration)
+                    candidates = build_candidates(grid, audio, visual, combined, file_settings, info.duration)
                     clips, ai_warnings = review_candidates(
                         path,
                         candidates,
-                        settings,
+                        file_settings,
                         info.duration,
                         progress=progress,
                     )
@@ -256,6 +263,7 @@ def analyze_target(
     preview_dir: Path | None = None,
     exclude: Path | None = None,
     progress: ProgressFn | None = None,
+    on_file_done: Callable[[FileAnalysis], None] | None = None,
 ) -> AnalysisSummary:
     settings.validate()
     configure_cpu_limits(settings.threads)
@@ -273,21 +281,25 @@ def analyze_target(
             _report(progress, overall, f"[{i + 1}/{len(files)}] {f.name}: {message}")
 
         try:
-            analyses.append(
-                analyze_file(file, settings, bins, preview_dir=preview_dir, progress=file_progress)
+            analysis = analyze_file(
+                file, settings, bins, preview_dir=preview_dir, progress=file_progress
             )
+            analyses.append(analysis)
+            if on_file_done is not None:
+                on_file_done(analysis)
         except Cancelled:
             raise
         except Exception as exc:  # keep batch runs alive when one file is broken
-            analyses.append(
-                FileAnalysis(
-                    path=str(file.resolve()),
-                    name=file.name,
-                    info=MediaInfo(path=str(file.resolve()), duration=0.0),
-                    warnings=[],
-                    error=str(exc),
-                )
+            analysis = FileAnalysis(
+                path=str(file.resolve()),
+                name=file.name,
+                info=MediaInfo(path=str(file.resolve()), duration=0.0),
+                warnings=[],
+                error=str(exc),
             )
+            analyses.append(analysis)
+            if on_file_done is not None:
+                on_file_done(analysis)
             _report(progress, (index + 1) / len(files), f"[{index + 1}/{len(files)}] {file.name}: failed")
 
     return AnalysisSummary(

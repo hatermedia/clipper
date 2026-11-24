@@ -121,6 +121,45 @@ def detect_running_game() -> str | None:
     return None
 
 
+PATH_GAME_ALIASES = (
+    ("rocket league", "Rocket League"),
+    ("rocketleague", "Rocket League"),
+    ("mimesis", "Mimesis"),
+    ("valorant", "Valorant"),
+    ("apex legends", "Apex Legends"),
+    ("apex", "Apex Legends"),
+    ("counter-strike", "Counter-Strike 2"),
+    ("cs2", "Counter-Strike 2"),
+    ("fortnite", "Fortnite"),
+    ("grand theft auto", "Grand Theft Auto V"),
+    ("gta v", "Grand Theft Auto V"),
+    ("rainbow six", "Rainbow Six Siege"),
+    ("overwatch", "Overwatch"),
+    ("league of legends", "League of Legends"),
+    ("dota 2", "Dota 2"),
+    ("minecraft", "Minecraft"),
+    ("roblox", "Roblox"),
+    ("pubg", "PUBG"),
+    ("call of duty", "Call of Duty"),
+    ("elden ring", "Elden Ring"),
+    ("baldur's gate", "Baldur's Gate 3"),
+    ("cyberpunk", "Cyberpunk 2077"),
+    ("helldivers", "Helldivers 2"),
+    ("lethal company", "Lethal Company"),
+    ("content warning", "Content Warning"),
+    ("phasmophobia", "Phasmophobia"),
+    ("among us", "Among Us"),
+)
+
+
+def detect_game_from_path(path: str | Path) -> str | None:
+    text = str(path).lower()
+    for token, label in PATH_GAME_ALIASES:
+        if token in text:
+            return label
+    return None
+
+
 def custom_game_names_path() -> Path:
     base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".cache")
     return base / "Clipper" / "games.json"

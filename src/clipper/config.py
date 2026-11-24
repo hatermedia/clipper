@@ -91,7 +91,7 @@ class DetectionSettings:
     low_power: bool = False
     ai: bool = False
     ai_model: str = "qwen2.5vl:7b"
-    ai_game: str = "generic"
+    ai_game: str = "auto"
     ai_mode: str = "director"
     ai_min_confidence: float = 0.55
     ai_max_candidates: int = 60

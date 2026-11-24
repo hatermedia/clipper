@@ -28,3 +28,16 @@ def test_no_game(monkeypatch) -> None:
         lambda: {"explorer.exe", "chrome.exe"},
     )
     assert gameguard.detect_running_game() is None
+
+
+def test_path_auto_detects_game() -> None:
+    assert (
+        gameguard.detect_game_from_path(r"D:\Videos\NVIDIA\Rocket League\clip.mp4")
+        == "Rocket League"
+    )
+    assert (
+        gameguard.detect_game_from_path(r"D:\Videos\NVIDIA\Mimesis\clip.mp4")
+        == "Mimesis"
+    )
+    assert gameguard.detect_game_from_path(r"D:\Videos\misc\clip.mp4") is None
+

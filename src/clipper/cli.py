@@ -128,8 +128,8 @@ def _build_batch_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ai-game",
-        default="generic",
-        help="game context for the AI prompt, e.g. Valorant or Apex Legends",
+        default="auto",
+        help="game preset (auto, Rocket League, Mimesis, Valorant, ...); auto reads the path",
     )
     parser.add_argument(
         "--ai-mode",

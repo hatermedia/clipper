@@ -1,4 +1,4 @@
-Clipper 0.5.0 - Windows x64 native
+Clipper 0.6.0 - Windows x64 native
 =================================
 
 No Python. No FFmpeg. No browser. No console window.
@@ -8,8 +8,9 @@ QUICK START
 Double-click Clipper.exe.
 
 1. Choose a folder (or drag one onto the drop zone).
-2. Review the detected highlights and preview frames.
-3. Pick an output folder and export.
+2. Watch clips appear per file as the AI scan finishes.
+3. Click a clip row to preview that segment; tick the clips you want.
+4. Pick an output folder and choose Export selected or Export all.
 
 AI DIRECTOR (OPTIONAL)
 ----------------------
