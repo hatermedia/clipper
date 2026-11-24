@@ -6,6 +6,17 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-11-24
+
+### Changed
+
+- The main window is now frameless: the duplicate native title bar is gone,
+  leaving the in-app `CLIPPER` header. The header is the drag handle, window
+  edges resize natively, and minimize/maximize/close buttons live in the
+  header's top-right corner.
+- The app icon's white background was removed so the transparent rounded
+  corners no longer show white specks in the header or taskbar.
+
 ## [0.3.4] - 2026-11-24
 
 ### Changed
@@ -201,7 +212,8 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/hatermedia/clipper/releases/tag/v0.3.5
 [0.3.4]: https://github.com/hatermedia/clipper/releases/tag/v0.3.4
 [0.3.3]: https://github.com/hatermedia/clipper/releases/tag/v0.3.3
 [0.3.2]: https://github.com/hatermedia/clipper/releases/tag/v0.3.2

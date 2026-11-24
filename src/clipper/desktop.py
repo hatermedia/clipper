@@ -15,7 +15,7 @@ import traceback
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSize, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QPoint, QSettings, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -165,6 +165,24 @@ QPushButton#Mono {
     font-size: 10px;
     padding: 5px 9px;
 }
+QPushButton#WindowButton {
+    background: transparent;
+    border: none;
+    color: #a1a1a6;
+    font-family: "IBM Plex Mono";
+    font-size: 13px;
+    padding: 0;
+}
+QPushButton#WindowButton:hover { background: #1c1c1f; color: #ffffff; }
+QPushButton#WindowClose {
+    background: transparent;
+    border: none;
+    color: #a1a1a6;
+    font-family: "IBM Plex Mono";
+    font-size: 15px;
+    padding: 0;
+}
+QPushButton#WindowClose:hover { background: #c42b1c; color: #ffffff; }
 QPushButton#IconButton {
     background: transparent;
     border: none;
@@ -653,6 +671,7 @@ class MainWindow(QMainWindow):
     def __init__(self, initial_input: str | None = None) -> None:
         super().__init__()
         self.setWindowTitle(f"Clipper {__version__}")
+        self.setWindowFlag(Qt.FramelessWindowHint, True)
         self.resize(1280, 840)
         self.setMinimumSize(1040, 720)
         if VIDEO_ICON.is_file():
@@ -748,6 +767,25 @@ class MainWindow(QMainWindow):
         github.setObjectName("Mono")
         github.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/hatermedia/clipper")))
         header.addWidget(github)
+        header.addSpacing(8)
+        minimize = QPushButton("–")
+        minimize.setObjectName("WindowButton")
+        minimize.setFixedSize(28, 24)
+        minimize.setToolTip("Minimize")
+        minimize.clicked.connect(self.showMinimized)
+        header.addWidget(minimize)
+        self.max_btn = QPushButton("□")
+        self.max_btn.setObjectName("WindowButton")
+        self.max_btn.setFixedSize(28, 24)
+        self.max_btn.setToolTip("Maximize")
+        self.max_btn.clicked.connect(self._toggle_maximize)
+        header.addWidget(self.max_btn)
+        close = QPushButton("×")
+        close.setObjectName("WindowClose")
+        close.setFixedSize(28, 24)
+        close.setToolTip("Close")
+        close.clicked.connect(self.close)
+        header.addWidget(close)
         outer.addLayout(header)
 
         self.update_bar = QFrame()
@@ -1136,7 +1174,8 @@ class MainWindow(QMainWindow):
         self.qsettings.setValue("post", self.post.value())
         self.qsettings.setValue("recursive", self.recursive.isChecked())
         self.qsettings.setValue("gpu_v2", self.gpu.isChecked())
-        self.qsettings.setValue("ai_v2", self.ai.isChecked())
+        if self.ai_available:
+            self.qsettings.setValue("ai_v2", self.ai.isChecked())
         self.qsettings.setValue("ai_model", self.ai_model.currentText())
         self.qsettings.setValue("ai_game", str(self.ai_game.currentData()))
         self.qsettings.setValue("low_power", self.low_power.isChecked())
@@ -1663,6 +1702,68 @@ class MainWindow(QMainWindow):
         self.ai.setEnabled(not running and self.ai_available)
         self.ai_model.setEnabled(not running and self.ai_available and self.ai.isChecked())
         self.ai_game.setEnabled(not running and self.ai_available and self.ai.isChecked())
+
+    def _toggle_maximize(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        if event.type() == QEvent.WindowStateChange and hasattr(self, "max_btn"):
+            self.max_btn.setText("❐" if self.isMaximized() else "□")
+            self.max_btn.setToolTip("Restore" if self.isMaximized() else "Maximize")
+        super().changeEvent(event)
+
+    def nativeEvent(self, event_type, message):  # noqa: N802
+        if os.name == "nt":
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                msg = wintypes.MSG.from_address(int(message))
+                if msg.message == 0x0084:  # WM_NCHITTEST
+                    x = ctypes.c_short(msg.lParam & 0xFFFF).value
+                    y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
+
+                    class POINT(ctypes.Structure):
+                        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+                    point = POINT(x, y)
+                    ctypes.windll.user32.ScreenToClient(int(self.winId()), ctypes.byref(point))
+                    dpr = self.devicePixelRatioF() or 1.0
+                    cx = int(point.x / dpr)
+                    cy = int(point.y / dpr)
+                    width = self.width()
+                    height = self.height()
+                    border = 6
+                    if not self.isMaximized():
+                        left = cx < border
+                        right = cx >= width - border
+                        top = cy < border
+                        bottom = cy >= height - border
+                        if top and left:
+                            return True, 13  # HTTOPLEFT
+                        if top and right:
+                            return True, 14  # HTTOPRIGHT
+                        if bottom and left:
+                            return True, 16  # HTBOTTOMLEFT
+                        if bottom and right:
+                            return True, 17  # HTBOTTOMRIGHT
+                        if left:
+                            return True, 10  # HTLEFT
+                        if right:
+                            return True, 11  # HTRIGHT
+                        if top:
+                            return True, 12  # HTTOP
+                        if bottom:
+                            return True, 15  # HTBOTTOM
+                    # Header is the drag handle, except the right-side controls.
+                    if 0 <= cy < 66 and cx < width - 330:
+                        return True, 2  # HTCAPTION
+            except Exception:
+                pass
+        return super().nativeEvent(event_type, message)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         running = (self.worker and self.worker.isRunning()) or (
