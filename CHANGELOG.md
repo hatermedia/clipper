@@ -8,6 +8,11 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [0.3.5] - 2026-11-24
 
+### Added
+
+- Published `clipper-gg` 0.3.5 on PyPI: `pip install clipper-gg` (or
+  `pip install "clipper-gg[desktop]"` for the native app).
+
 ### Changed
 
 - The main window is now frameless: the duplicate native title bar is gone,

@@ -130,20 +130,20 @@ pip install -e ".[desktop]"
 
 Drop `[desktop]` if you only want the CLI.
 
-### Release wheel
+### PyPI
+
+```bash
+pip install clipper-gg
+# native app extras
+pip install "clipper-gg[desktop]"
+# isolated CLI install
+pipx install clipper-gg
+```
+
+### Release wheel (fallback)
 
 ```bash
 python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.3.5/clipper_gg-0.3.5-py3-none-any.whl
-```
-
-### pipx
-
-```bash
-# once the PyPI release is live
-pipx install clipper-gg
-
-# or install straight from GitHub today
-pipx install git+https://github.com/hatermedia/clipper.git
 ```
 
 The installed command is `clipper`; the Python import is `clipper`; the PyPI distribution is `clipper-gg` (the plain `clipper` name on PyPI is an unrelated 2014 bioinformatics package).

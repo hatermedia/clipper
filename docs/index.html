@@ -277,7 +277,7 @@
     <div class="install-grid">
       <div class="install-list">
         <div class="install-item"><span class="num">01</span><div><strong>Install FFmpeg (source/CLI only)</strong><span>Windows: <span class="mono">winget install Gyan.FFmpeg</span> · macOS: <span class="mono">brew install ffmpeg</span> · Ubuntu: <span class="mono">sudo apt install ffmpeg</span></span></div></div>
-        <div class="install-item"><span class="num">02</span><div><strong>Install Clipper</strong><span>Use the release wheel, <span class="mono">pipx install git+https://github.com/hatermedia/clipper.git</span>, or the native app above.</span></div></div>
+        <div class="install-item"><span class="num">02</span><div><strong>Install Clipper</strong><span><span class="mono">pip install "clipper-gg[desktop]"</span> for the CLI + native app, or use the Windows installer above.</span></div></div>
         <div class="install-item"><span class="num">03</span><div><strong>Dry-run your folder</strong><span>See timestamps and preview frames before rendering anything. Run <span class="mono">clipper gpu</span> to verify NVENC and Ollama; add <span class="mono">--low-power</span> to cap CPU.</span></div></div>
         <div class="install-item"><span class="num">04</span><div><strong>Open the native app or optional web UI</strong><span><span class="mono">clipper desktop</span> (PySide6) · <span class="mono">clipper ui</span> for the browser UI.</span></div></div>
         <div class="install-item"><span class="num">05</span><div><strong>Optional: local AI review</strong><span>Install <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a>, run <span class="mono">ollama pull qwen2.5vl:7b</span>, then tick <span class="mono">AI review</span> in the app or add <span class="mono">--ai --ai-game Valorant</span>.</span></div></div>
@@ -285,13 +285,13 @@
       <div style="display:grid; gap:14px;">
         <div class="code-card">
           <div class="code-head"><span>Windows · PowerShell</span><button class="copy-btn" data-copy="winget install Gyan.FFmpeg
-python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.3.5/clipper_gg-0.3.5-py3-none-any.whl
+pip install &quot;clipper-gg[desktop]&quot;
 clipper --input &quot;D:\Captures&quot; --dry-run --low-power">Copy</button></div>
           <pre><span class="cmt"># 1. FFmpeg (source/CLI only)</span>
 <span class="cmd">winget install Gyan.FFmpeg</span>
 
-<span class="cmt"># 2. Clipper release wheel</span>
-<span class="cmd">python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.3.5/clipper_gg-0.3.5-py3-none-any.whl</span>
+<span class="cmt"># 2. Clipper from PyPI</span>
+<span class="cmd">pip install "clipper-gg[desktop]"</span>
 
 <span class="cmt"># 3. Dry run with a CPU cap</span>
 <span class="cmd">clipper --input "D:\Captures" --dry-run --low-power</span></pre>
@@ -382,8 +382,8 @@ clipper --input &quot;D:\Captures&quot; --ai --ai-game Valorant --dry-run">Copy<
         <p>GPU/NVENC is on by default when Clipper's real NVENC test passes. It handles the analysis proxy and optional re-encode; decoding may still use the CPU depending on the codec, and OpenCV motion scoring/audio RMS are CPU work. Run <span class="mono">clipper gpu</span> to see the test result. CPU defaults to a balanced half-core cap; choose Low (2 threads) or low-power mode to keep the machine usable.</p>
       </details>
       <details>
-        <summary>Why isn't it on PyPI yet?</summary>
-        <p>The name <span class="mono">clipper-gg</span> is reserved for it, but the first upload is waiting on a PyPI API token. The GitHub release wheel installs the same package today.</p>
+        <summary>Is it on PyPI?</summary>
+        <p>Yes — <span class="mono">pip install clipper-gg</span>. Add the <span class="mono">desktop</span> extra for PySide6: <span class="mono">pip install "clipper-gg[desktop]"</span>.</p>
       </details>
       <details>
         <summary>What about the done-for-you service?</summary>
