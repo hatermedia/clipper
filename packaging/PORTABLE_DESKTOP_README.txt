@@ -1,4 +1,4 @@
-Clipper 0.4.0 - Windows x64 native
+Clipper 0.5.0 - Windows x64 native
 =================================
 
 No Python. No FFmpeg. No browser. No console window.
@@ -21,9 +21,22 @@ detection, install Ollama from https://ollama.com and pull a vision model:
 Then tick "AI director (local)" in the app, pick Director mode and a game preset.
 The director transcribes the audio with local Whisper, reviews every 15-20s
 window with frames + transcript + audio energy, and keeps funny interactions,
-trolling, banter, reactions, clutches, and round wins. A long interaction can
-stay 30-90s; it does not force everything into a six-second peak.
+trolling, banter, reactions, goals, clutches, and round wins. A long interaction
+can stay 30-90s; it does not force everything into a six-second peak.
 
+Game profiles include Rocket League, Mimesis, Valorant, Apex Legends, CS2, and
+Generic. The app picks a preset from the footage path. Rocket League looks for
+goals, saves, passing plays, demos, overtime/0-second goals, and late-night
+fakes. Mimesis prioritises screaming, trolling, betrayal, prop chases, and
+friend banter.
+
+Game Guard is on by default. When Rocket League, Mimesis, Valorant, Apex, CS2,
+or another known game is running, Clipper pauses the director and unloads the
+Ollama model so the game gets the VRAM. It resumes when the game closes. Discord
+does not expose other apps' Rich Presence, so this uses the local process list.
+
+On a 6 GB card use qwen2.5vl:3b; the app selects it automatically when it is
+installed on a <=7 GB GPU. 7B is noticeably better and recommended on 8 GB+.
 The first run downloads the Whisper base.en model once (~145 MB) into
 %LOCALAPPDATA%\Clipper\models\huggingface. Window verdicts are cached under
 %LOCALAPPDATA%\Clipper\ai-cache. Nothing is uploaded.
@@ -31,8 +44,7 @@ The first run downloads the Whisper base.en model once (~145 MB) into
 Honest limits: game voice lines and human chat share one audio track, so the
 director can mistake tactical callouts for banter. It requires a humour cue
 before calling a conversation funny, but it still needs real labelled clips to
-tune. qwen2.5vl:7b uses about 6 GB of VRAM; qwen2.5vl:3b is smaller and less
-accurate. Whisper runs on the CPU; the vision model runs on the GPU.
+tune. Whisper runs on the CPU; the vision model runs on the GPU.
 
 PERFORMANCE
 -----------

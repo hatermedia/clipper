@@ -74,6 +74,24 @@ def model_available(model: str) -> bool:
     return False
 
 
+def unload_model(model: str, timeout: float = 8.0) -> bool:
+    """Ask Ollama to release the model's VRAM immediately."""
+
+    payload = {"model": model, "prompt": "", "keep_alive": 0, "stream": False}
+    request = urllib.request.Request(
+        f"{OLLAMA_URL}/api/generate",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response.read(200)
+        return True
+    except Exception:
+        return False
+
+
 def _cache_dir() -> Path:
     base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".cache")
     path = base / "Clipper" / "ai-cache"

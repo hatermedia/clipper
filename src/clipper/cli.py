@@ -150,6 +150,11 @@ def _build_batch_parser() -> argparse.ArgumentParser:
         help="maximum candidates sent to the vision model (default: 60)",
     )
     parser.add_argument(
+        "--game-guard",
+        action="store_true",
+        help="pause AI work and unload the model while a known game is running",
+    )
+    parser.add_argument(
         "--merge-gap",
         type=float,
         default=1.0,
@@ -375,6 +380,13 @@ def _run_batch(args: argparse.Namespace) -> int:
         ai_min_confidence=args.ai_min_confidence,
         ai_max_candidates=args.ai_max_candidates,
     )
+    if args.game_guard:
+        try:
+            from .gameguard import detect_running_game
+
+            settings.game_guard = detect_running_game
+        except Exception:
+            pass
     if args.low_power:
         settings.apply_low_power()
     settings.validate()

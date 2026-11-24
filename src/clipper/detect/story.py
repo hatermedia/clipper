@@ -14,6 +14,7 @@ import json
 import os
 import re
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -26,10 +27,10 @@ import numpy as np
 from ..config import DetectionSettings
 from ..ffmpeg import FFmpegBinaries, make_thumbnail
 from ..models import ClipWindow
-from .ai import AIError, AI_CROP, OLLAMA_URL, _parse_json, model_available
+from .ai import AIError, AI_CROP, OLLAMA_URL, _parse_json, model_available, unload_model
 from .audio import ScoreTrack
 
-PROMPT_VERSION = "director-v2"
+PROMPT_VERSION = "director-v3"
 ProgressFn = Callable[[float, str], None]
 MAX_SEGMENT_SECONDS = 120.0
 HUMOR_CUES = re.compile(
@@ -38,6 +39,49 @@ HUMOR_CUES = re.compile(
     r"stop|serious|holy|clip that|did you see|can't say)\b",
     re.IGNORECASE,
 )
+GAME_GUIDANCE = {
+    "rocket league": (
+        "This is Rocket League. Strong highlights: goals, aerial goals, redirects, "
+        "bicycle/ceiling shots, saves, assists, passing plays, demos, kickoff goals, "
+        "overtime and 0-second goals, and a visible score change. Ordinary driving, "
+        "boost pickups, rotation, and kickoff setup are filler. A late-night 'fakes' "
+        "or whiff chain can be funny when the audio/banter supports it."
+    ),
+    "mimesis": (
+        "This is Mimesis, a social/party horror game. Prioritise human reactions: "
+        "screaming, laughter, trolling, betrayal, fake-outs, prop chases, and friend "
+        "banter. The visuals may be dark or ambiguous, so the transcript is the main "
+        "signal. Quiet walking and ordinary exploration are filler."
+    ),
+    "valorant": (
+        "This is Valorant. Strong highlights: kill-feed entries, multikills, aces, "
+        "clutches, round wins, spike plants/defuses, and clear firefights. Tactical "
+        "callouts and buy-phase talk are filler unless people are genuinely joking. "
+        "Read the kill feed and round banner when visible."
+    ),
+    "apex legends": (
+        "This is Apex Legends. Strong highlights: squad wipes, knocks, clutches, "
+        "revives, third parties, big damage, and genuine reactions. Looting and "
+        "rotating are filler."
+    ),
+    "counter-strike 2": (
+        "This is Counter-Strike 2. Strong highlights: multikills, aces, clutches, "
+        "bomb plants/defuses, round wins, and clear firefights. Buy phase and "
+        "ordinary rotations are filler."
+    ),
+}
+
+
+def _game_guidance(game: str) -> str:
+    key = game.strip().lower()
+    for name, text in GAME_GUIDANCE.items():
+        if name in key:
+            return text
+    return (
+        "Use the visible action, score, HUD, and transcript. A highlight is a clear "
+        "goal, kill, clutch, round result, genuine reaction, or funny interaction. "
+        "Ordinary traversal and menu time are filler."
+    )
 
 
 @dataclass
@@ -97,7 +141,7 @@ def _ollama_chat(
         "options": {
             "temperature": 0.1,
             "num_predict": num_predict,
-            "num_ctx": 8192,
+            "num_ctx": 4096,
             "num_gpu": 99,
         },
         "keep_alive": "10m",
@@ -237,8 +281,10 @@ def _contact_sheet(
     return output
 
 
-def _window_prompt(window: StoryWindow) -> str:
+def _window_prompt(window: StoryWindow, game: str) -> str:
     return f"""You are reviewing one window of a gaming clip for a highlight editor.
+Game: {game or "generic"}.
+{_game_guidance(game)}
 Window: {window.start:.1f}s to {window.end:.1f}s.
 Audio energy: {window.audio_label}.
 Transcript or game audio in this window: {window.transcript or "(none)"}
@@ -247,8 +293,8 @@ The timestamps are drawn on each frame.
 
 Decide whether this window contains something worth keeping in a highlight reel:
 funny banter or trolling, a genuine reaction, rage, a clutch, a multikill,
-a round result, a spike/objective play, or a clearly unusual moment.
-Buy phase, menus, loading screens, walking, and ordinary filler are not interesting.
+a round result, a notable goal/play, a spike/objective play, or a clearly unusual moment.
+Buy phase, menus, loading screens, walking, ordinary driving, and filler are not interesting.
 Ordinary game callouts and strategy talk ("enemy remaining", "reloading", "B site")
 are NOT funny banter. Banter requires people joking, teasing, laughing, or reacting.
 Ignore game voice lines when judging whether people are being funny.
@@ -256,7 +302,7 @@ Ignore game voice lines when judging whether people are being funny.
 Scoring: 0.0 filler/menu, 0.3-0.5 ordinary gameplay, 0.6-0.8 notable,
 0.8-1.0 must keep. Be conservative. Do not invent audio or events.
 Return JSON only:
-{{"interesting": true|false, "score": 0.0, "kind": "funny|banter|rage|clutch|multikill|round|reaction|gameplay|filler", "summary": "one short sentence", "evidence": "what you saw or heard"}}"""
+{{"interesting": true|false, "score": 0.0, "kind": "funny|banter|rage|clutch|multikill|goal|round|reaction|gameplay|filler", "summary": "one short sentence", "evidence": "what you saw or heard"}}"""
 
 
 def _review_window(
@@ -264,8 +310,9 @@ def _review_window(
     window: StoryWindow,
     model: str,
     bins: FFmpegBinaries,
+    game: str,
 ) -> dict[str, Any]:
-    key = _cache_key(video, f"window:{window.start:.2f}-{window.end:.2f}", model)
+    key = _cache_key(video, f"window:{window.start:.2f}-{window.end:.2f}:{game.lower()}", model)
     if key.is_file():
         try:
             return json.loads(key.read_text(encoding="utf-8"))
@@ -279,7 +326,7 @@ def _review_window(
         encoded = base64.b64encode(sheet.read_bytes()).decode("ascii")
         verdict = _ollama_chat(
             model,
-            _window_prompt(window),
+            _window_prompt(window, game),
             images=[encoded],
             num_predict=180,
         )
@@ -435,6 +482,25 @@ def direct_clip(
             f"Run: ollama pull {settings.ai_model}"
         )
 
+    def wait_for_game(stage: str) -> None:
+        guard = settings.game_guard
+        if guard is None:
+            return
+        game = guard()
+        if not game:
+            return
+        unload_model(settings.ai_model)
+        if progress:
+            progress(0.86, f"AI paused · {game} is running")
+        while guard():
+            time.sleep(2.0)
+            if progress:
+                progress(0.86, f"AI paused · {game} is running")
+        if progress:
+            progress(0.86, f"AI resumed · {stage}")
+
+    wait_for_game("transcribing")
+
     warnings: list[str] = []
     lines: list[TranscriptLine] = []
     if wav is not None and wav.is_file():
@@ -470,8 +536,11 @@ def direct_clip(
                 0.87 + 0.08 * index / max(1, count),
                 f"AI director: watching {index + 1}/{count}",
             )
+        wait_for_game(f"watching {index + 1}/{count}")
         try:
-            window.visual = _review_window(video, window, settings.ai_model, bins)
+            window.visual = _review_window(
+                video, window, settings.ai_model, bins, settings.ai_game
+            )
         except AIError as exc:
             warnings.append(f"AI director window failed: {exc}")
             window.visual = {

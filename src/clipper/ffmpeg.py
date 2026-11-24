@@ -63,6 +63,37 @@ def _bins(binaries: FFmpegBinaries | None) -> FFmpegBinaries:
     return binaries or find_ffmpeg()
 
 
+def nvidia_memory_mb() -> int | None:
+    """Total VRAM reported by nvidia-smi, or None when unavailable."""
+
+    import shutil
+
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return None
+    try:
+        proc = subprocess.run(
+            [
+                smi,
+                "--query-gpu=memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            creationflags=_NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    for line in proc.stdout.splitlines():
+        line = line.strip().split(",")[0].strip()
+        if line.isdigit():
+            return int(line)
+    return None
+
+
 def ffmpeg_version(binaries: FFmpegBinaries | None = None) -> str:
     bins = _bins(binaries)
     proc = _run([bins.ffmpeg, "-version"])

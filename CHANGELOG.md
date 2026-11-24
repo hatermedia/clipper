@@ -6,6 +6,33 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-24
+
+### Added
+
+- **Rocket League and Mimesis game profiles**, plus automatic preset selection
+  from the footage path. The director now looks for Rocket League goals, saves,
+  passing plays, demos, overtime/0-second goals and late-night fakes, and for
+  Mimesis screaming, trolling, betrayal, prop chases, and friend banter.
+- **Game Guard.** Clipper detects known running games from the local process
+  list, pauses AI work, and unloads the Ollama model so the game keeps the VRAM.
+  It checks before analysis and between every director window, and resumes when
+  the game closes. Available in the native app and as `--game-guard`.
+- **6 GB GPU support.** On cards with <=7 GB VRAM the app selects
+  `qwen2.5vl:3b` when installed and the director uses a 4k context; 7B remains
+  the recommendation for 8 GB+. The 3B model is less accurate, but playable on
+  a 6 GB card.
+- Larger window controls (42x30) with larger glyphs.
+
+### Changed
+
+- Game-specific guidance is included in every window prompt and cached per
+  game.
+- `Pause AI while gaming` is on by default and shows the detected game in the
+  control panel.
+- Discord does not expose other games' Rich Presence to third-party apps, so
+  Game Guard uses the local process list rather than pretending to read Discord.
+
 ## [0.4.0] - 2026-11-24
 
 ### Added
@@ -254,7 +281,8 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/hatermedia/clipper/releases/tag/v0.5.0
 [0.4.0]: https://github.com/hatermedia/clipper/releases/tag/v0.4.0
 [0.3.5]: https://github.com/hatermedia/clipper/releases/tag/v0.3.5
 [0.3.4]: https://github.com/hatermedia/clipper/releases/tag/v0.3.4

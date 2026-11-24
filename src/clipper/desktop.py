@@ -11,6 +11,7 @@ import argparse
 import os
 import sys
 import tempfile
+import threading
 import traceback
 from dataclasses import replace
 from pathlib import Path
@@ -57,8 +58,9 @@ from .config import (
     find_ffmpeg,
     set_low_priority,
 )
-from .detect.ai import DEFAULT_MODEL, ollama_status
-from .ffmpeg import FFmpegError, ffmpeg_version, nvenc_available
+from .detect.ai import DEFAULT_MODEL, ollama_status, unload_model
+from .ffmpeg import FFmpegError, ffmpeg_version, nvenc_available, nvidia_memory_mb
+from .gameguard import detect_running_game
 from .models import AnalysisSummary
 from .pipeline import analyze_target, export_analysis, scan_inputs
 from .update import (
@@ -697,6 +699,11 @@ class MainWindow(QMainWindow):
         self.ai_models = vision
         self.ai_available = bool(vision)
         self.ai_default = DEFAULT_MODEL if DEFAULT_MODEL.lower() in installed else (vision[0] if vision else DEFAULT_MODEL)
+        self.gpu_vram_mb = nvidia_memory_mb()
+        self.low_vram = bool(self.gpu_vram_mb and self.gpu_vram_mb <= 7000)
+        if self.low_vram and "qwen2.5vl:3b" in installed:
+            self.ai_default = "qwen2.5vl:3b"
+        self._detected_game: str | None = None
         self.update_release: ReleaseInfo | None = None
         self.update_installer: Path | None = None
         self.update_check_worker: UpdateCheckWorker | None = None
@@ -719,6 +726,10 @@ class MainWindow(QMainWindow):
             self.set_input(initial_input, scan=False)
         self._update_status()
         QTimer.singleShot(2500, lambda: self.check_updates(manual=False))
+        self.game_timer = QTimer(self)
+        self.game_timer.timeout.connect(self._poll_game)
+        self.game_timer.start(5000)
+        QTimer.singleShot(400, self._poll_game)
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
@@ -916,6 +927,10 @@ class MainWindow(QMainWindow):
         if preferred >= 0:
             self.ai_model.setCurrentIndex(preferred)
         self.ai_model.setEnabled(self.ai_available)
+        if self.low_vram:
+            self.ai_model.setToolTip(
+                f"{self.gpu_vram_mb} MB VRAM detected. Use qwen2.5vl:3b for a 6 GB card."
+            )
         ai_controls.addWidget(self.ai_model, 0, 1)
         ai_controls.addWidget(QLabel("Game"), 1, 0)
         self.ai_game = QComboBox()
@@ -923,10 +938,12 @@ class MainWindow(QMainWindow):
             ("Valorant", "Valorant"),
             ("Apex Legends", "Apex Legends"),
             ("CS2", "Counter-Strike 2"),
+            ("Rocket League", "Rocket League"),
+            ("Mimesis", "Mimesis"),
             ("Generic", "generic"),
         ):
             self.ai_game.addItem(label, value)
-        self.ai_game.setCurrentIndex(3)
+        self.ai_game.setCurrentIndex(max(0, self.ai_game.findData("generic")))
         ai_controls.addWidget(self.ai_game, 1, 1)
         ai_controls.addWidget(QLabel("AI mode"), 2, 0)
         self.ai_mode = QComboBox()
@@ -939,6 +956,21 @@ class MainWindow(QMainWindow):
         ai_controls.addWidget(self.ai_mode, 2, 1)
         left.addLayout(ai_controls)
         self.ai.setEnabled(self.ai_available)
+
+        game_row = QHBoxLayout()
+        self.game_guard = QCheckBox("Pause AI while gaming")
+        self.game_guard.setChecked(True)
+        self.game_guard.setToolTip(
+            "Detects known games and unloads the Ollama model so the game gets the VRAM. "
+            "Discord does not expose other games' presence to apps, so Clipper watches "
+            "the local process list instead."
+        )
+        self.game_state = QLabel("")
+        self.game_state.setObjectName("Status")
+        game_row.addWidget(self.game_guard)
+        game_row.addWidget(self.game_state)
+        game_row.addStretch(1)
+        left.addLayout(game_row)
 
         gpu_row = QHBoxLayout()
         self.gpu = QCheckBox("Use NVIDIA GPU (NVENC)")
@@ -1151,7 +1183,8 @@ class MainWindow(QMainWindow):
             self.ai.setChecked(bool(ai_default))
             stored_model = str(self.qsettings.value("ai_model", ""))
             if stored_model and self.ai_model.findText(stored_model) >= 0:
-                self.ai_model.setCurrentText(stored_model)
+                if not (self.low_vram and "qwen2.5vl:3b" in self.ai_models):
+                    self.ai_model.setCurrentText(stored_model)
             stored_game = str(self.qsettings.value("ai_game", ""))
             if stored_game:
                 game_index = self.ai_game.findData(stored_game)
@@ -1163,6 +1196,9 @@ class MainWindow(QMainWindow):
                 self.ai_mode.setCurrentIndex(mode_index)
         else:
             self.ai.setChecked(False)
+        guard_default = self.qsettings.value("game_guard", "true") in (True, "true")
+        self.game_guard.setChecked(bool(guard_default))
+        self.game_guard.toggled.connect(lambda _: self._poll_game())
         self.ai.toggled.connect(self._ai_changed)
         self.ai_model.currentTextChanged.connect(lambda _: self._ai_changed(self.ai.isChecked()))
         self.ai_mode.currentIndexChanged.connect(lambda _: self._ai_changed(self.ai.isChecked()))
@@ -1190,6 +1226,7 @@ class MainWindow(QMainWindow):
         self.qsettings.setValue("ai_model", self.ai_model.currentText())
         self.qsettings.setValue("ai_game", str(self.ai_game.currentData()))
         self.qsettings.setValue("ai_mode", str(self.ai_mode.currentData()))
+        self.qsettings.setValue("game_guard", self.game_guard.isChecked())
         self.qsettings.setValue("low_power", self.low_power.isChecked())
         self.qsettings.setValue("input", self.input_edit.text())
         self.qsettings.setValue("output", self.output_edit.text())
@@ -1434,12 +1471,20 @@ class MainWindow(QMainWindow):
         self.input_edit.setText(str(target))
         self.input_edit.setCursorPosition(0)
         lowered = str(target).lower()
-        if "valorant" in lowered:
-            self.ai_game.setCurrentIndex(0)
-        elif "apex" in lowered:
-            self.ai_game.setCurrentIndex(1)
-        elif "counter-strike" in lowered or "cs2" in lowered:
-            self.ai_game.setCurrentIndex(2)
+        for token, preset in (
+            ("valorant", "Valorant"),
+            ("apex", "Apex Legends"),
+            ("counter-strike", "Counter-Strike 2"),
+            ("cs2", "Counter-Strike 2"),
+            ("rocket league", "Rocket League"),
+            ("rocketleague", "Rocket League"),
+            ("mimesis", "Mimesis"),
+        ):
+            if token in lowered:
+                index = self.ai_game.findData(preset)
+                if index >= 0:
+                    self.ai_game.setCurrentIndex(index)
+                break
         if not self.output_edit.text().strip() or self.output_edit.text().strip() == "trimmed":
             base = target.parent if target.is_file() else target
             self.output_edit.setText(str(base / "trimmed"))
@@ -1500,6 +1545,7 @@ class MainWindow(QMainWindow):
             ai_model=self.ai_model.currentText().replace(" (not installed)", ""),
             ai_game=str(self.ai_game.currentData() or "generic"),
             ai_mode=str(self.ai_mode.currentData() or "director"),
+            game_guard=self._pause_for_game if self.game_guard.isChecked() else None,
         )
         if self.low_power.isChecked():
             settings.apply_low_power()
@@ -1514,6 +1560,20 @@ class MainWindow(QMainWindow):
                 kind="critical",
             )
             return
+        if self.ai.isChecked() and self.game_guard.isChecked():
+            game = self._pause_for_game()
+            if game:
+                show_message(
+                    self,
+                    "Gaming detected",
+                    f"{game} is running. Clipper paused AI to keep the VRAM free.",
+                    kind="warning",
+                    detail=(
+                        "Close the game and try again, or untick "
+                        "'Pause AI while gaming' if you want to analyze anyway."
+                    ),
+                )
+                return
         if not self.files:
             self.scan()
         if not self.files:
@@ -1724,6 +1784,48 @@ class MainWindow(QMainWindow):
             self.showNormal()
         else:
             self.showMaximized()
+
+    def _busy(self) -> bool:
+        return bool(
+            (self.worker and self.worker.isRunning())
+            or (self.export_worker and self.export_worker.isRunning())
+            or (self.update_download_worker and self.update_download_worker.isRunning())
+        )
+
+    def _pause_for_game(self) -> str | None:
+        if not self.game_guard.isChecked():
+            return None
+        from .gameguard import detect_running_game
+
+        return detect_running_game()
+
+    def _poll_game(self) -> None:
+        if not hasattr(self, "game_state"):
+            return
+        if not self.game_guard.isChecked():
+            self.game_state.setText("guard off")
+            self.game_state.setStyleSheet("color: #68686f;")
+            self._detected_game = None
+            return
+        from .gameguard import detect_running_game
+
+        game = detect_running_game()
+        if game:
+            self.game_state.setText(f"{game} / paused")
+            self.game_state.setStyleSheet("color: #f4b434;")
+            if game != self._detected_game:
+                self._detected_game = game
+                if not self._busy() and self.ai.isChecked():
+                    model = self.ai_model.currentText().replace(" (not installed)", "")
+                    threading.Thread(
+                        target=unload_model,
+                        args=(model,),
+                        daemon=True,
+                    ).start()
+        else:
+            self._detected_game = None
+            self.game_state.setText("none")
+            self.game_state.setStyleSheet("color: #68686f;")
 
     def changeEvent(self, event) -> None:  # noqa: N802
         if event.type() == QEvent.WindowStateChange and hasattr(self, "max_btn"):

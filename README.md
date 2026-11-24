@@ -9,7 +9,7 @@ Clipper is a native Windows desktop app and Python CLI that scans a folder of ga
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![Local-first](https://img.shields.io/badge/local--first-no%20uploads-22d3ee.svg)](#privacy)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.4.0](https://github.com/hatermedia/clipper/releases/tag/v0.4.0)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.5.0](https://github.com/hatermedia/clipper/releases/tag/v0.5.0)
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
@@ -30,7 +30,7 @@ Clipper is a native Windows desktop app and Python CLI that scans a folder of ga
 - **Native Windows app** — Qt desktop UI with a native folder picker, drag-and-drop, preview frames, progress, cancel, and export. No browser tab, no console window, no background command prompt.
 - **Proper Windows installer** — per-user install, no admin prompt, Desktop/Start Menu shortcuts, and a normal uninstaller. The portable zip is still available.
 - **Built-in updates** — checks GitHub Releases, shows an update bar in the app, downloads the installer, verifies its SHA-256, installs silently, and reopens.
-- **Optional AI director** - transcribes the clip locally, reviews every window with frames + transcript + audio energy, and keeps the funny interactions, trolling, banter, reactions, clutches, and round wins. Long story beats can stay 30-90s instead of being forced into peak windows. No cloud calls.
+- **Optional AI director** - transcribes the clip locally, reviews every window with frames + transcript + audio energy, and keeps the funny interactions, trolling, banter, reactions, clutch goals, and round wins. Game profiles for Rocket League, Mimesis, Valorant, Apex, and CS2. Game Guard unloads the model while you play. No cloud calls.
 - **GPU + CPU controls** — GPU is enabled by default when a real one-frame NVENC test passes; NVENC handles the analysis proxy, re-encode, and the local AI runtime. CPU defaults to a balanced thread cap, with Low (2 threads), Max, and a low-power mode that lowers process priority and uses a 256px/2fps proxy.
 - **Dry run** — see timestamps and preview frames before rendering anything.
 - **Optional local web UI** — FastAPI + one HTML file for browser/remote use. No Node build pipeline.
@@ -57,7 +57,7 @@ No shade to the bigger tools — they do things Clipper doesn't. Clipper is for 
 
 No Python install. No FFmpeg install. No console. No admin rights.
 
-**[Download ClipperSetup-0.4.0.exe](https://github.com/hatermedia/clipper/releases/download/v0.4.0/ClipperSetup-0.4.0.exe)** (~155 MB)
+**[Download ClipperSetup-0.5.0.exe](https://github.com/hatermedia/clipper/releases/download/v0.5.0/ClipperSetup-0.5.0.exe)** (~155 MB)
 
 The installer places Clipper in `%LOCALAPPDATA%\Programs\Clipper`, adds Desktop
 and Start Menu shortcuts, registers an uninstaller in Windows Settings, and can
@@ -70,7 +70,7 @@ to install a download that does not match.
 Prefer a portable copy? The zip still works: unzip it and double-click
 `Clipper.exe`.
 
-**[Download clipper-0.4.0-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.4.0/clipper-0.4.0-windows-x64-native.zip)** (~225 MB)
+**[Download clipper-0.5.0-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.5.0/clipper-0.5.0-windows-x64-native.zip)** (~225 MB)
 
 ### Native app from source
 
@@ -143,7 +143,7 @@ pipx install clipper-gg
 ### Release wheel (fallback)
 
 ```bash
-python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.4.0/clipper_gg-0.4.0-py3-none-any.whl
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.5.0/clipper_gg-0.5.0-py3-none-any.whl
 ```
 
 The installed command is `clipper`; the Python import is `clipper`; the PyPI distribution is `clipper-gg` (the plain `clipper` name on PyPI is an unrelated 2014 bioinformatics package).
@@ -207,6 +207,19 @@ clipper --input "D:\Valorant" --ai --ai-mode review --dry-run
 In the native app, tick **AI director (local)**, pick the model, game, and mode,
 and run as usual. `ollama ps` shows whether the vision model is on the GPU.
 
+- **Game profiles:** Rocket League, Mimesis, Valorant, Apex Legends, CS2, or
+  Generic. The native app selects a preset from the footage path. Rocket League
+  looks for goals/saves/passes/demos and late-night fakes; Mimesis prioritises
+  screaming, trolling, betrayal, and friend banter.
+- **Game Guard:** when Rocket League, Mimesis, Valorant, Apex, CS2, or another
+  known game is running, Clipper pauses the director and unloads the Ollama model
+  so the game gets the VRAM. It checks before analysis and between every window,
+  then resumes when the game exits. `--game-guard` enables it from the CLI.
+  Discord does not expose other games' Rich Presence to third-party apps, so this
+  uses the local process list — the reliable signal.
+- **6 GB GPUs:** the app selects `qwen2.5vl:3b` when installed on a <=7 GB card
+  and uses a 4k context. It is noticeably less accurate than 7B; use 7B on 8 GB+
+  for the best results.
 - Default model: `qwen2.5vl:7b` (~6 GB VRAM at 8k context, 100% GPU on an RTX 3080).
 - Whisper `base.en` runs on the CPU in int8: about 2.5s for a 90-second clip.
   The model is downloaded once (~145 MB) to
@@ -274,6 +287,7 @@ Every run also writes `clipper-report-*.json` with per-file media info, clips, s
 | `--ai-model` | `qwen2.5vl:7b` | Ollama vision model |
 | `--ai-game` | `generic` | Game context for the prompt, e.g. `Valorant` |
 | `--ai-mode` | `director` | `director` watches the whole clip; `review` checks peaks only |
+| `--game-guard` | off | Pause AI and unload the model while a known game is running |
 | `--ai-min-confidence` | `0.55` | Minimum model confidence to keep a candidate |
 | `--ai-max-candidates` | `60` | Cap on windows sent to the vision model |
 | `--merge-gap` | `1.0` | Merge clips closer than this |

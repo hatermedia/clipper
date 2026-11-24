@@ -6,6 +6,7 @@ import sys
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import Callable
 
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".avi"}
 
@@ -94,6 +95,9 @@ class DetectionSettings:
     ai_mode: str = "director"
     ai_min_confidence: float = 0.55
     ai_max_candidates: int = 60
+    game_guard: Callable[[], str | None] | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def validate(self) -> None:
         if not 0.0 <= self.sensitivity <= 1.0:
