@@ -101,6 +101,7 @@ def _settings_payload(settings: DetectionSettings) -> dict[str, object]:
         "ai": settings.ai,
         "ai_model": settings.ai_model,
         "ai_game": settings.ai_game,
+        "ai_mode": settings.ai_mode,
     }
 
 
@@ -120,6 +121,7 @@ def analyze_file(
     previews: list[str] = []
     audio_track = ScoreTrack(np.array([]), np.array([]))
     visual_track = ScoreTrack(np.array([]), np.array([]))
+    wav: Path | None = None
 
     with tempfile.TemporaryDirectory(prefix="clipper_") as temp_raw:
         temp = Path(temp_raw)
@@ -165,7 +167,7 @@ def analyze_file(
         except (FFmpegError, OSError, RuntimeError) as exc:
             warnings.append(f"Visual analysis skipped: {exc}")
 
-        if audio_track.empty and visual_track.empty:
+        if audio_track.empty and visual_track.empty and not settings.ai:
             warnings.append("No usable highlight signal was detected.")
             return FileAnalysis(
                 path=str(path.resolve()),
@@ -189,21 +191,39 @@ def analyze_file(
 
         _report(progress, 0.88, "Selecting and merging clips")
         if settings.ai:
-            try:
-                from .detect.ai import build_candidates, review_candidates
+            if settings.ai_mode == "director":
+                try:
+                    from .detect.story import direct_clip
 
-                candidates = build_candidates(grid, audio, visual, combined, settings, info.duration)
-                clips, ai_warnings = review_candidates(
-                    path,
-                    candidates,
-                    settings,
-                    info.duration,
-                    progress=progress,
-                )
-                warnings.extend(ai_warnings)
-            except Exception as exc:
-                warnings.append(f"AI review skipped: {exc}")
-                clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
+                    clips, ai_warnings = direct_clip(
+                        path,
+                        info.duration,
+                        settings,
+                        wav,
+                        audio_track,
+                        bins,
+                        progress=progress,
+                    )
+                    warnings.extend(ai_warnings)
+                except Exception as exc:
+                    warnings.append(f"AI director skipped: {exc}")
+                    clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
+            else:
+                try:
+                    from .detect.ai import build_candidates, review_candidates
+
+                    candidates = build_candidates(grid, audio, visual, combined, settings, info.duration)
+                    clips, ai_warnings = review_candidates(
+                        path,
+                        candidates,
+                        settings,
+                        info.duration,
+                        progress=progress,
+                    )
+                    warnings.extend(ai_warnings)
+                except Exception as exc:
+                    warnings.append(f"AI review skipped: {exc}")
+                    clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
         else:
             clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
 

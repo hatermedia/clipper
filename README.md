@@ -2,14 +2,14 @@
 
 **Raw gameplay in. Highlights out.**
 
-Clipper is a native Windows desktop app and Python CLI that scans a folder of gameplay, finds the loud reactions and sudden motion, merges overlapping moments, and cuts them into ready-to-post clips with FFmpeg. It runs entirely on your machine — no browser, no uploads, no accounts, no cloud. Optional AI review runs locally through Ollama.
+Clipper is a native Windows desktop app and Python CLI that scans a folder of gameplay, finds the loud reactions and sudden motion, merges overlapping moments, and cuts them into ready-to-post clips with FFmpeg. It runs entirely on your machine - no browser, no uploads, no accounts, no cloud. The optional AI director adds local speech transcription and whole-clip story detection.
 
 [![CI](https://github.com/hatermedia/clipper/actions/workflows/ci.yml/badge.svg)](https://github.com/hatermedia/clipper/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22d3ee.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![Local-first](https://img.shields.io/badge/local--first-no%20uploads-22d3ee.svg)](#privacy)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.3.5](https://github.com/hatermedia/clipper/releases/tag/v0.3.5)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.4.0](https://github.com/hatermedia/clipper/releases/tag/v0.4.0)
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
@@ -30,7 +30,7 @@ Clipper is a native Windows desktop app and Python CLI that scans a folder of ga
 - **Native Windows app** — Qt desktop UI with a native folder picker, drag-and-drop, preview frames, progress, cancel, and export. No browser tab, no console window, no background command prompt.
 - **Proper Windows installer** — per-user install, no admin prompt, Desktop/Start Menu shortcuts, and a normal uninstaller. The portable zip is still available.
 - **Built-in updates** — checks GitHub Releases, shows an update bar in the app, downloads the installer, verifies its SHA-256, installs silently, and reopens.
-- **Optional local AI review** — sends a few frames per candidate to a local Ollama vision model on the GPU. It skips black screens, desktops, menus, and loading screens, and looks for kill-feed entries, round results, spike events, and firefights. No cloud calls.
+- **Optional AI director** - transcribes the clip locally, reviews every window with frames + transcript + audio energy, and keeps the funny interactions, trolling, banter, reactions, clutches, and round wins. Long story beats can stay 30-90s instead of being forced into peak windows. No cloud calls.
 - **GPU + CPU controls** — GPU is enabled by default when a real one-frame NVENC test passes; NVENC handles the analysis proxy, re-encode, and the local AI runtime. CPU defaults to a balanced thread cap, with Low (2 threads), Max, and a low-power mode that lowers process priority and uses a 256px/2fps proxy.
 - **Dry run** — see timestamps and preview frames before rendering anything.
 - **Optional local web UI** — FastAPI + one HTML file for browser/remote use. No Node build pipeline.
@@ -43,7 +43,7 @@ Most auto-clippers are built around one game, one streaming platform, or one ver
 | | Clipper | Typical auto-clipper |
 |---|---|---|
 | Input | Any local gameplay folder | One platform / one game |
-| Detection | Audio + motion, optional local VLM | Chat reactions, speech models, or cloud AI |
+| Detection | Audio + motion + optional whole-clip AI director | Chat reactions, speech models, or cloud AI |
 | Setup | Native Windows app, or Python + FFmpeg | Node, API keys, browser sessions, model downloads |
 | Export | Lossless stream copy by default | Re-encode everything |
 | Privacy | 100% local | Often uploads footage |
@@ -57,7 +57,7 @@ No shade to the bigger tools — they do things Clipper doesn't. Clipper is for 
 
 No Python install. No FFmpeg install. No console. No admin rights.
 
-**[Download ClipperSetup-0.3.5.exe](https://github.com/hatermedia/clipper/releases/download/v0.3.5/ClipperSetup-0.3.5.exe)** (~155 MB)
+**[Download ClipperSetup-0.4.0.exe](https://github.com/hatermedia/clipper/releases/download/v0.4.0/ClipperSetup-0.4.0.exe)** (~155 MB)
 
 The installer places Clipper in `%LOCALAPPDATA%\Programs\Clipper`, adds Desktop
 and Start Menu shortcuts, registers an uninstaller in Windows Settings, and can
@@ -70,7 +70,7 @@ to install a download that does not match.
 Prefer a portable copy? The zip still works: unzip it and double-click
 `Clipper.exe`.
 
-**[Download clipper-0.3.5-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.3.5/clipper-0.3.5-windows-x64-native.zip)** (~225 MB)
+**[Download clipper-0.4.0-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.4.0/clipper-0.4.0-windows-x64-native.zip)** (~225 MB)
 
 ### Native app from source
 
@@ -143,7 +143,7 @@ pipx install clipper-gg
 ### Release wheel (fallback)
 
 ```bash
-python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.3.5/clipper_gg-0.3.5-py3-none-any.whl
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.4.0/clipper_gg-0.4.0-py3-none-any.whl
 ```
 
 The installed command is `clipper`; the Python import is `clipper`; the PyPI distribution is `clipper-gg` (the plain `clipper` name on PyPI is an unrelated 2014 bioinformatics package).
@@ -163,7 +163,7 @@ clipper --input "D:\Captures" --output "D:\Highlights"
 # 4. Use NVENC for the proxy/re-encode (default when available)
 clipper --input "D:\Captures" --gpu --reencode --encoder auto
 
-# 5. Review candidates with a local GPU vision model
+# 5. Let the local AI director watch the clip with audio
 clipper --input "D:\Captures" --ai --ai-game Valorant --dry-run
 
 # 6. Check for or install a newer release
@@ -181,40 +181,47 @@ clipper ui
 optional web UI starts at **http://127.0.0.1:8765** and binds to localhost.
 Footage never leaves the machine.
 
-## Local AI review (optional)
+## AI director (local, optional)
 
-The default detector is audio + motion. AI review is a second stage: Clipper
-builds a wider candidate list, then asks a local vision model whether each
-candidate is real gameplay and whether a concrete event is visible. It looks for
-kill-feed entries, multikill/ace/clutch text, round-result banners, score
-changes, spike events, and active firefights.
+Audio + motion still provide timing and a fallback. With AI enabled, the
+**director** watches the whole clip instead of only checking peaks:
+
+1. Whisper transcribes the audio locally (game chat, reactions, banter, game VO).
+2. The clip is split into 15–20s windows. Each window gets four frames plus its
+   transcript and audio energy, and the local vision model decides whether it is
+   filler, gameplay, a reaction, a clutch, or funny banter.
+3. Adjacent interesting windows become one segment, so a 30–90s funny
+   interaction stays together instead of being chopped into six-second peaks.
+4. For conversation clips the cut is tightened to the spoken exchange; for
+   gameplay it keeps the window around the event.
 
 ```bash
 # One-time: install Ollama from https://ollama.com, then pull a vision model
 ollama pull qwen2.5vl:7b
 
-# Review with Valorant context
+# Director mode is the default when AI is on
 clipper --input "D:\Valorant" --ai --ai-game Valorant --dry-run
+clipper --input "D:\Valorant" --ai --ai-mode review --dry-run
 ```
 
-In the native app, tick **AI review (local)**, pick the model and game, and run
-as usual. The header still reports `GPU: NVENC on`; `ollama ps` shows whether the
-model is on the GPU.
+In the native app, tick **AI director (local)**, pick the model, game, and mode,
+and run as usual. `ollama ps` shows whether the vision model is on the GPU.
 
-- Default: `qwen2.5vl:7b` (~6 GB VRAM at 8k context, 100% GPU on an RTX 3080).
-- Smaller/faster: `qwen2.5vl:3b`, with lower accuracy.
-- The model receives three center-cropped frames plus a zoomed top-HUD strip
-  (score/timer/kill feed), so it can read HUD text instead of guessing.
-- A blank-frame gate rejects black/desktop frames before the model is called.
-- Verdicts are cached under `%LOCALAPPDATA%\Clipper\ai-cache`; re-runs are fast.
-- Everything is local. No frames or prompts leave the machine.
+- Default model: `qwen2.5vl:7b` (~6 GB VRAM at 8k context, 100% GPU on an RTX 3080).
+- Whisper `base.en` runs on the CPU in int8: about 2.5s for a 90-second clip.
+  The model is downloaded once (~145 MB) to
+  `%LOCALAPPDATA%\Clipper\models\huggingface`.
+- Window verdicts are cached in `%LOCALAPPDATA%\Clipper\ai-cache`; re-runs are fast.
+- Director can return 4–120s segments. `--ai-mode review` keeps the older,
+  faster pass that only reviews audio/motion peaks.
+- Everything is local. No frames, audio, or prompts leave the machine.
 
-**Honest limits:** this is a review layer, not a trained kill detector. It is
-good at skipping menus, loading screens, black frames, and dead time, and it
-finds many clear firefights and round ends. It can still miss a quiet kill or
-accept a tense standoff. Preview the clips before exporting. Smaller vision
-models are noticeably worse; a 3B model hallucinated highlights on black frames
-during testing, which is why 7B is the default.
+**Honest limits:** this is not a trained comedy detector yet. Game voice lines
+and human voice chat are mixed in the same audio track, and Whisper transcribes
+both. Tactical callouts can look like banter in text, so the director also
+requires a humour cue (profanity, teasing, laughter words, “bro”, etc.) before
+it sells a conversation as funny. It still needs a labelled set of real funny
+clips across games to tune properly. Review the results before exporting.
 
 ## Updates
 
@@ -263,9 +270,10 @@ Every run also writes `clipper-report-*.json` with per-file media info, clips, s
 | `--threads` | balanced | CPU thread cap; `0` = let FFmpeg decide |
 | `--gpu` | auto | Hardware decode + NVENC proxy/re-encode when the NVENC test passes; use `--no-gpu` to force CPU |
 | `--low-power` | off | 2 threads, 2fps/256px proxy, below-normal priority |
-| `--ai` | off | Review candidates with a local Ollama vision model |
+| `--ai` | off | Use the local AI director (Ollama + local Whisper) |
 | `--ai-model` | `qwen2.5vl:7b` | Ollama vision model |
 | `--ai-game` | `generic` | Game context for the prompt, e.g. `Valorant` |
+| `--ai-mode` | `director` | `director` watches the whole clip; `review` checks peaks only |
 | `--ai-min-confidence` | `0.55` | Minimum model confidence to keep a candidate |
 | `--ai-max-candidates` | `60` | Cap on windows sent to the vision model |
 | `--merge-gap` | `1.0` | Merge clips closer than this |

@@ -1,4 +1,4 @@
-Clipper 0.3.5 - Windows x64 native
+Clipper 0.4.0 - Windows x64 native
 =================================
 
 No Python. No FFmpeg. No browser. No console window.
@@ -11,22 +11,28 @@ Double-click Clipper.exe.
 2. Review the detected highlights and preview frames.
 3. Pick an output folder and export.
 
-AI REVIEW (OPTIONAL)
---------------------
-The local audio + motion detector works without any model. For a second opinion,
-install Ollama from https://ollama.com and pull a vision model:
+AI DIRECTOR (OPTIONAL)
+----------------------
+The local audio + motion detector works without any model. For whole-clip story
+detection, install Ollama from https://ollama.com and pull a vision model:
 
   ollama pull qwen2.5vl:7b
 
-Then tick "AI review (local)" in the app and pick a game preset. Frames are
-center-cropped, sent to the local model, and cached under
+Then tick "AI director (local)" in the app, pick Director mode and a game preset.
+The director transcribes the audio with local Whisper, reviews every 15-20s
+window with frames + transcript + audio energy, and keeps funny interactions,
+trolling, banter, reactions, clutches, and round wins. A long interaction can
+stay 30-90s; it does not force everything into a six-second peak.
+
+The first run downloads the Whisper base.en model once (~145 MB) into
+%LOCALAPPDATA%\Clipper\models\huggingface. Window verdicts are cached under
 %LOCALAPPDATA%\Clipper\ai-cache. Nothing is uploaded.
 
-The AI pass is a review layer, not a trained kill detector. It reliably rejects
-black screens, desktops, menus, and loading screens, and it reads the top HUD
-(kill feed, score, round text). It can still miss a quiet kill or accept a tense
-standoff, so preview clips before exporting. qwen2.5vl:7b uses about 6 GB of
-VRAM; qwen2.5vl:3b is smaller and less accurate.
+Honest limits: game voice lines and human chat share one audio track, so the
+director can mistake tactical callouts for banter. It requires a humour cue
+before calling a conversation funny, but it still needs real labelled clips to
+tune. qwen2.5vl:7b uses about 6 GB of VRAM; qwen2.5vl:3b is smaller and less
+accurate. Whisper runs on the CPU; the vision model runs on the GPU.
 
 PERFORMANCE
 -----------

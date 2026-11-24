@@ -6,6 +6,43 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-24
+
+### Added
+
+- **Whole-clip AI director.** With AI enabled, Clipper now transcribes the audio
+  locally with Whisper, samples every 15-20s window with four frames plus the
+  transcript and audio energy, and keeps the actual story beats: funny
+  interactions, trolling, banter, rage, reactions, clutches, round results, and
+  unusual plays. Adjacent beats merge, so a 30-90s joke or teammate interaction
+  stays together instead of being reduced to six-second peaks.
+- `--ai-mode director|review` (default `director`) and an AI mode selector in the
+  native app. `review` keeps the older peak-review pass.
+- Local Whisper transcription via `faster-whisper` (CPU int8, roughly 2.5s for
+  a 90-second clip). The `base.en` model downloads once to
+  `%LOCALAPPDATA%\Clipper\models\huggingface`.
+- Humour-cue validation so ordinary tactical callouts are not sold as funny
+  banter, and transcript-based cut tightening for conversation clips.
+- Director segments can be 4-120 seconds; the preview uses the strongest
+  transcript/humour moment instead of the midpoint.
+
+### Changed
+
+- `pip install clipper-gg` now includes `faster-whisper` and a compatible PyAV
+  pin, so the AI director works from the CLI without extra steps.
+- The native build bundles the Whisper runtime. The first AI run still downloads
+  the model once.
+
+### Known limitations
+
+- Whisper hears game voice lines and human chat on the same track. The humour
+  cue check helps, but a strategy chat can still be misread as banter. This
+  needs a labelled set of real clips to tune.
+- Whisper runs on the CPU (very fast for these clips); the vision model runs on
+  the GPU. Full-GPU transcription needs cuDNN and is a future packaging step.
+- The director reviews sampled windows, not every frame. A 5-minute clip is
+  covered in 15-20s windows rather than frame-by-frame video understanding.
+
 ## [0.3.5] - 2026-11-24
 
 ### Added
@@ -217,7 +254,8 @@ All notable changes to Clipper are documented here. The format follows
 - PyPI publication of `clipper-gg` is pending; install the release wheel or the
   GitHub source until then.
 
-[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/hatermedia/clipper/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/hatermedia/clipper/releases/tag/v0.4.0
 [0.3.5]: https://github.com/hatermedia/clipper/releases/tag/v0.3.5
 [0.3.4]: https://github.com/hatermedia/clipper/releases/tag/v0.3.4
 [0.3.3]: https://github.com/hatermedia/clipper/releases/tag/v0.3.3

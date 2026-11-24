@@ -91,6 +91,7 @@ class DetectionSettings:
     ai: bool = False
     ai_model: str = "qwen2.5vl:7b"
     ai_game: str = "generic"
+    ai_mode: str = "director"
     ai_min_confidence: float = 0.55
     ai_max_candidates: int = 60
 
@@ -117,6 +118,8 @@ class DetectionSettings:
             raise ValueError("ai_min_confidence must be between 0 and 1")
         if not 1 <= self.ai_max_candidates <= 200:
             raise ValueError("ai_max_candidates must be between 1 and 200")
+        if self.ai_mode not in {"director", "review"}:
+            raise ValueError("ai_mode must be 'director' or 'review'")
         self.min_clip = float(self.min_clip)
         self.max_clips = int(self.max_clips)
         self.sample_fps = float(self.sample_fps)

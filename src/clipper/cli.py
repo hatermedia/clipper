@@ -119,7 +119,7 @@ def _build_batch_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--ai",
         action="store_true",
-        help="review candidates with a local vision model via Ollama",
+        help="use the local AI director/reviewer (Ollama + Whisper)",
     )
     parser.add_argument(
         "--ai-model",
@@ -130,6 +130,12 @@ def _build_batch_parser() -> argparse.ArgumentParser:
         "--ai-game",
         default="generic",
         help="game context for the AI prompt, e.g. Valorant or Apex Legends",
+    )
+    parser.add_argument(
+        "--ai-mode",
+        choices=("director", "review"),
+        default="director",
+        help="director watches the whole clip; review only checks heuristic peaks",
     )
     parser.add_argument(
         "--ai-min-confidence",
@@ -365,6 +371,7 @@ def _run_batch(args: argparse.Namespace) -> int:
         ai=args.ai,
         ai_model=args.ai_model,
         ai_game=args.ai_game,
+        ai_mode=args.ai_mode,
         ai_min_confidence=args.ai_min_confidence,
         ai_max_candidates=args.ai_max_candidates,
     )
@@ -398,7 +405,10 @@ def _run_batch(args: argparse.Namespace) -> int:
             f"proxy {settings.proxy_width}px @ {settings.sample_fps:g}fps | GPU: {gpu_label}"
         )
         if settings.ai:
-            print(f"AI review: {settings.ai_model} | game: {settings.ai_game or 'generic'}")
+            print(
+                f"AI: {settings.ai_model} | mode: {settings.ai_mode} | "
+                f"game: {settings.ai_game or 'generic'}"
+            )
 
     output_dir = Path(args.output).expanduser().resolve()
     preview_dir = output_dir / "previews" if args.dry_run and settings.preview else None

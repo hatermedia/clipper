@@ -170,7 +170,7 @@ QPushButton#WindowButton {
     border: none;
     color: #a1a1a6;
     font-family: "IBM Plex Mono";
-    font-size: 13px;
+    font-size: 17px;
     padding: 0;
 }
 QPushButton#WindowButton:hover { background: #1c1c1f; color: #ffffff; }
@@ -179,7 +179,7 @@ QPushButton#WindowClose {
     border: none;
     color: #a1a1a6;
     font-family: "IBM Plex Mono";
-    font-size: 15px;
+    font-size: 19px;
     padding: 0;
 }
 QPushButton#WindowClose:hover { background: #c42b1c; color: #ffffff; }
@@ -770,19 +770,19 @@ class MainWindow(QMainWindow):
         header.addSpacing(8)
         minimize = QPushButton("–")
         minimize.setObjectName("WindowButton")
-        minimize.setFixedSize(28, 24)
+        minimize.setFixedSize(42, 30)
         minimize.setToolTip("Minimize")
         minimize.clicked.connect(self.showMinimized)
         header.addWidget(minimize)
         self.max_btn = QPushButton("□")
         self.max_btn.setObjectName("WindowButton")
-        self.max_btn.setFixedSize(28, 24)
+        self.max_btn.setFixedSize(42, 30)
         self.max_btn.setToolTip("Maximize")
         self.max_btn.clicked.connect(self._toggle_maximize)
         header.addWidget(self.max_btn)
         close = QPushButton("×")
         close.setObjectName("WindowClose")
-        close.setFixedSize(28, 24)
+        close.setFixedSize(42, 30)
         close.setToolTip("Close")
         close.clicked.connect(self.close)
         header.addWidget(close)
@@ -825,7 +825,7 @@ class MainWindow(QMainWindow):
         controls = QWidget()
         left = QVBoxLayout(controls)
         left.setContentsMargins(16, 14, 16, 8)
-        left.setSpacing(8)
+        left.setSpacing(7)
 
         left.addWidget(self._section("01 / FOOTAGE"))
         path_row = QHBoxLayout()
@@ -852,7 +852,7 @@ class MainWindow(QMainWindow):
         left.addLayout(row)
 
         self.file_list = QListWidget()
-        self.file_list.setMaximumHeight(86)
+        self.file_list.setMaximumHeight(76)
         self.file_list.setSelectionMode(QAbstractItemView.NoSelection)
         self.file_list.setVisible(False)
         left.addWidget(self.file_list)
@@ -893,10 +893,10 @@ class MainWindow(QMainWindow):
         left.addLayout(pad)
 
         ai_row = QHBoxLayout()
-        self.ai = QCheckBox("AI review (local)")
+        self.ai = QCheckBox("AI director (local)")
         self.ai.setToolTip(
-            "Reviews candidates with a local Ollama vision model. "
-            "The game may be inside a Discord stream window."
+            "The local AI watches the whole clip with audio and sampled frames, "
+            "then keeps the funny interactions, banter, reactions, and big plays."
         )
         self.ai_state = QLabel("")
         self.ai_state.setObjectName("Status")
@@ -907,7 +907,7 @@ class MainWindow(QMainWindow):
 
         ai_controls = QGridLayout()
         ai_controls.setHorizontalSpacing(8)
-        ai_controls.setVerticalSpacing(4)
+        ai_controls.setVerticalSpacing(3)
         ai_controls.addWidget(QLabel("AI model"), 0, 0)
         self.ai_model = QComboBox()
         for model in (self.ai_models or [f"{DEFAULT_MODEL} (not installed)"]):
@@ -928,6 +928,15 @@ class MainWindow(QMainWindow):
             self.ai_game.addItem(label, value)
         self.ai_game.setCurrentIndex(3)
         ai_controls.addWidget(self.ai_game, 1, 1)
+        ai_controls.addWidget(QLabel("AI mode"), 2, 0)
+        self.ai_mode = QComboBox()
+        self.ai_mode.addItem("Director · whole clip", "director")
+        self.ai_mode.addItem("Review · peaks only", "review")
+        self.ai_mode.setToolTip(
+            "Director transcribes the audio and watches every window of the clip. "
+            "Review is the older, faster pass over audio/motion peaks."
+        )
+        ai_controls.addWidget(self.ai_mode, 2, 1)
         left.addLayout(ai_controls)
         self.ai.setEnabled(self.ai_available)
 
@@ -988,9 +997,6 @@ class MainWindow(QMainWindow):
         )
         self.advanced.setVisible(False)
         left.addWidget(self.advanced)
-        privacy = QLabel("local-only / no uploads")
-        privacy.setObjectName("BrandSub")
-        left.addWidget(privacy)
         left.addStretch(1)
 
         left_scroll.setWidget(controls)
@@ -1151,10 +1157,15 @@ class MainWindow(QMainWindow):
                 game_index = self.ai_game.findData(stored_game)
                 if game_index >= 0:
                     self.ai_game.setCurrentIndex(game_index)
+            stored_mode = str(self.qsettings.value("ai_mode", "director"))
+            mode_index = self.ai_mode.findData(stored_mode)
+            if mode_index >= 0:
+                self.ai_mode.setCurrentIndex(mode_index)
         else:
             self.ai.setChecked(False)
         self.ai.toggled.connect(self._ai_changed)
         self.ai_model.currentTextChanged.connect(lambda _: self._ai_changed(self.ai.isChecked()))
+        self.ai_mode.currentIndexChanged.connect(lambda _: self._ai_changed(self.ai.isChecked()))
         self._ai_changed(self.ai.isChecked())
         self.input_edit.setText(str(self.qsettings.value("input", "")))
         self.input_edit.setCursorPosition(0)
@@ -1178,6 +1189,7 @@ class MainWindow(QMainWindow):
             self.qsettings.setValue("ai_v2", self.ai.isChecked())
         self.qsettings.setValue("ai_model", self.ai_model.currentText())
         self.qsettings.setValue("ai_game", str(self.ai_game.currentData()))
+        self.qsettings.setValue("ai_mode", str(self.ai_mode.currentData()))
         self.qsettings.setValue("low_power", self.low_power.isChecked())
         self.qsettings.setValue("input", self.input_edit.text())
         self.qsettings.setValue("output", self.output_edit.text())
@@ -1360,9 +1372,11 @@ class MainWindow(QMainWindow):
         self.ai.setEnabled(True)
         self.ai_model.setEnabled(checked)
         self.ai_game.setEnabled(checked)
+        self.ai_mode.setEnabled(checked)
         if checked:
-            self.ai_state.setText(f"{self.ai_model.currentText()} / local")
-            self.ai_state.setToolTip("Local vision review via Ollama; runs on the GPU when available.")
+            mode = "director" if self.ai_mode.currentData() == "director" else "review"
+            self.ai_state.setText(f"{self.ai_model.currentText()} / {mode}")
+            self.ai_state.setToolTip("Local AI; GPU when available. Director also transcribes audio locally.")
         else:
             self.ai_state.setText("off")
 
@@ -1456,7 +1470,7 @@ class MainWindow(QMainWindow):
             item.setToolTip(str(file))
             self.file_list.addItem(item)
         if files:
-            self.file_list.setFixedHeight(min(86, max(38, 24 + 22 * min(len(files), 3))))
+            self.file_list.setFixedHeight(min(76, max(38, 24 + 22 * min(len(files), 3))))
         self.file_list.setVisible(bool(files))
         self.summary_label.setText(f"{len(files)} video(s) ready" if files else "No videos found")
         if not files:
@@ -1485,6 +1499,7 @@ class MainWindow(QMainWindow):
             ai=self.ai.isChecked() and self.ai_available,
             ai_model=self.ai_model.currentText().replace(" (not installed)", ""),
             ai_game=str(self.ai_game.currentData() or "generic"),
+            ai_mode=str(self.ai_mode.currentData() or "director"),
         )
         if self.low_power.isChecked():
             settings.apply_low_power()
@@ -1702,6 +1717,7 @@ class MainWindow(QMainWindow):
         self.ai.setEnabled(not running and self.ai_available)
         self.ai_model.setEnabled(not running and self.ai_available and self.ai.isChecked())
         self.ai_game.setEnabled(not running and self.ai_available and self.ai.isChecked())
+        self.ai_mode.setEnabled(not running and self.ai_available and self.ai.isChecked())
 
     def _toggle_maximize(self) -> None:
         if self.isMaximized():
@@ -1759,7 +1775,7 @@ class MainWindow(QMainWindow):
                         if bottom:
                             return True, 15  # HTBOTTOM
                     # Header is the drag handle, except the right-side controls.
-                    if 0 <= cy < 66 and cx < width - 330:
+                    if 0 <= cy < 66 and cx < width - 360:
                         return True, 2  # HTCAPTION
             except Exception:
                 pass
@@ -1800,7 +1816,59 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke-test", action="store_true", help="create the window and exit (CI)")
     parser.add_argument("--screenshot", default=None, help="save a window screenshot and exit")
     parser.add_argument("--demo-shot", default=None, help="analyze --input, save a window screenshot, exit")
+    parser.add_argument("--story-test", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--story-game", default="generic", help=argparse.SUPPRESS)
     args, qt_args = parser.parse_known_args(argv)
+
+    if args.story_test:
+        import json
+        import tempfile
+
+        from .config import DetectionSettings, find_ffmpeg
+        from .detect.audio import analyze_wav
+        from .detect.story import direct_clip
+        from .ffmpeg import extract_audio, probe_media
+
+        if not args.input:
+            parser.error("--story-test requires --input")
+        try:
+            bins = find_ffmpeg()
+            video = Path(args.input)
+            info = probe_media(video, bins)
+            with tempfile.TemporaryDirectory(prefix="clipper_story_test_") as raw:
+                wav = extract_audio(video, Path(raw) / "audio.wav", bins, threads=6)
+                audio = analyze_wav(wav)
+                clips, warnings = direct_clip(
+                    video,
+                    info.duration,
+                    DetectionSettings(
+                        ai=True,
+                        ai_mode="director",
+                        ai_game=args.story_game,
+                        max_clips=6,
+                    ),
+                    wav,
+                    audio,
+                    bins,
+                )
+            payload = {
+                "clips": [
+                    {
+                        "start": clip.start,
+                        "end": clip.end,
+                        "score": clip.score,
+                        "reason": clip.reason,
+                    }
+                    for clip in clips
+                ],
+                "warnings": warnings,
+            }
+        except Exception as exc:
+            payload = {"error": str(exc)}
+            Path(args.story_test).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            return 1
+        Path(args.story_test).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return 0
 
     app = QApplication([sys.argv[0], *qt_args])
     app.setApplicationName("Clipper")

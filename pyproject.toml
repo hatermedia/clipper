@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clipper-gg"
-version = "0.3.5"
-description = "Automatic gaming highlight trimmer: audio + motion detection, lossless FFmpeg cuts, local web UI."
+version = "0.4.0"
+description = "Automatic gaming highlight trimmer with a local AI director, audio + motion detection, and lossless FFmpeg cuts."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -40,6 +40,8 @@ dependencies = [
   "opencv-python-headless>=4.9",
   "fastapi>=0.110",
   "uvicorn[standard]>=0.27",
+  "faster-whisper>=1.2",
+  "av>=14,<19",
 ]
 
 [project.optional-dependencies]

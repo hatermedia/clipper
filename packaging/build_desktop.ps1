@@ -33,6 +33,12 @@ $ErrorActionPreference = "Continue"
     --specpath $SpecDir `
     --icon $Icon `
     --collect-all clipper `
+    --collect-all faster_whisper `
+    --collect-all ctranslate2 `
+    --collect-all tokenizers `
+    --collect-all onnxruntime `
+    --collect-all av `
+    --hidden-import faster_whisper `
     --hidden-import clipper.desktop `
     --exclude-module tkinter `
     --exclude-module pytest `
