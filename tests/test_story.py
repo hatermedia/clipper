@@ -38,6 +38,49 @@ def make_window(
     )
 
 
+def test_director_reviews_every_window_of_the_full_clip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reviewed: list[tuple[float, float]] = []
+
+    monkeypatch.setattr(story, "model_available", lambda _model: True)
+    monkeypatch.setattr(story, "transcribe_audio", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        story,
+        "analyze_signals",
+        lambda *args, **kwargs: types.SimpleNamespace(
+            acoustic=types.SimpleNamespace(yamnet=True)
+        ),
+    )
+    monkeypatch.setattr(story, "tag_transcript", lambda *args, **kwargs: None)
+    monkeypatch.setattr(story, "window_signal", lambda *args, **kwargs: None)
+    monkeypatch.setattr(story, "_segments_from_windows", lambda *args, **kwargs: [])
+
+    def review(_video, window, _model, _bins, _game):
+        reviewed.append((window.start, window.end))
+        return {
+            "interesting": False,
+            "score": 0.0,
+            "kind": "filler",
+            "summary": "",
+            "evidence": "",
+        }
+
+    monkeypatch.setattr(story, "_review_window", review)
+    clips, warnings = story.direct_clip(
+        tmp_path / "clip.mp4",
+        60.0,
+        DetectionSettings(ai=True, ai_mode="director"),
+        None,
+        None,
+        None,
+    )
+    assert clips == []
+    assert warnings
+    assert [start for start, _end in reviewed] == [0.0, 15.0, 30.0, 45.0]
+    assert [end for _start, end in reviewed] == [15.0, 30.0, 45.0, 60.0]
+
+
 def test_long_funny_exchange_is_kept() -> None:
     windows = [
         make_window(0, 15, "filler", 0.1),

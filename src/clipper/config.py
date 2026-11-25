@@ -127,8 +127,8 @@ class DetectionSettings:
             raise ValueError("ai_min_confidence must be between 0 and 1")
         if not 1 <= self.ai_max_candidates <= 200:
             raise ValueError("ai_max_candidates must be between 1 and 200")
-        if self.ai_mode not in {"director", "lite"}:
-            raise ValueError("ai_mode must be 'director' or 'lite'")
+        if self.ai_mode != "director":
+            raise ValueError("ai_mode must be 'director'")
         self.min_clip = float(self.min_clip)
         self.max_clips = int(self.max_clips)
         self.sample_fps = float(self.sample_fps)

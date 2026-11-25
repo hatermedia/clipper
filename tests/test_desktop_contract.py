@@ -69,10 +69,15 @@ def test_browse_and_drop_zone_open_native_pickers_directly() -> None:
 def test_legacy_ai_mode_and_game_picker_are_removed() -> None:
     source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
     assert "Fast review" not in source
+    assert "Lite" not in source
     assert "legacy peak-only" not in source
     assert "self.ai_game" not in source
-    assert '"auto"' in source  # ai_game is still forced internally
+    assert "self.ai_mode." not in source
+    assert "self.ai." not in source
     assert "ai_game=\"auto\"" in source
+    assert "ai_mode=\"director\"" in source
+    assert "Local AI director" in source
+    assert "Custom model" in source
 
 
 def test_frame_accurate_reencode_and_discord_copy_are_removed() -> None:
@@ -81,6 +86,8 @@ def test_frame_accurate_reencode_and_discord_copy_are_removed() -> None:
     assert "self.reencode" not in source
     assert "Discord" not in source
     assert "Lossless cuts" in source
+    assert "heuristic-only" not in source
+    assert "turn off" not in source.lower()
 
 
 def test_close_event_stops_previews_workers_and_ffmpeg() -> None:

@@ -199,47 +199,25 @@ def analyze_file(
                 guessed = detect_game_from_path(path)
                 if guessed:
                     file_settings = replace(settings, ai_game=guessed)
-            if settings.ai_mode == "director":
-                try:
-                    from .detect.story import direct_clip
+            try:
+                from .detect.story import direct_clip
 
-                    clips, ai_warnings = direct_clip(
-                        path,
-                        info.duration,
-                        file_settings,
-                        wav,
-                        audio_track,
-                        bins,
-                        progress=progress,
-                        jerk=jerk_track,
-                    )
-                    warnings.extend(ai_warnings)
-                except Exception as exc:
-                    warnings.append(f"AI director skipped: {exc}")
-                    clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
-            else:
-                try:
-                    from .detect.lite import lite_clip
-
-                    candidates = pick_peaks(
-                        grid, combined, audio, visual, file_settings, info.duration
-                    )
-                    clips, ai_warnings = lite_clip(
-                        path,
-                        info.duration,
-                        file_settings,
-                        wav,
-                        audio_track,
-                        visual_track,
-                        jerk_track,
-                        candidates,
-                        bins,
-                        progress=progress,
-                    )
-                    warnings.extend(ai_warnings)
-                except Exception as exc:
-                    warnings.append(f"Lite mode skipped: {exc}")
-                    clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
+                clips, ai_warnings = direct_clip(
+                    path,
+                    info.duration,
+                    file_settings,
+                    wav,
+                    audio_track,
+                    bins,
+                    progress=progress,
+                    jerk=jerk_track,
+                )
+                warnings.extend(ai_warnings)
+            except Exception as exc:
+                # AI-only product: never silently replace the director with the
+                # old audio/motion peak cutter. Report the failure instead.
+                warnings.append(f"AI director failed: {exc}")
+                clips = []
         else:
             clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
 

@@ -13,9 +13,10 @@ def test_small_vision_model_uses_partial_gpu_offload() -> None:
     assert num_gpu_for("qwen2.5vl:7b") == 99
 
 
-def test_legacy_review_mode_is_rejected() -> None:
-    with pytest.raises(ValueError, match="director.*lite"):
-        DetectionSettings(ai_mode="review").validate()
+def test_legacy_modes_are_rejected() -> None:
+    for mode in ("review", "lite"):
+        with pytest.raises(ValueError, match="director"):
+            DetectionSettings(ai_mode=mode).validate()
 
 
 def test_sensitivity_presets_map_to_ai_thresholds() -> None:

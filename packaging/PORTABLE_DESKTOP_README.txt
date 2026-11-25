@@ -1,4 +1,4 @@
-Clipper 0.7.5 - Windows x64 native
+Clipper 0.8.0 - Windows x64 native
 =================================
 
 No Python. No FFmpeg. No browser. No console window.
@@ -12,21 +12,22 @@ Double-click Clipper.exe.
 3. Select a clip row to see its peak frame; press Play to watch it. Tick the clips you want.
 4. Pick an output folder and choose Export selected or Export all.
 
-AI DIRECTOR (OPTIONAL)
-----------------------
-The local audio + motion detector works without any model. For whole-clip story
-detection, open Clipper's AI setup panel and click "Install Ollama". Clipper
-downloads the official installer, verifies its SHA-256 and Authenticode
-signature, installs it for the current user, and starts it. Then click
-"Install model" to download gemma3:4b or qwen2.5vl:7b through Ollama.
+LOCAL AI DIRECTOR (REQUIRED)
+---------------------------
+Every scan is reviewed by the local vision director. There is no heuristic-only
+highlighting fallback.
+
+Open Clipper's AI setup panel and click "Install Ollama". Clipper downloads the
+official installer, verifies its SHA-256 and Authenticode signature, installs it
+for the current user, and starts it. Then click "Install model" to download
+gemma3:4b or qwen2.5vl:7b through Ollama.
 
 You can also install Ollama manually from https://ollama.com and run:
 
   ollama pull qwen2.5vl:7b
 
-Then tick "AI director (local)" and choose Director mode. The game is detected
-from the footage folder or file name. The director transcribes the audio with
-local Whisper, reviews every 15-20s
+The game is detected from the footage folder or file name. The director
+transcribes the audio with local Whisper, reviews every 15-20s
 window with frames + transcript + audio energy, and keeps funny interactions,
 trolling, banter, reactions, goals, clutches, and round wins. A long interaction
 can stay 30-90s; it does not force everything into a six-second peak.
@@ -64,7 +65,7 @@ PERFORMANCE
 - CPU threads: Balanced uses about half the cores. Low uses 2. Max lets FFmpeg
   decide.
 - Low-power mode: 2 threads, 2fps/256px analysis proxy, below-normal process
-  priority. It is a performance preset; AI still runs if enabled.
+  priority. It is a performance preset; the local AI director still runs.
 
 UPDATES
 -------

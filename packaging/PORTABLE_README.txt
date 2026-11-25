@@ -1,4 +1,4 @@
-Clipper 0.7.5 - Windows x64 CLI portable
+Clipper 0.8.0 - Windows x64 CLI portable
 ====================================
 
 No Python install. No FFmpeg install. Everything is in this folder.

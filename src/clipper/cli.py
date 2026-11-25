@@ -35,7 +35,7 @@ def _build_batch_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  clipper --input ./footage --dry-run\n"
             "  clipper --input ./footage --output ./clips --sensitivity 0.65\n"
-            "  clipper --input ./footage --ai --ai-game Valorant --dry-run\n"
+            "  clipper --input ./footage --ai-model qwen2.5vl:7b --dry-run\n"
             "  clipper --input ./footage --reencode --encoder h264_nvenc\n"
             "  clipper update\n"
             "  clipper gpu\n"
@@ -117,11 +117,6 @@ def _build_batch_parser() -> argparse.ArgumentParser:
         help="2 threads, 2fps/256px proxy, below-normal process priority",
     )
     parser.add_argument(
-        "--ai",
-        action="store_true",
-        help="use the local AI director/reviewer (Ollama + Whisper)",
-    )
-    parser.add_argument(
         "--ai-model",
         default="qwen2.5vl:7b",
         help="Ollama vision model (default: qwen2.5vl:7b)",
@@ -130,12 +125,6 @@ def _build_batch_parser() -> argparse.ArgumentParser:
         "--ai-game",
         default="auto",
         help="game preset (auto, Rocket League, Mimesis, Valorant, ...); auto reads the path",
-    )
-    parser.add_argument(
-        "--ai-mode",
-        choices=("director", "lite"),
-        default="director",
-        help="director watches the whole clip; lite uses OCR + audio + motion signals",
     )
     parser.add_argument(
         "--ai-min-confidence",
@@ -373,10 +362,10 @@ def _run_batch(args: argparse.Namespace) -> int:
         threads=args.threads if args.threads is not None else default_threads(),
         proxy_width=args.proxy_width,
         gpu=False,
-        ai=args.ai,
+        ai=True,
         ai_model=args.ai_model,
         ai_game=args.ai_game,
-        ai_mode=args.ai_mode,
+        ai_mode="director",
         ai_min_confidence=args.ai_min_confidence,
         ai_max_candidates=args.ai_max_candidates,
     )
@@ -417,13 +406,8 @@ def _run_batch(args: argparse.Namespace) -> int:
             f"proxy {settings.proxy_width}px @ {settings.sample_fps:g}fps | GPU: {gpu_label}"
         )
         if settings.ai:
-            engine = (
-                "lite (OCR + signals)"
-                if settings.ai_mode == "lite"
-                else settings.ai_model
-            )
             print(
-                f"AI: {engine} | mode: {settings.ai_mode} | "
+                f"AI: {settings.ai_model} | director | "
                 f"game: {settings.ai_game or 'generic'}"
             )
 

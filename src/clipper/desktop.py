@@ -64,6 +64,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -565,6 +566,13 @@ class OllamaPullWorker(QThread):
             self.done.emit(False, f"ollama pull exited with code {code}.")
 
 
+class OllamaStartWorker(QThread):
+    done = Signal(bool)
+
+    def run(self) -> None:
+        self.done.emit(start_ollama_server(wait=5.0))
+
+
 class OllamaInstallWorker(QThread):
     progress = Signal(int, int)
     status = Signal(str)
@@ -919,7 +927,7 @@ class DropZone(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(2)
-        title = QLabel("Drop a folder or video here")
+        title = QLabel("Drop a video here")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("color: #f5f5f7; font-weight: 500;")
         title.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -1529,17 +1537,20 @@ class MainWindow(QMainWindow):
         vision = [
             name for name in installed.values()
             if any(token in name.lower() for token in ("vl", "llava", "minicpm", "moondream", "gemma3"))
-            and not name.lower().startswith("qwen3")
             and "qwen2.5vl:3b" not in name.lower()
         ]
         self.ai_models = vision
-        self.vlm_available = bool(vision)
-        self.ai_available = True
-        self.ai_default = DEFAULT_MODEL if DEFAULT_MODEL.lower() in installed else (vision[0] if vision else "No VLM installed (Lite mode)")
+        self.vlm_available = bool(installed)
+        self.ai_default = (
+            DEFAULT_MODEL
+            if DEFAULT_MODEL.lower() in installed
+            else (vision[0] if vision else next(iter(installed.values()), "No model installed"))
+        )
         self.gpu_vram_mb = nvidia_memory_mb()
         self.low_vram = bool(self.gpu_vram_mb and self.gpu_vram_mb <= 7000)
         if self.low_vram and "gemma3:4b" in installed:
             self.ai_default = "gemma3:4b"
+        self._last_ai_model = self.ai_default
         self._detected_game: str | None = None
         self.update_release: ReleaseInfo | None = None
         self.update_installer: Path | None = None
@@ -1547,6 +1558,7 @@ class MainWindow(QMainWindow):
         self.update_download_worker: UpdateDownloadWorker | None = None
         self.pull_worker: OllamaPullWorker | None = None
         self.ai_install_worker: OllamaInstallWorker | None = None
+        self.ollama_start_worker: OllamaStartWorker | None = None
         self._manual_update_check = False
         self._job_running = False
 
@@ -1572,6 +1584,8 @@ class MainWindow(QMainWindow):
         if initial_input:
             self.set_input(initial_input, scan=False)
         self._update_status()
+        if self.ollama_present and not self.ollama_ok:
+            self._start_ollama_background()
         QTimer.singleShot(2500, lambda: self.check_updates(manual=False))
         self.game_timer = QTimer(self)
         self.game_timer.timeout.connect(self._poll_game)
@@ -1589,7 +1603,7 @@ class MainWindow(QMainWindow):
         titlebar = QWidget()
         titlebar.setObjectName("TitleBar")
         header = QHBoxLayout(titlebar)
-        header.setContentsMargins(18, 8, 0, 8)
+        header.setContentsMargins(18, 0, 0, 0)
         header.setSpacing(10)
         self._header_layout = header
         logo = QLabel()
@@ -1638,7 +1652,7 @@ class MainWindow(QMainWindow):
         controls.setSpacing(0)
         minimize = QPushButton()
         minimize.setObjectName("WindowButton")
-        minimize.setFixedSize(46, 32)
+        minimize.setFixedSize(46, 48)
         minimize.setIcon(_window_icon("min"))
         minimize.setIconSize(QSize(16, 16))
         minimize.setFocusPolicy(Qt.NoFocus)
@@ -1647,7 +1661,7 @@ class MainWindow(QMainWindow):
 
         self.max_btn = QPushButton()
         self.max_btn.setObjectName("WindowButton")
-        self.max_btn.setFixedSize(46, 32)
+        self.max_btn.setFixedSize(46, 48)
         self.max_btn.setIcon(_window_icon("max"))
         self.max_btn.setIconSize(QSize(16, 16))
         self.max_btn.setFocusPolicy(Qt.NoFocus)
@@ -1656,7 +1670,7 @@ class MainWindow(QMainWindow):
 
         close = QPushButton()
         close.setObjectName("WindowClose")
-        close.setFixedSize(46, 32)
+        close.setFixedSize(46, 48)
         close.setIcon(_window_icon("close"))
         close.setIconSize(QSize(16, 16))
         close.setFocusPolicy(Qt.NoFocus)
@@ -1797,17 +1811,17 @@ class MainWindow(QMainWindow):
         self._sensitivity_changed(self.sensitivity.value())
 
         ai_row = QHBoxLayout()
-        self.ai = ToggleRow("AI director (local)")
-        self.ai.setToolTip(
-            "The local AI watches the whole clip with audio and sampled frames, "
-            "then keeps the funny interactions, banter, reactions, and big plays."
-        )
-        self.ai_state = self.ai.state_label
-        ai_row.addWidget(self.ai)
+        ai_title = QLabel("Local AI director")
+        ai_title.setObjectName("ToggleLabel")
+        self.ai_state = QLabel("checking")
+        self.ai_state.setObjectName("ToggleState")
+        ai_row.addWidget(ai_title)
+        ai_row.addWidget(self.ai_state)
         ai_row.addWidget(
             self._help(
-                "The local AI director transcribes the clip with Whisper, watches every window, "
-                "and keeps funny interactions, banter, reactions, goals, and big plays. "
+                "Every scan is edited by the local vision model. It transcribes the "
+                "clip with Whisper, watches the full clip in short windows, and keeps "
+                "funny interactions, banter, reactions, goals, and big plays. "
                 "It runs locally; nothing is uploaded."
             )
         )
@@ -1820,47 +1834,34 @@ class MainWindow(QMainWindow):
         ai_controls.setColumnStretch(1, 1)
         ai_controls.addWidget(QLabel("AI model"), 0, 0)
         self.ai_model = QComboBox()
-        for model in (self.ai_models or [self.ai_default]):
-            self.ai_model.addItem(model)
-        preferred = self.ai_model.findText(self.ai_default)
-        if preferred >= 0:
-            self.ai_model.setCurrentIndex(preferred)
+        self.ai_model.setSizeAdjustPolicy(
+            QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.ai_model.setMinimumContentsLength(14)
+        self.ai_model.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self._populate_ai_model_combo()
         self.ai_model.setEnabled(self.vlm_available)
         if self.low_vram:
             self.ai_model.setToolTip(
-                f"{self.gpu_vram_mb} MB VRAM detected. Lite mode is recommended. "
+                f"{self.gpu_vram_mb} MB VRAM detected. "
                 "gemma3:4b is tested on 6 GB cards; qwen2.5vl:7b is best on 8 GB+."
             )
         elif not self.vlm_available:
             self.ai_model.setToolTip(
-                "No Ollama vision model detected. Lite mode works without one."
+                "No local vision model detected. Install Ollama and a model to start."
             )
+        self.ai_model.setToolTip(
+            self.ai_model.toolTip()
+            + "\nOther local models and custom tags must support image input."
+        )
         ai_controls.addWidget(self.ai_model, 0, 1)
         ai_controls.addWidget(
             self._help(
-                "Lite needs no model. gemma3:4b is tested on 6 GB cards; "
+                "The director reviews the whole clip, including audio, transcript, "
+                "HUD, and sampled frames. gemma3:4b is tested on 6 GB cards; "
                 "qwen2.5vl:7b is the better choice on 8 GB+."
             ),
             0,
-            2,
-        )
-        ai_controls.addWidget(QLabel("AI mode"), 1, 0)
-        self.ai_mode = QComboBox()
-        self.ai_mode.addItem("Director · whole clip", "director")
-        self.ai_mode.addItem("Lite · OCR + audio", "lite")
-        self.ai_mode.setToolTip(
-            "Director watches the whole clip with a local vision model. "
-            "Lite uses HUD OCR, Whisper, and audio/motion signals with no VLM (best for 6 GB cards). "
-            "The game is inferred from each file's folder or name."
-        )
-        ai_controls.addWidget(self.ai_mode, 1, 1)
-        ai_controls.addWidget(
-            self._help(
-                "Director: whole-clip audio + frame review, can keep a 30-45s interaction. "
-                "Lite: HUD OCR + transcript + acoustic/motion signals, no VLM or extra VRAM. "
-                "Game presets are picked automatically from the folder or file name."
-            ),
-            1,
             2,
         )
         left.addLayout(ai_controls)
@@ -1870,7 +1871,7 @@ class MainWindow(QMainWindow):
         setup_layout = QVBoxLayout(self.ai_setup)
         setup_layout.setContentsMargins(10, 8, 10, 8)
         setup_layout.setSpacing(4)
-        self.ai_setup_title = QLabel("Lite mode is ready")
+        self.ai_setup_title = QLabel("Local AI setup required")
         self.ai_setup_title.setObjectName("AiSetupTitle")
         setup_layout.addWidget(self.ai_setup_title)
         self.ai_setup_text = QLabel("")
@@ -1915,7 +1916,6 @@ class MainWindow(QMainWindow):
         setup_layout.addWidget(self.ai_setup_progress)
         left.addWidget(self.ai_setup)
         self._update_ai_setup()
-        self.ai.setEnabled(self.ai_available)
 
         game_row = QHBoxLayout()
         self.game_guard = ToggleRow("Pause AI while gaming", show_state=False)
@@ -1932,6 +1932,10 @@ class MainWindow(QMainWindow):
         )
         game_row.addStretch(1)
         left.addLayout(game_row)
+        auto_game_note = QLabel("Game presets are inferred from the folder or file name.")
+        auto_game_note.setObjectName("Muted")
+        auto_game_note.setWordWrap(True)
+        left.addWidget(auto_game_note)
 
         gpu_row = QHBoxLayout()
         self.gpu = ToggleRow("Use NVIDIA GPU (NVENC)")
@@ -2050,7 +2054,7 @@ class MainWindow(QMainWindow):
         self.low_power = ToggleRow("Low-power mode")
         self.low_power.setToolTip(
             "Performance preset: 2 threads, 256px/2fps analysis proxy, below-normal "
-            "process priority.\nAI Director still runs if enabled."
+            "process priority. The local AI director still runs."
         )
         low_row = QHBoxLayout()
         low_row.setContentsMargins(0, 0, 0, 0)
@@ -2058,8 +2062,8 @@ class MainWindow(QMainWindow):
         low_row.addWidget(self.low_power)
         low_row.addWidget(
             self._help(
-                "Reduces CPU and proxy cost. It does not disable AI; turn off "
-                "AI Director separately if you want heuristic-only detection."
+                "Reduces CPU and proxy cost. It does not disable the local AI "
+                "director; it only trades speed for lower resource use."
             )
         )
         low_row.addStretch(1)
@@ -2226,6 +2230,98 @@ class MainWindow(QMainWindow):
         label.setObjectName("Section")
         return label
 
+    def _add_ai_group(self, label: str) -> None:
+        index = self.ai_model.count()
+        self.ai_model.addItem(label, None)
+        item = self.ai_model.model().item(index)
+        if item is not None:
+            item.setEnabled(False)
+            font = item.font()
+            font.setBold(True)
+            item.setFont(font)
+
+    def _select_ai_model(self, model: str | None) -> None:
+        if not model:
+            return
+        index = self.ai_model.findData(model)
+        if index >= 0:
+            self.ai_model.blockSignals(True)
+            self.ai_model.setCurrentIndex(index)
+            self.ai_model.blockSignals(False)
+            self._last_ai_model = model
+
+    def _current_ai_model(self) -> str:
+        value = self.ai_model.currentData()
+        if not value or value == "__custom__":
+            return ""
+        return str(value)
+
+    def _populate_ai_model_combo(self, preferred: str | None = None) -> None:
+        selected = self._current_ai_model() or preferred or self._last_ai_model
+        vision = sorted(self.ai_models, key=str.lower)
+        others = sorted(
+            (
+                model
+                for model in self.installed_models.values()
+                if model not in self.ai_models
+                and "qwen2.5vl:3b" not in model.lower()
+            ),
+            key=str.lower,
+        )
+        self.ai_model.blockSignals(True)
+        self.ai_model.clear()
+        self._add_ai_group("Vision models")
+        no_model_index: int | None = None
+        if vision:
+            for model in vision:
+                self.ai_model.addItem(model, model)
+        else:
+            no_model_index = self.ai_model.count()
+            self.ai_model.addItem("No local model installed", None)
+            item = self.ai_model.model().item(no_model_index)
+            if item is not None:
+                item.setEnabled(False)
+        if others:
+            self.ai_model.insertSeparator(self.ai_model.count())
+            self._add_ai_group("Other local models")
+            for model in others:
+                self.ai_model.addItem(model, model)
+        self.ai_model.insertSeparator(self.ai_model.count())
+        self.ai_model.addItem("Custom model…", "__custom__")
+        self.ai_model.blockSignals(False)
+        self._select_ai_model(selected)
+        if not self._current_ai_model():
+            self._select_ai_model(self.ai_default)
+        if not self._current_ai_model() and vision:
+            self._select_ai_model(vision[0])
+        if not self._current_ai_model() and no_model_index is not None:
+            self.ai_model.blockSignals(True)
+            self.ai_model.setCurrentIndex(no_model_index)
+            self.ai_model.blockSignals(False)
+
+    def _ai_model_changed(self) -> None:
+        if self.ai_model.currentData() == "__custom__":
+            text, accepted = QInputDialog.getText(
+                self,
+                "Custom Ollama model",
+                "Model tag (for example qwen2.5vl:7b):",
+            )
+            text = text.strip()
+            if accepted and text:
+                index = self.ai_model.findData(text)
+                if index < 0:
+                    index = self.ai_model.count() - 1
+                    self.ai_model.insertItem(index, text, text)
+                self.ai_model.setCurrentIndex(index)
+                self._last_ai_model = text
+                self._update_ai_state()
+                return
+            self._select_ai_model(self._last_ai_model or self.ai_default)
+            return
+        if self._current_ai_model():
+            self._last_ai_model = self._current_ai_model()
+            self._update_ai_state()
+
     def _help(self, text: str) -> QLabel:
         return HelpLabel(text)
 
@@ -2247,33 +2343,14 @@ class MainWindow(QMainWindow):
         self.gpu.setEnabled(self.nvenc)
         self._gpu_changed(self.gpu.isChecked())
 
-        if self.ai_available:
-            if self.qsettings.contains("ai_v2"):
-                ai_default = self.qsettings.value("ai_v2", "false") in (True, "true")
-            else:
-                ai_default = True
-            self.ai.setChecked(bool(ai_default))
-            stored_model = str(self.qsettings.value("ai_model", ""))
-            if stored_model and self.ai_model.findText(stored_model) >= 0 and self.vlm_available:
-                self.ai_model.setCurrentText(stored_model)
-            default_mode = "lite" if (self.low_vram or not self.vlm_available) else "director"
-            stored_mode = str(self.qsettings.value("ai_mode", default_mode))
-            if stored_mode not in {"director", "lite"}:
-                stored_mode = default_mode
-            if not self.vlm_available and stored_mode == "director":
-                stored_mode = "lite"
-            mode_index = self.ai_mode.findData(stored_mode)
-            if mode_index >= 0:
-                self.ai_mode.setCurrentIndex(mode_index)
-        else:
-            self.ai.setChecked(False)
+        stored_model = str(self.qsettings.value("ai_model", ""))
+        if stored_model:
+            self._select_ai_model(stored_model)
         guard_default = self.qsettings.value("game_guard", "true") in (True, "true")
         self.game_guard.setChecked(bool(guard_default))
         self.game_guard.toggled.connect(lambda _: self._poll_game())
-        self.ai.toggled.connect(self._ai_changed)
-        self.ai_model.currentTextChanged.connect(lambda _: self._ai_changed(self.ai.isChecked()))
-        self.ai_mode.currentIndexChanged.connect(lambda _: self._ai_changed(self.ai.isChecked()))
-        self._ai_changed(self.ai.isChecked())
+        self.ai_model.currentIndexChanged.connect(self._ai_model_changed)
+        self._update_ai_state()
         self.input_edit.setText(str(self.qsettings.value("input", "")))
         self.input_edit.setCursorPosition(0)
         self.output_edit.setText(str(self.qsettings.value("output", "")))
@@ -2293,10 +2370,9 @@ class MainWindow(QMainWindow):
         self.qsettings.setValue("post", self.post.value())
         self.qsettings.setValue("recursive", self.recursive.isChecked())
         self.qsettings.setValue("gpu_v2", self.gpu.isChecked())
-        if self.ai_available:
-            self.qsettings.setValue("ai_v2", self.ai.isChecked())
-        self.qsettings.setValue("ai_model", self.ai_model.currentText())
-        self.qsettings.setValue("ai_mode", str(self.ai_mode.currentData()))
+        self.qsettings.setValue("ai_model", self._current_ai_model())
+        for stale_key in ("ai_v2", "ai_mode", "ai_game"):
+            self.qsettings.remove(stale_key)
         self.qsettings.setValue("game_guard", self.game_guard.isChecked())
         self.qsettings.setValue("low_power", self.low_power.isChecked())
         self.qsettings.setValue("input", self.input_edit.text())
@@ -2470,32 +2546,37 @@ class MainWindow(QMainWindow):
             self.ffmpeg_label.setStyleSheet("color: #e05a5a;")
             self.ffmpeg_label.setToolTip("Install FFmpeg or use the portable build.")
         self._gpu_changed(self.gpu.isChecked())
-        self._ai_changed(self.ai.isChecked())
+        self._update_ai_state()
 
-    def _ai_changed(self, checked: bool) -> None:
+    def _update_ai_state(self) -> None:
         running = bool(getattr(self, "_job_running", False))
-        mode = str(self.ai_mode.currentData() or "director")
-        lite = mode == "lite"
-        self.ai.setEnabled(not running)
-        self.ai_model.setEnabled(
-            not running and checked and not lite and self.vlm_available
-        )
-        self.ai_mode.setEnabled(not running and checked)
-        self.ai_state.setText("On" if checked else "Off")
-        if lite:
+        ready = self.vlm_available and self.ollama_ok
+        selected = self._current_ai_model()
+        unverified = bool(selected) and selected not in self.ai_models
+        self.ai_model.setEnabled(not running and self.vlm_available)
+        if ready and unverified:
+            self.ai_state.setText("unverified")
+            self.ai_state.setStyleSheet("color: #d6a84a;")
             self.ai_state.setToolTip(
-                "Lite mode uses local HUD OCR, Whisper, and acoustic/motion signals. "
-                "No vision model or extra VRAM is used."
+                "This model is not in the known vision list. If it does not accept "
+                "image input, the director will fail."
             )
-        elif not self.vlm_available:
-            self.ai_state.setText("no VLM")
+        elif ready:
+            self.ai_state.setText("ready")
+            self.ai_state.setStyleSheet("color: #7ac77a;")
             self.ai_state.setToolTip(
-                "Choose Lite mode, or install Ollama and pull qwen2.5vl:7b."
+                "Local AI ready. The director watches the whole clip and transcribes "
+                "audio locally."
             )
         else:
+            self.ai_state.setText("setup required")
+            self.ai_state.setStyleSheet("")
             self.ai_state.setToolTip(
-                "Local AI; GPU when available. Director also transcribes audio locally."
+                "Install Ollama and a local vision model to enable highlighting."
             )
+        if hasattr(self, "analyze_btn"):
+            self.analyze_btn.setEnabled(not running and ready)
+        self._update_ai_setup()
 
     def _update_ai_setup(self) -> None:
         if not hasattr(self, "ai_setup"):
@@ -2507,23 +2588,23 @@ class MainWindow(QMainWindow):
         if self.ollama_ok and self.ollama_present:
             self.ai_setup_title.setText("Ollama found · model needed")
             self.ai_setup_text.setText(
-                "Lite mode works now. Download a vision model to enable AI Director."
+                "Download a vision model to enable the local AI director."
             )
             self.get_ollama_btn.hide()
             self.pull_ai_btn.show()
         elif self.ollama_present:
             self.ai_setup_title.setText("Ollama is installed")
             self.ai_setup_text.setText(
-                "Lite mode works now. Start Ollama with Refresh, then download "
-                "a vision model to enable AI Director."
+                "Start Ollama with Refresh, then download a vision model to "
+                "enable the local AI director."
             )
             self.get_ollama_btn.hide()
             self.pull_ai_btn.show()
         else:
-            self.ai_setup_title.setText("Lite mode is ready")
+            self.ai_setup_title.setText("Local AI setup required")
             self.ai_setup_text.setText(
-                "No extra install needed for OCR + Whisper + signal detection. "
-                "Clipper can install Ollama for you, then download a local vision model."
+                "Clipper uses the local vision director for every scan. Install "
+                "Ollama, then download a vision model to start."
             )
             self.get_ollama_btn.show()
             self.pull_ai_btn.hide()
@@ -2589,12 +2670,30 @@ class MainWindow(QMainWindow):
         if "cancelled" not in message.lower():
             show_message(self, "Ollama setup failed", message, kind="warning")
 
+    def _start_ollama_background(self) -> None:
+        if (
+            self.ollama_start_worker is not None
+            and self.ollama_start_worker.isRunning()
+        ):
+            return
+        worker = OllamaStartWorker()
+        worker.done.connect(self._ollama_started)
+        self.ollama_start_worker = worker
+        worker.start()
+
+    def _ollama_started(self, ok: bool) -> None:
+        self.ollama_start_worker = None
+        if ok:
+            self._refresh_ai_models()
+        else:
+            self._update_ai_state()
+
     def _refresh_ai_models(self) -> None:
         state = ollama_status(timeout=3)
         if not state.get("ok") and ollama_executable() is not None:
             self.ai_setup_status.setText("Starting Ollama...")
             self.ai_setup_status.show()
-            start_ollama_server()
+            start_ollama_server(wait=5.0)
             state = ollama_status(timeout=3)
         self.ollama_ok = bool(state.get("ok"))
         self.ollama_present = ollama_executable() is not None
@@ -2608,34 +2707,21 @@ class MainWindow(QMainWindow):
                 token in name.lower()
                 for token in ("vl", "llava", "minicpm", "moondream", "gemma3")
             )
-            and not name.lower().startswith("qwen3")
             and "qwen2.5vl:3b" not in name.lower()
         ]
         self.ai_models = vision
-        self.vlm_available = bool(vision)
-        if self.vlm_available:
+        self.vlm_available = bool(installed)
+        if vision:
             preferred = (
                 "gemma3:4b"
                 if self.low_vram and "gemma3:4b" in installed
                 else (DEFAULT_MODEL if DEFAULT_MODEL.lower() in installed else vision[0])
             )
         else:
-            preferred = "No VLM installed (Lite mode)"
+            preferred = next(iter(installed.values()), "No model installed")
         self.ai_default = preferred
-        self.ai_model.blockSignals(True)
-        self.ai_model.clear()
-        for model in self.ai_models or [self.ai_default]:
-            self.ai_model.addItem(model)
-        index = self.ai_model.findText(self.ai_default)
-        if index >= 0:
-            self.ai_model.setCurrentIndex(index)
-        self.ai_model.blockSignals(False)
-        if not self.vlm_available:
-            lite_index = self.ai_mode.findData("lite")
-            if lite_index >= 0:
-                self.ai_mode.setCurrentIndex(lite_index)
-        self._update_ai_setup()
-        self._ai_changed(self.ai.isChecked())
+        self._populate_ai_model_combo(preferred)
+        self._update_ai_state()
 
     def _pull_ai_model(self) -> None:
         if self.pull_worker is not None and self.pull_worker.isRunning():
@@ -2652,7 +2738,7 @@ class MainWindow(QMainWindow):
                 return
             self.ai_setup_status.setText("Starting Ollama...")
             self.ai_setup_status.show()
-            self.ollama_ok = start_ollama_server()
+            self.ollama_ok = start_ollama_server(wait=5.0)
             if not self.ollama_ok:
                 self._update_ai_setup()
                 show_message(
@@ -2671,7 +2757,7 @@ class MainWindow(QMainWindow):
             confirm="Download",
             detail=(
                 f"This is {size_hint} and is downloaded locally through Ollama, "
-                "not Clipper. Lite mode already works without it."
+                "not Clipper. It is required for AI highlighting."
             ),
         ):
             return
@@ -2697,15 +2783,10 @@ class MainWindow(QMainWindow):
             show_message(self, "Model download failed", message, kind="warning")
             return
         self._refresh_ai_models()
-        self.ai.setChecked(True)
-        director_index = self.ai_mode.findData("director")
-        if director_index >= 0:
-            self.ai_mode.setCurrentIndex(director_index)
-        self._ai_changed(True)
         show_message(
             self,
-            "AI Director ready",
-            f"{message} The local director is enabled.",
+            "Local AI ready",
+            f"{message} Clipper can now analyze footage.",
             kind="info",
         )
 
@@ -2842,10 +2923,10 @@ class MainWindow(QMainWindow):
             threads=int(self.threads.currentData() or 0),
             gpu=self.gpu.isChecked(),
             preview=True,
-            ai=self.ai.isChecked() and self.ai_available,
-            ai_model=self.ai_model.currentText().replace(" (not installed)", ""),
+            ai=True,
+            ai_model=self._current_ai_model(),
             ai_game="auto",
-            ai_mode=str(self.ai_mode.currentData() or "director"),
+            ai_mode="director",
             game_guard=self._pause_for_game if self.game_guard.isChecked() else None,
         )
         if self.low_power.isChecked():
@@ -2861,7 +2942,16 @@ class MainWindow(QMainWindow):
                 kind="critical",
             )
             return
-        if self.ai.isChecked() and self.game_guard.isChecked():
+        if not self.vlm_available or not self.ollama_ok:
+            show_message(
+                self,
+                "Local AI not ready",
+                "Install Ollama and a vision model before analyzing footage.",
+                kind="warning",
+            )
+            self._update_ai_setup()
+            return
+        if self.game_guard.isChecked():
             game = self._pause_for_game()
             if game:
                 show_message(
@@ -3195,8 +3285,7 @@ class MainWindow(QMainWindow):
         self.cancel_btn.setEnabled(running)
         self.input_edit.setEnabled(not running)
         self.output_edit.setEnabled(not running)
-        self.ai.setEnabled(not running and self.ai_available)
-        self._ai_changed(self.ai.isChecked())
+        self._update_ai_state()
 
     def _toggle_maximize(self) -> None:
         if self.isMaximized():
@@ -3233,8 +3322,8 @@ class MainWindow(QMainWindow):
         if game == self._detected_game:
             return
         self._detected_game = game
-        if not self._busy() and self.ai.isChecked():
-            model = self.ai_model.currentText().replace(" (not installed)", "")
+        if not self._busy() and self.vlm_available:
+            model = self._current_ai_model()
             threading.Thread(
                 target=unload_model,
                 args=(model,),
@@ -3404,6 +3493,11 @@ class MainWindow(QMainWindow):
             if not self.ai_install_worker.wait(5000):
                 self.ai_install_worker.terminate()
                 self.ai_install_worker.wait(1000)
+        if (
+            self.ollama_start_worker is not None
+            and self.ollama_start_worker.isRunning()
+        ):
+            self.ollama_start_worker.wait(6000)
         for dialog in self.findChildren(ClipPreviewDialog):
             dialog.close()
         running = bool(

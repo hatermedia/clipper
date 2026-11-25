@@ -7,7 +7,7 @@ import types
 import numpy as np
 import pytest
 
-from clipper.detect import hud, lite, signals
+from clipper.detect import hud, signals
 
 
 def test_hud_samples_start_and_end_of_each_block() -> None:
@@ -15,21 +15,6 @@ def test_hud_samples_start_and_end_of_each_block() -> None:
     assert hud.HUD_SAMPLE_OFFSETS[-1] == 1.0
     assert list(hud.HUD_SAMPLE_OFFSETS) == sorted(set(hud.HUD_SAMPLE_OFFSETS))
     assert len(hud.HUD_SAMPLE_OFFSETS) >= 5
-
-
-def test_lite_keeps_every_bounded_hud_block(monkeypatch: pytest.MonkeyPatch) -> None:
-    class QuietSignal:
-        def agreement(self) -> bool:
-            return False
-
-    monkeypatch.setattr(lite, "window_signal", lambda *args, **kwargs: QuietSignal())
-    windows = lite._unique_candidates([], [], None, 600.0)
-    # 600s / 30s blocks = 20 HUD blocks; the old 16-candidate cap dropped the
-    # last four blocks, which is exactly where late round/goal banners live.
-    assert len(windows) == 20
-    assert windows[0].start == 0.0
-    assert windows[-1].end == 600.0
-    assert all(window.score == 0.90 for window in windows)
 
 
 def test_hud_engine_retries_after_cooldown(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,6 +6,22 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-26
+
+### Changed
+
+- **AI-only highlighting.** Removed Lite mode, the AI toggle, and the
+  heuristic-only fallback. Detect stays disabled until a local model is ready,
+  and director failures are reported instead of replaced with non-AI peaks.
+- **Grouped model picker.** Local vision models, other installed Ollama models,
+  and a custom model tag option. Custom tags are saved.
+- **Corner caption buttons.** Edge-style minimize/maximize/close buttons fill the
+  top-right corner with no gaps.
+- **Drop zone wording.** “Drop a video here” with “or click to choose a video
+  file” underneath; Browse opens the native folder picker.
+- Removed stale Lite and heuristic wording, including the low-power tooltip.
+- Added a full-clip coverage test for the director.
+
 ## [0.7.5] - 2026-11-26
 
 ### Changed
