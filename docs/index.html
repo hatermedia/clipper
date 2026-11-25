@@ -26,7 +26,7 @@
     "operatingSystem": "Windows 10, Windows 11",
     "description": "Native Windows highlight trimmer with local AI, smart padding, and lossless FFmpeg cuts.",
     "url": "https://hatermedia.github.io/clipper/",
-    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.7.4",
+    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.7.5",
     "license": "https://opensource.org/license/mit",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
   }
@@ -69,7 +69,7 @@
             runs on your machine. No accounts, no uploads, no admin prompt.
           </p>
           <div class="cta-row" style="margin-top: 24px;">
-            <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.4/ClipperSetup-0.7.4.exe" target="_blank" rel="noreferrer">Download for Windows</a>
+            <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.5/ClipperSetup-0.7.5.exe" target="_blank" rel="noreferrer">Download for Windows</a>
             <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">View source</a>
           </div>
           <div class="hero-meta">
@@ -105,8 +105,8 @@
           </article>
           <article class="card">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></div>
-            <h3>Lossless or exact cuts</h3>
-            <p>Stream copy is instant and preserves the original stream. Turn on frame-accurate re-encode when you need exact edges, with CPU or NVENC encoding.</p>
+            <h3>Lossless cuts</h3>
+            <p>Exports use stream copy, so the original video and audio are untouched and the cut finishes almost instantly.</p>
           </article>
           <article class="card">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg></div>
@@ -116,7 +116,7 @@
           <article class="card">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></div>
             <h3>GPU when it helps</h3>
-            <p>A real NVENC test enables GPU encoding by default. Motion scoring and audio analysis stay on the CPU, where they belong. Threads are capped so your machine stays usable.</p>
+            <p>A real NVENC test enables GPU acceleration for the analysis proxy. Motion scoring and audio analysis stay on the CPU, where they belong. Threads are capped so your machine stays usable.</p>
           </article>
           <article class="card">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12a7 7 0 0 1 14 0"/><path d="M8 12a4 4 0 0 1 8 0"/><circle cx="12" cy="17" r="1"/></svg></div>
@@ -140,14 +140,13 @@
             </div>
             <div class="compare-row">
               <div class="compare-cell">Whisper transcription + HUD OCR + YAMNet audio tags. No extra install or VRAM.</div>
-              <div class="compare-cell">A local vision model reviews every window and follows the story across a long interaction.</div>
+              <div class="compare-cell">A local vision model reviews every window and follows the story across a long interaction. Game presets are inferred from the folder or file name.</div>
             </div>
             <div class="compare-row">
               <div class="compare-cell">Works offline as soon as Clipper is installed.</div>
               <div class="compare-cell">Needs one click to install Ollama, then one model: <strong>gemma3:4b</strong> on 6 GB cards, <strong>qwen2.5vl:7b</strong> on 8 GB+.</div>
             </div>
           </div>
-          <p class="small dim" style="margin-top: 14px;">We no longer recommend the 3B vision model; the 4B Gemma model is the tested 6 GB choice.</p>
         </div>
         <figure>
           <img src="media/desktop-ai-setup.png" alt="Clipper showing Lite mode ready with Install Ollama and Refresh actions" />
@@ -173,7 +172,7 @@
           </article>
           <article class="step">
             <h3>Review and export</h3>
-            <p>Preview in the app, keep the rows you want, and export selected or all. Stream copy for speed, re-encode for exact edges.</p>
+            <p>Preview in the app, keep the rows you want, and export selected or all. Lossless stream copy keeps the original quality.</p>
           </article>
         </div>
       </div>
@@ -195,11 +194,11 @@
               </ul>
             </div>
             <div class="download-box">
-              <strong style="color: #fff; font-size: 15px;">Clipper v0.7.4</strong>
+              <strong style="color: #fff; font-size: 15px;">Clipper v0.7.5</strong>
               <p class="muted" style="margin-top: 6px;">Native Windows x64. No Python. No FFmpeg install. No admin.</p>
               <div class="cta-row" style="margin-top: 16px;">
-                <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.4/ClipperSetup-0.7.4.exe" target="_blank" rel="noreferrer">Download installer</a>
-                <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.7.4/clipper-0.7.4-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
+                <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.5/ClipperSetup-0.7.5.exe" target="_blank" rel="noreferrer">Download installer</a>
+                <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.7.5/clipper-0.7.5-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
               </div>
               <p class="meta">SHA-256 checksums are published with every release. The portable zip is for people who do not want an installer.</p>
             </div>
@@ -237,7 +236,7 @@
           </details>
           <details>
             <summary>Is 6 GB enough for the AI Director?</summary>
-            <p>Use <span class="mono">gemma3:4b</span>. It is the tested 6 GB choice. On 8 GB or more, <span class="mono">qwen2.5vl:7b</span> gives better story judgment. The old 3B recommendation is retired.</p>
+            <p>Use <span class="mono">gemma3:4b</span> on 6 GB cards. On 8 GB or more, <span class="mono">qwen2.5vl:7b</span> gives better story judgment.</p>
           </details>
           <details>
             <summary>Does Game Guard know my game?</summary>
@@ -265,7 +264,7 @@
         </a>
         <div class="footer-links">
           <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://github.com/hatermedia/clipper/releases/tag/v0.7.4" target="_blank" rel="noreferrer">Release</a>
+          <a href="https://github.com/hatermedia/clipper/releases/tag/v0.7.5" target="_blank" rel="noreferrer">Release</a>
           <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">README</a>
           <a href="https://github.com/hatermedia/clipper/issues" target="_blank" rel="noreferrer">Issues</a>
         </div>

@@ -26,7 +26,9 @@ from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
     QPoint,
+    QPointF,
     QPropertyAnimation,
+    QRectF,
     QSettings,
     QSize,
     Qt,
@@ -67,7 +69,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMenu,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -239,7 +240,8 @@ QPushButton#WindowButton {
     color: #b0b0b0;
     padding: 0;
 }
-QPushButton#WindowButton:hover { background: #333333; color: #ffffff; }
+QPushButton#WindowButton:hover { background: #2f2f2f; }
+QPushButton#WindowButton:pressed { background: #3a3a3a; }
 QPushButton#WindowClose {
     background: transparent;
     border: none;
@@ -247,7 +249,8 @@ QPushButton#WindowClose {
     color: #b0b0b0;
     padding: 0;
 }
-QPushButton#WindowClose:hover { background: #d9534f; color: #ffffff; }
+QPushButton#WindowClose:hover { background: #c42b1c; }
+QPushButton#WindowClose:pressed { background: #b02a1c; }
 QPushButton#IconButton {
     background: transparent;
     border: none;
@@ -437,17 +440,11 @@ class ExportWorker(QThread):
         self,
         summary: AnalysisSummary,
         output_dir: str,
-        reencode: bool,
-        encoder: str,
-        crf: int,
         threads: int,
     ) -> None:
         super().__init__()
         self.summary = summary
         self.output_dir = output_dir
-        self.reencode = reencode
-        self.encoder = encoder
-        self.crf = crf
         self.threads = threads
         self._cancel = False
 
@@ -464,10 +461,6 @@ class ExportWorker(QThread):
             result = export_analysis(
                 self.summary,
                 output_dir=self.output_dir,
-                reencode=self.reencode,
-                encoder=self.encoder,
-                crf=self.crf,
-                preset="veryfast",
                 progress=self._progress,
                 threads=self.threads,
             )
@@ -616,28 +609,42 @@ class ClickablePreview(QLabel):
 
 
 def _window_icon(kind: str) -> QIcon:
-    pixmap = QPixmap(32, 32)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing, True)
-    pen = QPen(QColor("#d6d6d6"))
-    pen.setWidthF(2.0)
-    pen.setCapStyle(Qt.RoundCap)
-    painter.setPen(pen)
-    if kind == "min":
-        painter.drawLine(10, 17, 22, 17)
-    elif kind == "max":
-        painter.drawRect(10, 10, 12, 12)
-    elif kind == "restore":
-        painter.drawRect(9, 13, 10, 10)
-        painter.drawLine(13, 9, 23, 9)
-        painter.drawLine(23, 9, 23, 19)
-        painter.drawLine(19, 19, 23, 19)
-    elif kind == "close":
-        painter.drawLine(10, 10, 22, 22)
-        painter.drawLine(22, 10, 10, 22)
-    painter.end()
-    return QIcon(pixmap)
+    icon = QIcon()
+    for size in (16, 32):
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        scale = size / 16.0
+        pen = QPen(QColor("#f2f2f2"))
+        pen.setWidthF(max(1.0, 1.15 * scale))
+        pen.setCapStyle(Qt.FlatCap)
+        pen.setJoinStyle(Qt.MiterJoin)
+        painter.setPen(pen)
+        if kind == "min":
+            painter.drawLine(
+                QPointF(3 * scale, 8 * scale), QPointF(13 * scale, 8 * scale)
+            )
+        elif kind == "max":
+            painter.drawRect(QRectF(3.5 * scale, 3.5 * scale, 9 * scale, 9 * scale))
+        elif kind == "restore":
+            painter.drawRect(QRectF(3.5 * scale, 5.5 * scale, 8 * scale, 8 * scale))
+            painter.drawLine(
+                QPointF(5.5 * scale, 3.5 * scale), QPointF(12.5 * scale, 3.5 * scale)
+            )
+            painter.drawLine(
+                QPointF(12.5 * scale, 3.5 * scale), QPointF(12.5 * scale, 10.5 * scale)
+            )
+        elif kind == "close":
+            painter.drawLine(
+                QPointF(4 * scale, 4 * scale), QPointF(12 * scale, 12 * scale)
+            )
+            painter.drawLine(
+                QPointF(12 * scale, 4 * scale), QPointF(4 * scale, 12 * scale)
+            )
+        painter.end()
+        icon.addPixmap(pixmap)
+    return icon
 
 
 class InlineClipPreview(QFrame):
@@ -916,7 +923,7 @@ class DropZone(QFrame):
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("color: #f5f5f7; font-weight: 500;")
         title.setAttribute(Qt.WA_TransparentForMouseEvents)
-        subtitle = QLabel("or click to choose a folder or video")
+        subtitle = QLabel("or click to choose a video file")
         subtitle.setAlignment(Qt.AlignCenter)
         subtitle.setObjectName("Muted")
         subtitle.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -1626,29 +1633,36 @@ class MainWindow(QMainWindow):
         header.addWidget(github)
         header.addSpacing(6)
 
+        controls = QHBoxLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setSpacing(0)
         minimize = QPushButton()
         minimize.setObjectName("WindowButton")
         minimize.setFixedSize(46, 32)
         minimize.setIcon(_window_icon("min"))
         minimize.setIconSize(QSize(16, 16))
+        minimize.setFocusPolicy(Qt.NoFocus)
         minimize.clicked.connect(self.showMinimized)
-        header.addWidget(minimize)
+        controls.addWidget(minimize)
 
         self.max_btn = QPushButton()
         self.max_btn.setObjectName("WindowButton")
         self.max_btn.setFixedSize(46, 32)
         self.max_btn.setIcon(_window_icon("max"))
         self.max_btn.setIconSize(QSize(16, 16))
+        self.max_btn.setFocusPolicy(Qt.NoFocus)
         self.max_btn.clicked.connect(self._toggle_maximize)
-        header.addWidget(self.max_btn)
+        controls.addWidget(self.max_btn)
 
         close = QPushButton()
         close.setObjectName("WindowClose")
         close.setFixedSize(46, 32)
         close.setIcon(_window_icon("close"))
         close.setIconSize(QSize(16, 16))
+        close.setFocusPolicy(Qt.NoFocus)
         close.clicked.connect(self.close)
-        header.addWidget(close)
+        controls.addWidget(close)
+        header.addLayout(controls)
         outer.addWidget(titlebar)
 
         content = QWidget()
@@ -1699,9 +1713,11 @@ class MainWindow(QMainWindow):
         left.addWidget(self._section("Footage"))
         path_row = QHBoxLayout()
         self.input_edit = QLineEdit()
-        self.input_edit.setPlaceholderText("No folder selected")
+        self.input_edit.setPlaceholderText("No folder or video selected")
+        self.input_edit.setToolTip("Folder or video file to scan.")
         self.input_edit.editingFinished.connect(lambda: self.set_input(self.input_edit.text(), scan=False))
         browse = QPushButton("Browse…")
+        browse.setToolTip("Choose a folder of gameplay videos.")
         browse.clicked.connect(self.choose_input)
         path_row.addWidget(self.input_edit, 1)
         path_row.addWidget(browse)
@@ -1710,7 +1726,7 @@ class MainWindow(QMainWindow):
         self.drop = DropZone()
         self.drop.setFixedHeight(88)
         self.drop.pathDropped.connect(lambda p: self.set_input(p, scan=True))
-        self.drop.clicked.connect(self.choose_input)
+        self.drop.clicked.connect(self.choose_video)
         left.addWidget(self.drop)
 
         row = QHBoxLayout()
@@ -1828,46 +1844,23 @@ class MainWindow(QMainWindow):
             0,
             2,
         )
-        ai_controls.addWidget(QLabel("Game"), 1, 0)
-        self.ai_game = QComboBox()
-        for label, value in (
-            ("Auto (from folder)", "auto"),
-            ("Valorant", "Valorant"),
-            ("Apex Legends", "Apex Legends"),
-            ("CS2", "Counter-Strike 2"),
-            ("Rocket League", "Rocket League"),
-            ("Mimesis", "Mimesis"),
-            ("Generic", "generic"),
-        ):
-            self.ai_game.addItem(label, value)
-        self.ai_game.setCurrentIndex(0)
-        ai_controls.addWidget(self.ai_game, 1, 1)
-        ai_controls.addWidget(
-            self._help(
-                "Auto reads the game from each file's folder or name, so one NVIDIA parent folder "
-                "can contain Rocket League, Mimesis, Valorant, etc. Pick a preset to override it."
-            ),
-            1,
-            2,
-        )
-        ai_controls.addWidget(QLabel("AI mode"), 2, 0)
+        ai_controls.addWidget(QLabel("AI mode"), 1, 0)
         self.ai_mode = QComboBox()
         self.ai_mode.addItem("Director · whole clip", "director")
-        self.ai_mode.addItem("Lite · OCR + signals", "lite")
-        self.ai_mode.addItem("Fast review · legacy", "review")
+        self.ai_mode.addItem("Lite · OCR + audio", "lite")
         self.ai_mode.setToolTip(
             "Director watches the whole clip with a local vision model. "
             "Lite uses HUD OCR, Whisper, and audio/motion signals with no VLM (best for 6 GB cards). "
-            "Fast review is the older peak-only pass."
+            "The game is inferred from each file's folder or name."
         )
-        ai_controls.addWidget(self.ai_mode, 2, 1)
+        ai_controls.addWidget(self.ai_mode, 1, 1)
         ai_controls.addWidget(
             self._help(
                 "Director: whole-clip audio + frame review, can keep a 30-45s interaction. "
                 "Lite: HUD OCR + transcript + acoustic/motion signals, no VLM or extra VRAM. "
-                "Fast review: legacy peak-only pass."
+                "Game presets are picked automatically from the folder or file name."
             ),
-            2,
+            1,
             2,
         )
         left.addLayout(ai_controls)
@@ -1933,7 +1926,7 @@ class MainWindow(QMainWindow):
         game_row.addWidget(self.game_guard)
         game_row.addWidget(
             self._help(
-                "Uses the local process list, not Discord presence.\n"
+                "Uses the local process list.\n"
                 "Pauses analysis and unloads the vision model while a game runs."
             )
         )
@@ -2186,61 +2179,13 @@ class MainWindow(QMainWindow):
         out_browse = QPushButton("Browse…")
         out_browse.clicked.connect(self.choose_output)
         export_layout.addWidget(out_browse, 0, 2)
-        self.reencode = ToggleRow("Frame-accurate re-encode")
-        self.reencode.setToolTip(
-            "Off: stream copy, nearly instant and lossless, but cuts start on the "
-            "nearest keyframe.\nOn: re-encode for exact cut edges, slower and uses "
-            "more CPU/GPU."
+        export_note = QLabel("Lossless cuts — original video and audio streams are copied.")
+        export_note.setObjectName("Muted")
+        export_note.setWordWrap(True)
+        export_note.setToolTip(
+            "Clipper exports with stream copy, so the original video and audio are untouched."
         )
-        self.reencode.toggled.connect(self._update_encoder_state)
-        reencode_row = QHBoxLayout()
-        reencode_row.setContentsMargins(0, 0, 0, 0)
-        reencode_row.setSpacing(4)
-        reencode_row.addWidget(self.reencode)
-        reencode_row.addWidget(
-            self._help(
-                "Stream copy is faster and preserves the original video stream. "
-                "Frame-accurate re-encode is slower but cuts exactly at the requested second."
-            )
-        )
-        reencode_row.addStretch(1)
-        export_layout.addLayout(reencode_row, 1, 0, 1, 2)
-        self.encoder = QComboBox()
-        for label, value in (
-            ("Auto", "auto"),
-            ("libx264 (CPU)", "libx264"),
-            ("H.264 NVENC", "h264_nvenc"),
-            ("HEVC NVENC", "hevc_nvenc"),
-            ("libx265 (CPU)", "libx265"),
-        ):
-            self.encoder.addItem(label, value)
-        self.encoder.setToolTip(
-            "Encoder for frame-accurate re-encode. Auto prefers NVENC when it works, "
-            "then falls back to CPU."
-        )
-        self.encoder.currentIndexChanged.connect(self._encoder_changed)
-        export_layout.addWidget(self.encoder, 1, 2)
-        crf_label = QHBoxLayout()
-        crf_label.setContentsMargins(0, 0, 0, 0)
-        crf_label.setSpacing(4)
-        crf_label.addWidget(QLabel("CRF"))
-        crf_label.addWidget(
-            self._help(
-                "Quality for re-encode. Lower is higher quality and larger files. "
-                "Auto uses 20; set 0 in the spinner to return to Auto."
-            )
-        )
-        crf_label.addStretch(1)
-        export_layout.addLayout(crf_label, 2, 0)
-        self.crf = QSpinBox()
-        self.crf.setRange(0, 51)
-        self.crf.setValue(0)
-        self.crf.setSpecialValueText("Auto")
-        self.crf.setToolTip(
-            "Auto uses CRF 20. Lower values (18) are higher quality; higher values "
-            "(23–28) make smaller files."
-        )
-        export_layout.addWidget(self.crf, 2, 1)
+        export_layout.addWidget(export_note, 1, 0, 1, 2)
         export_actions = QHBoxLayout()
         export_actions.setSpacing(6)
         self.export_all_btn = QPushButton("Export all")
@@ -2254,7 +2199,7 @@ class MainWindow(QMainWindow):
         self.export_btn.clicked.connect(lambda: self.export(selected_only=True))
         self.export_btn.setEnabled(False)
         export_actions.addWidget(self.export_btn)
-        export_layout.addLayout(export_actions, 2, 2)
+        export_layout.addLayout(export_actions, 1, 2)
         right.addWidget(export_group)
 
         export_footer = QHBoxLayout()
@@ -2275,8 +2220,6 @@ class MainWindow(QMainWindow):
         splitter.setSizes([430, 826])
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-
-        self._update_encoder_state()
 
     def _section(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -2313,14 +2256,11 @@ class MainWindow(QMainWindow):
             stored_model = str(self.qsettings.value("ai_model", ""))
             if stored_model and self.ai_model.findText(stored_model) >= 0 and self.vlm_available:
                 self.ai_model.setCurrentText(stored_model)
-            stored_game = str(self.qsettings.value("ai_game", ""))
-            if stored_game:
-                game_index = self.ai_game.findData(stored_game)
-                if game_index >= 0:
-                    self.ai_game.setCurrentIndex(game_index)
             default_mode = "lite" if (self.low_vram or not self.vlm_available) else "director"
             stored_mode = str(self.qsettings.value("ai_mode", default_mode))
-            if not self.vlm_available and stored_mode in {"director", "review"}:
+            if stored_mode not in {"director", "lite"}:
+                stored_mode = default_mode
+            if not self.vlm_available and stored_mode == "director":
                 stored_mode = "lite"
             mode_index = self.ai_mode.findData(stored_mode)
             if mode_index >= 0:
@@ -2356,7 +2296,6 @@ class MainWindow(QMainWindow):
         if self.ai_available:
             self.qsettings.setValue("ai_v2", self.ai.isChecked())
         self.qsettings.setValue("ai_model", self.ai_model.currentText())
-        self.qsettings.setValue("ai_game", str(self.ai_game.currentData()))
         self.qsettings.setValue("ai_mode", str(self.ai_mode.currentData()))
         self.qsettings.setValue("game_guard", self.game_guard.isChecked())
         self.qsettings.setValue("low_power", self.low_power.isChecked())
@@ -2539,9 +2478,6 @@ class MainWindow(QMainWindow):
         lite = mode == "lite"
         self.ai.setEnabled(not running)
         self.ai_model.setEnabled(
-            not running and checked and not lite and self.vlm_available
-        )
-        self.ai_game.setEnabled(
             not running and checked and not lite and self.vlm_available
         )
         self.ai_mode.setEnabled(not running and checked)
@@ -2807,50 +2743,34 @@ class MainWindow(QMainWindow):
             self.sample_fps.setCurrentIndex(0)
             self.proxy_width.setCurrentIndex(0)
 
-    def _update_encoder_state(self) -> None:
-        if not self.reencode.isChecked() and self.encoder.currentData() != "auto":
-            self.encoder.blockSignals(True)
-            self.encoder.setCurrentIndex(0)
-            self.encoder.blockSignals(False)
-        self.encoder.setEnabled(True)
-        self.crf.setEnabled(self.reencode.isChecked())
-
-    def _encoder_changed(self, _index: int) -> None:
-        # Picking a concrete encoder only matters when re-encoding; turn it on
-        # instead of leaving a dead-looking control.
-        if self.encoder.currentData() != "auto" and not self.reencode.isChecked():
-            self.reencode.setChecked(True)
-        self._update_encoder_state()
-
     def _choose_start(self) -> str:
         current = self.input_edit.text().strip()
-        if current and Path(current).exists():
-            return current
+        if current:
+            target = Path(current)
+            if target.is_dir():
+                return str(target)
+            if target.parent.is_dir():
+                return str(target.parent)
         return str(Path.home())
 
     # --------------------------------------------------------------- input
     def choose_input(self) -> None:
-        menu = QMenu(self)
-        folder_action = menu.addAction("Choose folder…")
-        video_action = menu.addAction("Choose video…")
-        chosen = menu.exec(self.drop.mapToGlobal(QPoint(0, self.drop.height())))
-        if chosen is folder_action:
-            self.choose_folder()
-            return
-        if chosen is not video_action:
-            return
-        start = self._choose_start()
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Choose gameplay video",
-            start,
-            "Video files (*.mp4 *.mkv *.mov *.avi);;All files (*.*)",
+        self.choose_folder()
+
+    def choose_folder(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Choose gameplay folder", self._choose_start()
         )
         if path:
             self.set_input(path, scan=True)
 
-    def choose_folder(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Choose gameplay folder", self._choose_start())
+    def choose_video(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Choose gameplay video",
+            self._choose_start(),
+            "Video files (*.mp4 *.mkv *.mov *.avi);;All files (*.*)",
+        )
         if path:
             self.set_input(path, scan=True)
 
@@ -2924,7 +2844,7 @@ class MainWindow(QMainWindow):
             preview=True,
             ai=self.ai.isChecked() and self.ai_available,
             ai_model=self.ai_model.currentText().replace(" (not installed)", ""),
-            ai_game=str(self.ai_game.currentData() or "generic"),
+            ai_game="auto",
             ai_mode=str(self.ai_mode.currentData() or "director"),
             game_guard=self._pause_for_game if self.game_guard.isChecked() else None,
         )
@@ -3220,9 +3140,6 @@ class MainWindow(QMainWindow):
         self.export_worker = ExportWorker(
             summary,
             output,
-            self.reencode.isChecked(),
-            str(self.encoder.currentData()),
-            self.crf.value() or 20,
             settings.threads,
         )
         self.export_worker.progress.connect(self._on_progress)
@@ -3274,9 +3191,6 @@ class MainWindow(QMainWindow):
             self.export_all_btn.setEnabled(False)
         else:
             self._update_selection_label()
-        self.reencode.setEnabled(not running)
-        self.encoder.setEnabled(not running)
-        self.crf.setEnabled(not running and self.reencode.isChecked())
         self.scan_btn.setEnabled(not running)
         self.cancel_btn.setEnabled(running)
         self.input_edit.setEnabled(not running)

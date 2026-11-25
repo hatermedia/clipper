@@ -1,4 +1,4 @@
-Clipper 0.7.4 - Windows x64 native
+Clipper 0.7.5 - Windows x64 native
 =================================
 
 No Python. No FFmpeg. No browser. No console window.
@@ -24,8 +24,9 @@ You can also install Ollama manually from https://ollama.com and run:
 
   ollama pull qwen2.5vl:7b
 
-Then tick "AI director (local)" in the app, pick Director mode and a game preset.
-The director transcribes the audio with local Whisper, reviews every 15-20s
+Then tick "AI director (local)" and choose Director mode. The game is detected
+from the footage folder or file name. The director transcribes the audio with
+local Whisper, reviews every 15-20s
 window with frames + transcript + audio energy, and keeps funny interactions,
 trolling, banter, reactions, goals, clutches, and round wins. A long interaction
 can stay 30-90s; it does not force everything into a six-second peak.
@@ -42,9 +43,9 @@ game is running, Clipper pauses the director and unloads the Ollama model so the
 game gets the VRAM. It resumes when the game closes. You can add a missed title
 in %LOCALAPPDATA%\Clipper\games.json.
 
-On a 6 GB card use gemma3:4b (tested). On 8 GB+ use qwen2.5vl:7b. The old 3B
-recommendation is retired. The Windows installer and portable build include the
-Whisper base.en model, so speech transcription works offline. Source installs
+On a 6 GB card use gemma3:4b (tested). On 8 GB+ use qwen2.5vl:7b. The Windows
+installer and portable build include the Whisper base.en model, so speech
+transcription works offline. Source installs
 download it once (~145 MB) into %LOCALAPPDATA%\Clipper\models\huggingface.
 Window verdicts are cached under %LOCALAPPDATA%\Clipper\ai-cache. Nothing is
 uploaded.
@@ -57,7 +58,7 @@ tune. Whisper runs on the CPU; the vision model runs on the GPU.
 PERFORMANCE
 -----------
 - GPU/NVENC is on by default when the real one-frame NVENC test passes. It is
-  used for the analysis proxy, optional re-encode, and the local AI runtime.
+  used for the analysis proxy and the local AI runtime.
 - Decoding may still use the CPU depending on the source codec; OpenCV motion
   scoring and audio RMS remain CPU work.
 - CPU threads: Balanced uses about half the cores. Low uses 2. Max lets FFmpeg
@@ -75,8 +76,8 @@ replacing itself.
 NOTES
 -----
 - Footage never leaves this machine. AI runs locally through Ollama.
-- Default export is FFmpeg stream copy (instant, lossless). Stream copy can
-  start on an earlier keyframe; enable frame-accurate re-encode for exact edges.
+- Exports use FFmpeg stream copy (instant, lossless); the original video and
+  audio streams are kept.
 - Windows SmartScreen may warn because the executable is unsigned. Source and
   build scripts: https://github.com/hatermedia/clipper/tree/main/packaging
 - MIT licensed. You are responsible for the rights to footage you process.

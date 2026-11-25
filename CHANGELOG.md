@@ -6,6 +6,24 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-11-26
+
+### Changed
+
+- **Native input pickers.** Browse opens the Windows folder picker directly;
+  clicking the drop zone opens the Windows video-file picker. Dragging still
+  accepts folders and files.
+- **Automatic game presets.** Removed the Game dropdown. The game is inferred
+  from the footage folder or file name.
+- **Lossless exports only.** Removed the frame-accurate re-encode toggle,
+  encoder selector, and CRF control from the desktop app. Exports always use
+  stream copy.
+- **Edge-style caption buttons.** Thin line icons, zero gaps, and a matching
+  close-button hover.
+- Removed the legacy Fast review mode; Director and Lite are the only AI modes.
+- Removed 3B-model mentions from public copy and the Discord-presence sentence
+  from the Game Guard help.
+
 ## [0.7.4] - 2026-11-26
 
 ### Added

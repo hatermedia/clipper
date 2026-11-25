@@ -6,11 +6,11 @@ with FFmpeg. Everything runs locally. No accounts, no uploads, no browser.
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.7.4](https://github.com/hatermedia/clipper/releases/tag/v0.7.4)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.7.5](https://github.com/hatermedia/clipper/releases/tag/v0.7.5)
 
 ## Install
 
-**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.7.4.exe](https://github.com/hatermedia/clipper/releases/download/v0.7.4/ClipperSetup-0.7.4.exe) (~365 MB)
+**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.7.5.exe](https://github.com/hatermedia/clipper/releases/download/v0.7.5/ClipperSetup-0.7.5.exe) (~365 MB)
 
 - Per-user install, no admin prompt
 - Installs to `%LOCALAPPDATA%\Programs\Clipper`
@@ -23,7 +23,7 @@ runtime they need. A multi-gigabyte vision model is **not** bundled. The optiona
 AI Director can install Ollama from inside the app, and then download a model
 only when you ask for it.
 
-Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.7.4/clipper-0.7.4-windows-x64-native.zip)
+Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.7.5/clipper-0.7.5-windows-x64-native.zip)
 and run `Clipper.exe`.
 
 ## What it does
@@ -42,10 +42,10 @@ and run `Clipper.exe`.
 - **Game Guard** — pauses AI and frees VRAM while a game is running, then
   resumes automatically. It uses a large title map, Unreal Engine process
   detection, and major game-library paths.
-- **Lossless or exact cuts** — stream copy by default for instant, lossless
-  exports. Frame-accurate re-encode is one toggle away when you need exact edges.
-- **GPU + CPU controls** — real NVENC test, balanced thread cap, low-power
-  preset, and a frame-accurate encoder selector.
+- **Lossless cuts** — stream copy keeps the original video and audio and exports
+  almost instantly.
+- **GPU + CPU controls** — real NVENC test, balanced thread cap, and a low-power
+  preset.
 
 ## First run and local AI
 
@@ -64,9 +64,11 @@ To enable it:
    Ollama, with progress shown in the panel.
 3. On 6 GB cards use `gemma3:4b` (tested). On 8 GB+ use `qwen2.5vl:7b`.
 
-The old 3B Qwen recommendation is retired; `gemma3:4b` is the tested 6 GB
-choice. If no model is installed, Clipper stays in Lite mode and says so instead
-of failing silently.
+Game presets are inferred from each file's folder or name; there is no game
+dropdown to maintain.
+
+If no model is installed, Clipper stays in Lite mode and says so instead of
+failing silently.
 
 ### Low-power mode
 
@@ -81,8 +83,8 @@ heuristic-only detection.
 
 ## Game Guard
 
-Game Guard looks at local processes and paths; it does not use Discord Rich
-Presence. It covers a large built-in title list, generic Unreal Engine shipping
+Game Guard looks at local processes and paths. It covers a large built-in title
+list, generic Unreal Engine shipping
 processes, and games installed through Steam, Epic, GOG, Riot, EA, Ubisoft, and
 Xbox paths. You can add private or missed titles in
 `%LOCALAPPDATA%\Clipper\games.json`:

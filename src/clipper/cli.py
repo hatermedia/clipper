@@ -133,9 +133,9 @@ def _build_batch_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ai-mode",
-        choices=("director", "lite", "review"),
+        choices=("director", "lite"),
         default="director",
-        help="director watches the whole clip; lite uses OCR + signals; review only checks heuristic peaks",
+        help="director watches the whole clip; lite uses OCR + audio + motion signals",
     )
     parser.add_argument(
         "--ai-min-confidence",

@@ -56,6 +56,33 @@ def test_ai_setup_installs_ollama_from_inside_the_app() -> None:
     assert "https://ollama.com/download" not in source
 
 
+def test_browse_and_drop_zone_open_native_pickers_directly() -> None:
+    source = inspect.getsource(MainWindow.choose_input)
+    assert "choose_folder" in source
+    assert "QMenu" not in source
+    full = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert "self.drop.clicked.connect(self.choose_video)" in full
+    assert "QFileDialog.getExistingDirectory" in full
+    assert "QFileDialog.getOpenFileName" in full
+
+
+def test_legacy_ai_mode_and_game_picker_are_removed() -> None:
+    source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert "Fast review" not in source
+    assert "legacy peak-only" not in source
+    assert "self.ai_game" not in source
+    assert '"auto"' in source  # ai_game is still forced internally
+    assert "ai_game=\"auto\"" in source
+
+
+def test_frame_accurate_reencode_and_discord_copy_are_removed() -> None:
+    source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert "Frame-accurate re-encode" not in source
+    assert "self.reencode" not in source
+    assert "Discord" not in source
+    assert "Lossless cuts" in source
+
+
 def test_close_event_stops_previews_workers_and_ffmpeg() -> None:
     source = inspect.getsource(MainWindow.closeEvent)
     assert "ClipPreviewDialog" in source

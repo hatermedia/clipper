@@ -13,6 +13,11 @@ def test_small_vision_model_uses_partial_gpu_offload() -> None:
     assert num_gpu_for("qwen2.5vl:7b") == 99
 
 
+def test_legacy_review_mode_is_rejected() -> None:
+    with pytest.raises(ValueError, match="director.*lite"):
+        DetectionSettings(ai_mode="review").validate()
+
+
 def test_sensitivity_presets_map_to_ai_thresholds() -> None:
     strict = ai_confidence_for_sensitivity(0.32)
     balanced = ai_confidence_for_sensitivity(0.50)

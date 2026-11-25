@@ -199,7 +199,25 @@ def analyze_file(
                 guessed = detect_game_from_path(path)
                 if guessed:
                     file_settings = replace(settings, ai_game=guessed)
-            if settings.ai_mode == "lite":
+            if settings.ai_mode == "director":
+                try:
+                    from .detect.story import direct_clip
+
+                    clips, ai_warnings = direct_clip(
+                        path,
+                        info.duration,
+                        file_settings,
+                        wav,
+                        audio_track,
+                        bins,
+                        progress=progress,
+                        jerk=jerk_track,
+                    )
+                    warnings.extend(ai_warnings)
+                except Exception as exc:
+                    warnings.append(f"AI director skipped: {exc}")
+                    clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
+            else:
                 try:
                     from .detect.lite import lite_clip
 
@@ -221,40 +239,6 @@ def analyze_file(
                     warnings.extend(ai_warnings)
                 except Exception as exc:
                     warnings.append(f"Lite mode skipped: {exc}")
-                    clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
-            elif settings.ai_mode == "director":
-                try:
-                    from .detect.story import direct_clip
-
-                    clips, ai_warnings = direct_clip(
-                        path,
-                        info.duration,
-                        file_settings,
-                        wav,
-                        audio_track,
-                        bins,
-                        progress=progress,
-                        jerk=jerk_track,
-                    )
-                    warnings.extend(ai_warnings)
-                except Exception as exc:
-                    warnings.append(f"AI director skipped: {exc}")
-                    clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
-            else:
-                try:
-                    from .detect.ai import build_candidates, review_candidates
-
-                    candidates = build_candidates(grid, audio, visual, combined, file_settings, info.duration)
-                    clips, ai_warnings = review_candidates(
-                        path,
-                        candidates,
-                        file_settings,
-                        info.duration,
-                        progress=progress,
-                    )
-                    warnings.extend(ai_warnings)
-                except Exception as exc:
-                    warnings.append(f"AI review skipped: {exc}")
                     clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
         else:
             clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
