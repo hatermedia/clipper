@@ -71,6 +71,11 @@ def set_low_priority() -> None:
             pass
 
 
+def ai_confidence_for_sensitivity(sensitivity: float) -> float:
+    """Map the UI's Strict/Balanced/Loose slider to the AI keep threshold."""
+    return max(0.45, min(0.70, 0.55 + (0.5 - float(sensitivity)) * 0.6))
+
+
 @dataclass
 class DetectionSettings:
     """Tunables for the hybrid highlight detector."""
@@ -122,8 +127,8 @@ class DetectionSettings:
             raise ValueError("ai_min_confidence must be between 0 and 1")
         if not 1 <= self.ai_max_candidates <= 200:
             raise ValueError("ai_max_candidates must be between 1 and 200")
-        if self.ai_mode not in {"director", "review"}:
-            raise ValueError("ai_mode must be 'director' or 'review'")
+        if self.ai_mode not in {"director", "lite", "review"}:
+            raise ValueError("ai_mode must be 'director', 'lite', or 'review'")
         self.min_clip = float(self.min_clip)
         self.max_clips = int(self.max_clips)
         self.sample_fps = float(self.sample_fps)

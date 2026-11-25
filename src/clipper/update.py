@@ -12,6 +12,7 @@ No third-party update framework, no background service, no admin rights.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -21,6 +22,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +35,15 @@ API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases"
 CHECK_INTERVAL_SECONDS = 6 * 60 * 60
 USER_AGENT = f"Clipper/{__version__} (+https://github.com/{GITHUB_REPO})"
+MAX_INSTALLER_BYTES = 512 * 1024 * 1024
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
 
 DownloadProgress = Callable[[int, int], None]
 
@@ -87,11 +98,19 @@ class ReleaseInfo:
             notes=str(value.get("notes", "")),
             page_url=str(value.get("page_url", RELEASES_PAGE)),
             published_at=str(value.get("published_at", "")),
-            installer_name=value.get("installer_name"),
-            installer_url=value.get("installer_url"),
-            installer_size=int(value.get("installer_size", 0) or 0),
-            checksums_name=value.get("checksums_name"),
-            checksums_url=value.get("checksums_url"),
+            installer_name=(
+                str(value["installer_name"]) if value.get("installer_name") else None
+            ),
+            installer_url=(
+                str(value["installer_url"]) if value.get("installer_url") else None
+            ),
+            installer_size=max(0, _safe_int(value.get("installer_size", 0), 0)),
+            checksums_name=(
+                str(value["checksums_name"]) if value.get("checksums_name") else None
+            ),
+            checksums_url=(
+                str(value["checksums_url"]) if value.get("checksums_url") else None
+            ),
         )
 
 
@@ -110,6 +129,52 @@ def version_is_newer(candidate: str, current: str = __version__) -> bool:
     return left + (0,) * (width - len(left)) > right + (0,) * (width - len(right))
 
 
+def _validate_https_url(url: str) -> None:
+    """Reject local paths, UNC paths, HTTP, and private-network update URLs."""
+
+    try:
+        parsed = urllib.parse.urlparse(str(url))
+        host = (parsed.hostname or "").lower().strip(".")
+        port = parsed.port
+    except ValueError as exc:
+        raise UpdateError(f"Invalid update URL: {url!r}") from exc
+    if parsed.scheme.lower() != "https" or not host:
+        raise UpdateError(f"Update URLs must use HTTPS: {url!r}")
+    if parsed.username or parsed.password:
+        raise UpdateError(f"Update URL must not contain credentials: {url!r}")
+    if port not in (None, 443):
+        raise UpdateError(f"Update URL must use port 443: {url!r}")
+    if host == "localhost" or host.endswith(".local"):
+        raise UpdateError(f"Update URL host is not allowed: {url!r}")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        if "." not in host:
+            raise UpdateError(f"Update URL host is not valid: {url!r}") from None
+    else:
+        if (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+            or address.is_multicast
+        ):
+            raise UpdateError(f"Update URL host is not public: {url!r}")
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        absolute = urllib.parse.urljoin(req.full_url, newurl)
+        _validate_https_url(absolute)
+        return super().redirect_request(req, fp, code, msg, headers, absolute)
+
+
+def _open_url(url: str, timeout: float):
+    _validate_https_url(url)
+    opener = urllib.request.build_opener(_SafeRedirectHandler())
+    return opener.open(_request(url, timeout), timeout=timeout)
+
+
 def _request(url: str, timeout: float = 10.0) -> urllib.request.Request:
     return urllib.request.Request(
         url,
@@ -120,10 +185,37 @@ def _request(url: str, timeout: float = 10.0) -> urllib.request.Request:
     )
 
 
+def _safe_installer_name(name: str | None, version: str) -> str:
+    candidate = str(name or f"ClipperSetup-{version}.exe")
+    if (
+        not candidate
+        or candidate in {".", ".."}
+        or any(ord(char) < 32 for char in candidate)
+        or any(char in candidate for char in ("/", "\\", ":"))
+        or Path(candidate).name != candidate
+        or not re.fullmatch(
+            r"ClipperSetup-[A-Za-z0-9][A-Za-z0-9._-]*\.exe",
+            candidate,
+            re.IGNORECASE,
+        )
+    ):
+        raise UpdateError(f"Unsafe installer filename: {candidate!r}")
+    stem = Path(candidate).stem.upper()
+    if stem in _WINDOWS_RESERVED_NAMES:
+        raise UpdateError(f"Reserved installer filename: {candidate!r}")
+    if candidate.endswith((" ", ".")):
+        raise UpdateError(f"Invalid Windows installer filename: {candidate!r}")
+    return candidate
+
+
 def _fetch_json(url: str, timeout: float = 10.0) -> dict[str, Any]:
+    _validate_https_url(url)
     try:
-        with urllib.request.urlopen(_request(url, timeout), timeout=timeout) as response:
-            payload = json.load(response)
+        with _open_url(url, timeout) as response:
+            raw = response.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                raise UpdateError("GitHub returned oversized update metadata.")
+            payload = json.loads(raw.decode("utf-8"))
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             raise UpdateError("No published Clipper release was found.") from exc
@@ -136,16 +228,30 @@ def _fetch_json(url: str, timeout: float = 10.0) -> dict[str, Any]:
         raise UpdateError(f"Could not reach GitHub: {exc.reason}") from exc
     except TimeoutError as exc:
         raise UpdateError("The update check timed out.") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+        raise UpdateError("GitHub returned malformed update metadata.") from exc
     if not isinstance(payload, dict):
         raise UpdateError("GitHub returned an unexpected response.")
     return payload
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
 
 
 def _release_from_payload(payload: dict[str, Any]) -> ReleaseInfo:
     tag = str(payload.get("tag_name") or payload.get("name") or "")
     if not tag:
         raise UpdateError("The latest release has no version tag.")
-    assets = [item for item in payload.get("assets", []) if isinstance(item, dict)]
+    assets_value = payload.get("assets")
+    assets = (
+        [item for item in assets_value if isinstance(item, dict)]
+        if isinstance(assets_value, list)
+        else []
+    )
     installer = next(
         (
             item
@@ -164,6 +270,17 @@ def _release_from_payload(payload: dict[str, Any]) -> ReleaseInfo:
         ),
         None,
     )
+    installer_name = (
+        _safe_installer_name(str(installer.get("name")), tag.lstrip("vV"))
+        if installer
+        else None
+    )
+    installer_url = str(installer.get("browser_download_url")) if installer else None
+    checksums_url = str(checksums.get("browser_download_url")) if checksums else None
+    if installer_url:
+        _validate_https_url(installer_url)
+    if checksums_url:
+        _validate_https_url(checksums_url)
     return ReleaseInfo(
         version=tag.lstrip("vV"),
         tag=tag,
@@ -171,11 +288,11 @@ def _release_from_payload(payload: dict[str, Any]) -> ReleaseInfo:
         notes=str(payload.get("body") or "")[:8000],
         page_url=str(payload.get("html_url") or RELEASES_PAGE),
         published_at=str(payload.get("published_at") or ""),
-        installer_name=str(installer.get("name")) if installer else None,
-        installer_url=str(installer.get("browser_download_url")) if installer else None,
-        installer_size=int((installer or {}).get("size", 0) or 0),
+        installer_name=installer_name,
+        installer_url=installer_url,
+        installer_size=max(0, _safe_int((installer or {}).get("size", 0), 0)),
         checksums_name=str(checksums.get("name")) if checksums else None,
-        checksums_url=str(checksums.get("browser_download_url")) if checksums else None,
+        checksums_url=checksums_url,
     )
 
 
@@ -235,7 +352,7 @@ def check_with_cache(
     if not force and cached and now - checked_at < max_age:
         try:
             release = ReleaseInfo.from_dict(cached)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return check_with_cache(current, max_age, force=True, timeout=timeout)
         return (release if version_is_newer(release.version, current) else None), True
 
@@ -263,11 +380,19 @@ def parse_checksums(text: str) -> dict[str, str]:
 
 
 def _fetch_text(url: str, timeout: float = 30.0) -> str:
+    _validate_https_url(url)
     try:
-        with urllib.request.urlopen(_request(url, timeout), timeout=timeout) as response:
-            return response.read().decode("utf-8", errors="replace")
+        with _open_url(url, timeout) as response:
+            raw = response.read(4 * 1024 * 1024 + 1)
+            if len(raw) > 4 * 1024 * 1024:
+                raise UpdateError("Update metadata is unreasonably large.")
+            return raw.decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        raise UpdateError(f"Update metadata returned HTTP {exc.code}.") from exc
     except urllib.error.URLError as exc:
         raise UpdateError(f"Could not download update metadata: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise UpdateError("The update metadata request timed out.") from exc
 
 
 def download_installer(
@@ -288,17 +413,42 @@ def download_installer(
             "The release publishes no SHA-256 checksums, so Clipper will not "
             "auto-install it. Download manually from " + release.page_url
         )
+    if release.installer_size > MAX_INSTALLER_BYTES:
+        raise UpdateError("The release installer exceeds the download size limit.")
 
-    name = release.installer_name or f"ClipperSetup-{release.version}.exe"
+    name = _safe_installer_name(release.installer_name, release.version)
+    created_dir: Path | None = None
     if destination is None:
-        destination = Path(tempfile.gettempdir()) / "Clipper" / name
-    target = Path(destination)
+        created_dir = Path(tempfile.mkdtemp(prefix="clipper-update-"))
+        target = created_dir / name
+    else:
+        target = Path(destination)
+        if target.name != name:
+            raise UpdateError("Installer destination name does not match release asset.")
     target.parent.mkdir(parents=True, exist_ok=True)
+    if created_dir is not None:
+        try:
+            target.resolve().relative_to(created_dir.resolve())
+        except ValueError as exc:
+            raise UpdateError("Installer destination escaped the temp directory.") from exc
     partial = target.with_suffix(target.suffix + ".part")
 
-    checksums_text = _fetch_text(release.checksums_url or "", timeout=timeout)
+    def cleanup_partial() -> None:
+        partial.unlink(missing_ok=True)
+        if created_dir is not None and created_dir.is_dir():
+            shutil.rmtree(created_dir, ignore_errors=True)
+
+    checksums_text = ""
+    try:
+        checksums_text = _fetch_text(release.checksums_url or "", timeout=timeout)
+    except Exception:
+        if created_dir is not None:
+            shutil.rmtree(created_dir, ignore_errors=True)
+        raise
     expected = parse_checksums(checksums_text).get(name.lower())
     if not expected:
+        if created_dir is not None:
+            shutil.rmtree(created_dir, ignore_errors=True)
         raise UpdateError(
             f"The release checksums do not list {name}; refusing to install it."
         )
@@ -307,36 +457,84 @@ def download_installer(
     downloaded = 0
     total = release.installer_size
     try:
-        with urllib.request.urlopen(
-            _request(release.installer_url or "", timeout), timeout=timeout
-        ) as response:
-            total = int(response.headers.get("Content-Length") or total or 0)
+        with _open_url(release.installer_url or "", timeout) as response:
+            content_type = str(response.headers.get("Content-Type") or "").lower()
+            if "text/html" in content_type or "text/plain" in content_type:
+                raise UpdateError("The installer URL returned a web page, not an installer.")
+            try:
+                response_size = int(response.headers.get("Content-Length") or 0)
+            except (TypeError, ValueError):
+                response_size = 0
+            if response_size > MAX_INSTALLER_BYTES:
+                raise UpdateError("The installer exceeds the download size limit.")
+            total = response_size or total
             with partial.open("wb") as handle:
                 while True:
                     chunk = response.read(1024 * 1024)
                     if not chunk:
                         break
+                    downloaded += len(chunk)
+                    if downloaded > MAX_INSTALLER_BYTES:
+                        raise UpdateError("The installer exceeded the download size limit.")
                     handle.write(chunk)
                     digest.update(chunk)
-                    downloaded += len(chunk)
                     if progress:
                         progress(downloaded, total)
+    except UpdateError:
+        cleanup_partial()
+        raise
+    except urllib.error.HTTPError as exc:
+        cleanup_partial()
+        raise UpdateError(f"Installer download returned HTTP {exc.code}.") from exc
     except urllib.error.URLError as exc:
-        partial.unlink(missing_ok=True)
+        cleanup_partial()
         raise UpdateError(f"Download failed: {exc.reason}") from exc
     except OSError as exc:
-        partial.unlink(missing_ok=True)
+        cleanup_partial()
         raise UpdateError(f"Could not save the installer: {exc}") from exc
 
-    actual = digest.hexdigest()
-    if actual != expected:
-        partial.unlink(missing_ok=True)
-        raise UpdateError(
-            "The downloaded installer failed SHA-256 verification "
-            f"(expected {expected[:12]}..., got {actual[:12]}...)."
-        )
-    partial.replace(target)
+    try:
+        if downloaded == 0:
+            raise UpdateError("The downloaded installer is empty.")
+        if release.installer_size > 0 and downloaded != release.installer_size:
+            raise UpdateError(
+                f"Installer download is truncated ({downloaded} of "
+                f"{release.installer_size} bytes)."
+            )
+        with partial.open("rb") as handle:
+            if handle.read(2) != b"MZ":
+                raise UpdateError("The downloaded file is not a Windows executable.")
+        actual = digest.hexdigest()
+        if actual != expected:
+            raise UpdateError(
+                "The downloaded installer failed SHA-256 verification "
+                f"(expected {expected[:12]}..., got {actual[:12]}...)."
+            )
+        partial.replace(target)
+    except UpdateError:
+        cleanup_partial()
+        raise
+    except OSError as exc:
+        cleanup_partial()
+        raise UpdateError(f"Could not finalize the installer: {exc}") from exc
     return target
+
+
+def cleanup_download(path: Path | str) -> None:
+    """Remove a verified installer and its unique download directory."""
+
+    try:
+        target = Path(path).resolve()
+        parent = target.parent
+        temp_root = Path(tempfile.gettempdir()).resolve()
+        if parent.name.startswith("clipper-update-"):
+            try:
+                parent.relative_to(temp_root)
+            except ValueError:
+                return
+            shutil.rmtree(parent, ignore_errors=True)
+    except OSError:
+        pass
 
 
 def sha256_file(path: Path | str) -> str:
@@ -347,9 +545,7 @@ def sha256_file(path: Path | str) -> str:
     return digest.hexdigest()
 
 
-def installed_exe() -> Path:
-    """Best guess at the installed Clipper.exe path."""
-
+def _registered_install_exe() -> Path | None:
     if os.name == "nt":
         try:
             import winreg
@@ -366,18 +562,33 @@ def installed_exe() -> Path:
         candidate = Path(local) / "Programs" / "Clipper" / "Clipper.exe"
         if candidate.is_file():
             return candidate
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable)
+    return None
+
+
+def installed_exe() -> Path:
+    """Best guess at the installed Clipper.exe path."""
+
+    registered = _registered_install_exe()
+    if registered is not None:
+        return registered
     return Path(sys.executable)
 
 
 def is_installed_build() -> bool:
-    """True when running the frozen app from the per-user install folder."""
+    """True when running the frozen app from the registered install folder."""
 
     if not getattr(sys, "frozen", False) or os.name != "nt":
         return False
     exe = Path(sys.executable).resolve()
-    return exe.name.lower() == "clipper.exe" and "programs" in str(exe).lower()
+    if exe.name.lower() != "clipper.exe":
+        return False
+    registered = _registered_install_exe()
+    if registered is None:
+        return False
+    try:
+        return exe == registered.resolve()
+    except OSError:
+        return False
 
 
 def _ps_quote(value: str) -> str:
@@ -393,6 +604,94 @@ def _update_log(message: str) -> None:
             handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
     except OSError:
         pass
+
+
+def _helper_script(
+    installer_path: Path,
+    exe: Path,
+    log_path: Path,
+    *,
+    relaunch: bool,
+    wait_pid: int | None,
+) -> list[str]:
+    installer_dir = installer_path.parent
+    lines = [
+        "$ErrorActionPreference = 'SilentlyContinue'",
+        f"$log = {_ps_quote(str(log_path))}",
+        "function Write-UpdateLog([string]$message) { "
+        "Add-Content -LiteralPath $log -Value \"$(Get-Date -Format o) $message\" }",
+        f"$installerDir = {_ps_quote(str(installer_dir))}",
+        "$helperDir = Split-Path -Parent $MyInvocation.MyCommand.Path",
+        "function Remove-InstallerDir {",
+        "  if ($installerDir -like \"$env:TEMP\\clipper-update-*\") { "
+        "Remove-Item -LiteralPath $installerDir -Recurse -Force -ErrorAction SilentlyContinue }",
+        "}",
+        "function Remove-HelperDir {",
+        "  Remove-Item -LiteralPath $helperDir -Recurse -Force -ErrorAction SilentlyContinue",
+        "}",
+        "function Remove-TempDirs { Remove-InstallerDir; Remove-HelperDir }",
+        "Write-UpdateLog 'helper start'",
+        f"$targetPid = {int(wait_pid or 0)}",
+        "$deadline = (Get-Date).AddSeconds(90)",
+        "while ($targetPid -gt 0 -and (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) "
+        "-and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }",
+        "$deadline = (Get-Date).AddSeconds(90)",
+        "while ((Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue) "
+        "-and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }",
+        "$running = @(Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue)",
+        "if ($running.Count -gt 0) {",
+        "  $running | ForEach-Object { $_.CloseMainWindow() | Out-Null }",
+        "  Start-Sleep -Seconds 3",
+        "}",
+        "$running = @(Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue)",
+        "if ($running.Count -gt 0) {",
+        "  & \"$env:SystemRoot\\System32\\taskkill.exe\" /F /IM Clipper.exe /T | Out-Null",
+        "  Start-Sleep -Seconds 2",
+        "}",
+        "if (@(Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue).Count -gt 0) {",
+        "  Write-UpdateLog 'Clipper did not exit; aborting before install'",
+        "  Remove-TempDirs",
+        "  exit 92",
+        "}",
+        f"$installer = {_ps_quote(str(installer_path))}",
+        "Write-UpdateLog 'running installer'",
+        "try {",
+        "  $proc = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -ErrorAction Stop",
+        "} catch {",
+        "  Write-UpdateLog \"installer launch failed: $_\"",
+        "  Remove-TempDirs",
+        "  exit 90",
+        "}",
+        "if ($null -eq $proc) {",
+        "  Write-UpdateLog 'installer did not return a process handle'",
+        "  Remove-TempDirs",
+        "  exit 90",
+        "}",
+        "$installerTimeoutMs = 900000",
+        "if (-not $proc.WaitForExit($installerTimeoutMs)) {",
+        "  Write-UpdateLog 'installer timed out; terminating it'",
+        "  & \"$env:SystemRoot\\System32\\taskkill.exe\" /F /PID $proc.Id /T | Out-Null",
+        "  Remove-TempDirs",
+        "  exit 93",
+        "}",
+        "$proc.Refresh()",
+        "if ($proc.ExitCode -ne 0) {",
+        "  Write-UpdateLog \"installer failed: $($proc.ExitCode)\"",
+        "  Remove-TempDirs",
+        "  exit 91",
+        "}",
+        "Write-UpdateLog 'installer finished'",
+        "Remove-InstallerDir",
+    ]
+    if relaunch:
+        lines.extend(
+            [
+                f"$exe = {_ps_quote(str(exe))}",
+                "if (Test-Path -LiteralPath $exe) { Start-Process -FilePath $exe }",
+            ]
+        )
+    lines.append("Remove-HelperDir")
+    return lines
 
 
 def launch_installer(
@@ -411,51 +710,58 @@ def launch_installer(
     installer_path = Path(installer).resolve()
     if not installer_path.is_file():
         raise UpdateError(f"Installer not found: {installer_path}")
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    try:
+        installer_path.relative_to(temp_root)
+    except ValueError as exc:
+        raise UpdateError("Installer path is outside the update temp directory.") from exc
+    if not installer_path.parent.name.startswith("clipper-update-"):
+        raise UpdateError("Installer path is not a Clipper update download.")
     exe = installed_exe()
     # A source/pip CLI has no app to relaunch; the installer adds a Start Menu
     # shortcut instead of opening python.exe with no arguments.
     if relaunch and not getattr(sys, "frozen", False):
         relaunch = False
-    log_path = (Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir())
-                / "Clipper" / "update.log")
+    log_path = (
+        Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir())
+        / "Clipper"
+        / "update.log"
+    )
     _update_log(f"install requested: {installer_path} relaunch={relaunch} wait_pid={wait_pid}")
 
-    lines = [
-        "$ErrorActionPreference = 'SilentlyContinue'",
-        f"$log = {_ps_quote(str(log_path))}",
-        f"Add-Content -LiteralPath $log -Value \"$(Get-Date -Format o) helper start\"",
-        f"$targetPid = {int(wait_pid or 0)}",
-        "$deadline = (Get-Date).AddSeconds(90)",
-        "while ($targetPid -gt 0 -and (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) "
-        "-and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }",
-        "$deadline = (Get-Date).AddSeconds(90)",
-        "while ((Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue) "
-        "-and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }",
-        f"Add-Content -LiteralPath $log -Value \"$(Get-Date -Format o) running installer\"",
-        f"Start-Process -FilePath {_ps_quote(str(installer_path))} -ArgumentList '/S' -Wait",
-        "Start-Sleep -Milliseconds 1200",
-        f"Add-Content -LiteralPath $log -Value \"$(Get-Date -Format o) installer finished\"",
-    ]
-    if relaunch:
-        lines.append(
-            f"if (Test-Path {_ps_quote(str(exe))}) "
-            f"{{ Start-Process -FilePath {_ps_quote(str(exe))} }}"
-        )
-    lines.append("Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force")
+    lines = _helper_script(
+        installer_path,
+        exe,
+        log_path,
+        relaunch=relaunch,
+        wait_pid=wait_pid,
+    )
 
-    helper = Path(tempfile.gettempdir()) / "Clipper" / f"install-{os.getpid()}.ps1"
-    helper.parent.mkdir(parents=True, exist_ok=True)
-    helper.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+    try:
+        helper_dir = Path(tempfile.mkdtemp(prefix="clipper-helper-"))
+    except OSError as exc:
+        raise UpdateError(f"Could not create the installer helper: {exc}") from exc
+    helper = helper_dir / "install.ps1"
+    try:
+        helper.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+    except OSError as exc:
+        shutil.rmtree(helper_dir, ignore_errors=True)
+        raise UpdateError(f"Could not create the installer helper: {exc}") from exc
 
-    powershell = shutil.which("powershell.exe") or str(
+    powershell = (
         Path(os.environ.get("SystemRoot", r"C:\Windows"))
         / "System32"
         / "WindowsPowerShell"
         / "v1.0"
         / "powershell.exe"
     )
+    if not powershell.is_file():
+        found = shutil.which("powershell.exe")
+        if not found:
+            raise UpdateError("Could not find Windows PowerShell.")
+        powershell = Path(found)
     command = [
-        powershell,
+        str(powershell),
         "-NoProfile",
         "-NonInteractive",
         "-ExecutionPolicy",
@@ -492,6 +798,7 @@ def launch_installer(
         creationflags = (
             getattr(subprocess, "DETACHED_PROCESS", 0)
             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "CREATE_NO_WINDOW", 0)
         )
     try:
         process = subprocess.Popen(
@@ -501,6 +808,7 @@ def launch_installer(
         )
         _update_log(f"Popen helper pid={process.pid}")
     except OSError as exc:
+        shutil.rmtree(helper_dir, ignore_errors=True)
         _update_log(f"Popen helper failed: {exc}")
         raise UpdateError(f"Could not start the installer helper: {exc}") from exc
     return helper
@@ -509,8 +817,12 @@ def launch_installer(
 def open_release_page(release: ReleaseInfo | None = None) -> None:
     url = release.page_url if release else RELEASES_PAGE
     try:
-        os.startfile(url)  # type: ignore[attr-defined]
-    except (AttributeError, OSError):
+        _validate_https_url(url)
+    except UpdateError:
+        url = RELEASES_PAGE
+    try:
         import webbrowser
 
         webbrowser.open(url)
+    except (AttributeError, OSError):
+        pass

@@ -19,7 +19,7 @@ from .config import (
 )
 from .detect.audio import ScoreTrack, analyze_wav
 from .detect.merge import fuse_tracks, pick_peaks, resample_track
-from .detect.visual import analyze_visual
+from .detect.visual import analyze_visual_tracks
 from .ffmpeg import (
     FFmpegError,
     extract_audio,
@@ -121,6 +121,7 @@ def analyze_file(
     previews: list[str] = []
     audio_track = ScoreTrack(np.array([]), np.array([]))
     visual_track = ScoreTrack(np.array([]), np.array([]))
+    jerk_track = ScoreTrack(np.array([]), np.array([]))
     wav: Path | None = None
 
     with tempfile.TemporaryDirectory(prefix="clipper_") as temp_raw:
@@ -151,7 +152,7 @@ def analyze_file(
                 gpu=settings.gpu,
             )
             _report(progress, 0.58, f"Detecting motion ({last_proxy_backend() or 'proxy'})")
-            visual_track = analyze_visual(
+            visual_track, jerk_track = analyze_visual_tracks(
                 proxy,
                 sample_fps=settings.sample_fps,
                 threads=settings.threads,
@@ -198,7 +199,30 @@ def analyze_file(
                 guessed = detect_game_from_path(path)
                 if guessed:
                     file_settings = replace(settings, ai_game=guessed)
-            if settings.ai_mode == "director":
+            if settings.ai_mode == "lite":
+                try:
+                    from .detect.lite import lite_clip
+
+                    candidates = pick_peaks(
+                        grid, combined, audio, visual, file_settings, info.duration
+                    )
+                    clips, ai_warnings = lite_clip(
+                        path,
+                        info.duration,
+                        file_settings,
+                        wav,
+                        audio_track,
+                        visual_track,
+                        jerk_track,
+                        candidates,
+                        bins,
+                        progress=progress,
+                    )
+                    warnings.extend(ai_warnings)
+                except Exception as exc:
+                    warnings.append(f"Lite mode skipped: {exc}")
+                    clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
+            elif settings.ai_mode == "director":
                 try:
                     from .detect.story import direct_clip
 
@@ -210,6 +234,7 @@ def analyze_file(
                         audio_track,
                         bins,
                         progress=progress,
+                        jerk=jerk_track,
                     )
                     warnings.extend(ai_warnings)
                 except Exception as exc:

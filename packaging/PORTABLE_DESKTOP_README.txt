@@ -1,4 +1,4 @@
-Clipper 0.6.0 - Windows x64 native
+Clipper 0.7.0 - Windows x64 native
 =================================
 
 No Python. No FFmpeg. No browser. No console window.
@@ -38,8 +38,9 @@ does not expose other apps' Rich Presence, so this uses the local process list.
 
 On a 6 GB card use qwen2.5vl:3b; the app selects it automatically when it is
 installed on a <=7 GB GPU. 7B is noticeably better and recommended on 8 GB+.
-The first run downloads the Whisper base.en model once (~145 MB) into
-%LOCALAPPDATA%\Clipper\models\huggingface. Window verdicts are cached under
+The Windows installer and portable build include the Whisper base.en model, so
+speech transcription works offline. Source installs download it once (~145 MB)
+into %LOCALAPPDATA%\Clipper\models\huggingface. Window verdicts are cached under
 %LOCALAPPDATA%\Clipper\ai-cache. Nothing is uploaded.
 
 Honest limits: game voice lines and human chat share one audio track, so the

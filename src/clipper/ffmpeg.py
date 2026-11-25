@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
 from functools import lru_cache
 from pathlib import Path
 from typing import Sequence
@@ -22,6 +23,39 @@ class FFmpegError(ClipperError):
 
 _NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 _LAST_PROXY_BACKEND = ""
+_ACTIVE_PROCS: set[subprocess.Popen] = set()
+_ACTIVE_LOCK = threading.Lock()
+
+
+def terminate_active_processes() -> None:
+    """Best-effort shutdown for ffmpeg children owned by the current app."""
+
+    with _ACTIVE_LOCK:
+        active = list(_ACTIVE_PROCS)
+    for proc in active:
+        try:
+            proc.terminate()
+        except OSError:
+            pass
+    for proc in active:
+        try:
+            proc.wait(timeout=2)
+        except (OSError, subprocess.TimeoutExpired):
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            try:
+                proc.wait(timeout=2)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    with _ACTIVE_LOCK:
+        _ACTIVE_PROCS.clear()
+
+
+def active_process_count() -> int:
+    with _ACTIVE_LOCK:
+        return len(_ACTIVE_PROCS)
 
 
 def last_proxy_backend() -> str:
@@ -31,20 +65,35 @@ def last_proxy_backend() -> str:
 
 
 def _run(cmd: Sequence[str], timeout: float | None = None) -> subprocess.CompletedProcess[str]:
+    args = [str(part) for part in cmd]
     try:
-        return subprocess.run(
-            [str(part) for part in cmd],
-            capture_output=True,
+        proc = subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=timeout,
             creationflags=_NO_WINDOW,
         )
     except FileNotFoundError as exc:
         raise FFmpegNotFound(f"Could not execute {cmd[0]!r}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise FFmpegError(f"Command timed out after {timeout}s: {cmd[0]}") from exc
+    with _ACTIVE_LOCK:
+        _ACTIVE_PROCS.add(proc)
+    try:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            stdout, stderr = proc.communicate()
+            raise FFmpegError(f"Command timed out after {timeout}s: {cmd[0]}")
+    finally:
+        with _ACTIVE_LOCK:
+            _ACTIVE_PROCS.discard(proc)
+    return subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
 
 
 def _tail(text: str, lines: int = 6) -> str:

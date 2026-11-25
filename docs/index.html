@@ -27,7 +27,7 @@
     "operatingSystem": "Windows, macOS, Linux",
     "description": "Local-first automatic gaming highlight trimmer with audio spike and motion detection, optional whole-clip AI director, smart padding, and lossless FFmpeg export.",
     "url": "https://hatermedia.github.io/clipper/",
-    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.6.0",
+    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.7.0",
     "license": "https://opensource.org/licenses/MIT",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Person", "name": "hatermedia", "url": "https://github.com/hatermedia" }
@@ -71,7 +71,7 @@
           CPU caps. No browser, no uploads, no accounts.
         </p>
         <div class="cta-row" style="margin-top: 28px;">
-          <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.6.0/ClipperSetup-0.6.0.exe" target="_blank" rel="noreferrer">
+          <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.0/ClipperSetup-0.7.0.exe" target="_blank" rel="noreferrer">
             Download for Windows
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
           </a>
@@ -294,10 +294,10 @@
     <div class="code-card" style="padding: 20px; margin-bottom: 18px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
       <div style="min-width:240px; flex:1;">
         <div class="tiny mono dim" style="margin-bottom:4px;">WINDOWS 10/11 · X64 INSTALLER</div>
-        <strong style="color:#fff; font-size:15px;">No Python. No FFmpeg. No admin. ~155 MB.</strong>
-        <p class="small muted" style="margin-top:4px;">Installs to <span class="mono">%LOCALAPPDATA%\Programs\Clipper</span>, adds shortcuts, and auto-updates. Pick a folder, review previews, export. GPU/NVENC is on by default when the test passes. Prefer portable? <a href="https://github.com/hatermedia/clipper/releases/download/v0.6.0/clipper-0.6.0-windows-x64-native.zip" target="_blank" rel="noreferrer">Download the zip</a>.</p>
+        <strong style="color:#fff; font-size:15px;">No Python. No FFmpeg. No admin. ~365 MB.</strong>
+        <p class="small muted" style="margin-top:4px;">Installs to <span class="mono">%LOCALAPPDATA%\Programs\Clipper</span>, adds shortcuts, and auto-updates. Pick a folder, review previews, export. GPU/NVENC is on by default when the test passes. Prefer portable? <a href="https://github.com/hatermedia/clipper/releases/download/v0.7.0/clipper-0.7.0-windows-x64-native.zip" target="_blank" rel="noreferrer">Download the zip</a>.</p>
       </div>
-      <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.6.0/ClipperSetup-0.6.0.exe" target="_blank" rel="noreferrer">Download installer</a>
+      <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.0/ClipperSetup-0.7.0.exe" target="_blank" rel="noreferrer">Download installer</a>
     </div>
     <div class="install-grid">
       <div class="install-list">
@@ -305,7 +305,7 @@
         <div class="install-item"><span class="num">02</span><div><strong>Install Clipper</strong><span><span class="mono">pip install "clipper-gg[desktop]"</span> for the CLI + native app, or use the Windows installer above.</span></div></div>
         <div class="install-item"><span class="num">03</span><div><strong>Dry-run your folder</strong><span>See timestamps and preview frames before rendering anything. Run <span class="mono">clipper gpu</span> to verify NVENC and Ollama; add <span class="mono">--low-power</span> to cap CPU.</span></div></div>
         <div class="install-item"><span class="num">04</span><div><strong>Open the native app or optional web UI</strong><span><span class="mono">clipper desktop</span> (PySide6) · <span class="mono">clipper ui</span> for the browser UI.</span></div></div>
-        <div class="install-item"><span class="num">05</span><div><strong>Optional: whole-clip AI director</strong><span>Install <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a>, run <span class="mono">ollama pull qwen2.5vl:7b</span> (or <span class="mono">qwen2.5vl:3b</span> on a 6 GB card), then tick <span class="mono">AI director</span>. Whisper downloads once on first use.</span></div></div>
+        <div class="install-item"><span class="num">05</span><div><strong>Optional: whole-clip AI director</strong><span>Install <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a>, run <span class="mono">ollama pull qwen2.5vl:7b</span> (or <span class="mono">qwen2.5vl:3b</span> on a 6 GB card), then tick <span class="mono">AI director</span>. The Whisper transcription model ships with the Windows installer and portable build.</span></div></div>
       </div>
       <div style="display:grid; gap:14px;">
         <div class="code-card">
@@ -431,7 +431,7 @@ clipper --input &quot;D:\Captures&quot; --ai --ai-game &quot;Rocket League&quot;
     </div>
     <div class="footer-links">
       <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
-      <a href="https://github.com/hatermedia/clipper/releases/tag/v0.6.0" target="_blank" rel="noreferrer">Release</a>
+      <a href="https://github.com/hatermedia/clipper/releases/tag/v0.7.0" target="_blank" rel="noreferrer">Release</a>
       <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">Docs</a>
       <a href="https://github.com/hatermedia/clipper/issues" target="_blank" rel="noreferrer">Issues</a>
       <a href="service/">Service</a>

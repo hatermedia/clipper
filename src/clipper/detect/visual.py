@@ -45,7 +45,7 @@ def motion_scores(frames: list[np.ndarray]) -> np.ndarray:
     return scores
 
 
-def _normalise(scores: np.ndarray, sample_fps: float) -> np.ndarray:
+def _normalise(scores: np.ndarray, sample_fps: float, smooth_scale: float = 0.6) -> np.ndarray:
     if scores.size == 0:
         return scores
     p99 = float(np.percentile(scores, 99))
@@ -65,12 +65,16 @@ def _normalise(scores: np.ndarray, sample_fps: float) -> np.ndarray:
     peak = float(np.percentile(combined, 99))
     if peak > 0:
         combined = np.clip(combined / peak, 0.0, 1.0)
-    sigma = max(0.5, 0.6 * sample_fps)
+    sigma = max(0.5, smooth_scale * sample_fps)
     return gaussian_filter1d(combined, sigma=sigma, mode="nearest").astype(np.float32)
 
 
-def analyze_visual(proxy_path: Path | str, sample_fps: float = 4.0, threads: int = 0) -> ScoreTrack:
-    """Read the low-fps proxy with OpenCV and score visual activity."""
+def analyze_visual_tracks(
+    proxy_path: Path | str,
+    sample_fps: float = 4.0,
+    threads: int = 0,
+) -> tuple[ScoreTrack, ScoreTrack]:
+    """Return motion activity and unsmoothed jerk/chaos tracks."""
 
     if threads > 0:
         cv2.setNumThreads(max(1, int(threads)))
@@ -108,6 +112,14 @@ def analyze_visual(proxy_path: Path | str, sample_fps: float = 4.0, threads: int
 
     raw = np.asarray(scores, dtype=np.float32)
     if raw.size == 0:
-        return ScoreTrack(np.array([]), np.array([]))
+        return ScoreTrack(np.array([]), np.array([])), ScoreTrack(np.array([]), np.array([]))
     times = np.arange(raw.size, dtype=np.float64) / actual_fps
-    return ScoreTrack(times, _normalise(raw, actual_fps))
+    motion = _normalise(raw, actual_fps)
+    positive = np.maximum(np.diff(raw, prepend=raw[0]), 0.0)
+    jerk = _normalise(positive, actual_fps, smooth_scale=0.15)
+    return ScoreTrack(times, motion), ScoreTrack(times, jerk)
+
+
+def analyze_visual(proxy_path: Path | str, sample_fps: float = 4.0, threads: int = 0) -> ScoreTrack:
+    """Read the low-fps proxy with OpenCV and score visual activity."""
+    return analyze_visual_tracks(proxy_path, sample_fps=sample_fps, threads=threads)[0]

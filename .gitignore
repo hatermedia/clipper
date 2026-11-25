@@ -17,6 +17,7 @@ packaging/dist/
 packaging/desktop-build/
 packaging/desktop-dist/
 packaging/release/
+packaging/models/
 packaging/clipper.spec
 packaging/build.log
 packaging/*.log

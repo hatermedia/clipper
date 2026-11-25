@@ -1,0 +1,41 @@
+FFmpeg notice for Clipper Windows builds
+========================================
+
+Clipper bundles ffmpeg.exe and ffprobe.exe so that cutting and thumbnail
+generation work without a separate install.
+
+Verified build in this release environment
+------------------------------------------
+Version:       9.1-essentials_build-www.gyan.dev
+Build date:    2026-11-20
+Source commit: 74e4393595 (FFmpeg 9.1 release branch)
+Vendor:        Gyan Doshi, https://www.gyan.dev/ffmpeg/builds/
+License:       GNU GPL version 3 (the build uses --enable-gpl --enable-version3
+               and statically links GPL libraries such as x264 and x265).
+
+Bundled executable hashes
+-------------------------
+ffmpeg.exe SHA-256:
+  ED8F66CB877087A96F5BBB40A2944F0E764F2AD8870D5CB647360D912E62BC07
+ffprobe.exe SHA-256 is recorded by the release build script output and must be
+attached to the release checklist together with the installer hash.
+
+Corresponding source
+--------------------
+FFmpeg source for the exact commit:
+  https://github.com/FFmpeg/FFmpeg/tree/74e4393595
+
+The GPLv3 license text is included as COPYING.GPLv3.txt next to this notice.
+The build also statically links third-party GPL/LGPL libraries listed by the
+vendor and in `ffmpeg -version` (for example x264, x265, libvpx, libaom,
+libmp3lame, libopus, and libvorbis). Their corresponding source is available
+from the upstream projects at the versions printed by the bundled binary.
+
+Release obligation
+------------------
+Before publishing an installer, attach or host the complete Corresponding
+Source for FFmpeg 9.1 (commit 74e4393595) and the statically linked libraries
+at the same download location, or provide the written offer described by
+GPLv3 section 6. Keep that source available for as long as the release is
+distributed. This notice and COPYING.GPLv3.txt must ship with every installer
+and portable archive that contains FFmpeg.

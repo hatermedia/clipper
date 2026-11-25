@@ -29,6 +29,15 @@ from .merge import merge_windows, pick_peaks
 
 OLLAMA_URL = os.environ.get("CLIPPER_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 DEFAULT_MODEL = "qwen2.5vl:7b"
+
+
+def num_gpu_for(model: str) -> int:
+    # Full offload of the 3B Qwen vision model emits garbage tokens on some
+    # CUDA setups. A partial offload is correct and still keeps most layers on
+    # the GPU, which matters for 6 GB cards.
+    if "qwen2.5vl:3b" in model.lower():
+        return 20
+    return 99
 FAST_MODEL = "qwen2.5vl:3b"
 DEEP_MODEL = "qwen3-vl:4b"
 PROMPT_VERSION = "valorant-v5"
@@ -238,7 +247,9 @@ def review_window(
                 "temperature": 0.0,
                 "num_predict": 160,
                 "num_ctx": 8192,
-                "num_gpu": 99,
+                "num_gpu": num_gpu_for(model),
+                "repeat_penalty": 1.25,
+                "repeat_last_n": 64,
             },
             "keep_alive": "10m",
         }
@@ -256,12 +267,19 @@ def review_window(
         except urllib.error.HTTPError as exc:
             body = exc.read(800).decode("utf-8", errors="replace")
             raise AIError(f"Ollama HTTP {exc.code}: {body}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise AIError(f"Ollama returned malformed JSON: {exc}") from exc
         except Exception as exc:
             raise AIError(f"Ollama request failed: {exc}") from exc
 
-    content = str((data.get("message") or {}).get("content") or "")
+    if not isinstance(data, dict):
+        raise AIError("Ollama returned an unexpected response")
+    message = data.get("message")
+    if not isinstance(message, dict):
+        message = {}
+    content = str(message.get("content") or "")
     if not content:
-        thinking = str((data.get("message") or {}).get("thinking") or "")
+        thinking = str(message.get("thinking") or "")
         raise AIError(
             "The model returned no final JSON"
             + (" (it exhausted the output budget while thinking)" if thinking else "")
@@ -423,6 +441,8 @@ def review_candidates(
             )
         except AIError as exc:
             warnings.append(str(exc))
+            if "malformed json" in str(exc).lower():
+                continue
             break
         if not verdict.get("highlight"):
             continue

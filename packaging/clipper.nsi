@@ -6,6 +6,7 @@ Unicode true
 !define PUBLISHER "hatermedia"
 !define APPEXE "Clipper.exe"
 !define APPURL "https://github.com/hatermedia/clipper"
+!define POWERSHELL "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
 
 !ifndef VERSION
   !define VERSION "0.3.0"
@@ -21,6 +22,7 @@ InstallDirRegKey HKCU "Software\Clipper" "InstallDir"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 SetCompressorDictSize 64
+SetOverwrite on
 
 Icon "icon.ico"
 UninstallIcon "icon.ico"
@@ -44,9 +46,61 @@ VIAddVersionKey "LegalCopyright" "MIT licensed"
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 
+!macro CloseClipperImpl PREFIX
+  IfFileExists "$INSTDIR\close_clipper.ps1" ${PREFIX}_has_script
+  Goto ${PREFIX}_try_taskkill
+
+${PREFIX}_has_script:
+  nsExec::ExecToStack '"${POWERSHELL}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\close_clipper.ps1"'
+  Pop $0
+  Pop $1
+  StrCmp $0 "0" ${PREFIX}_close_done
+
+${PREFIX}_try_taskkill:
+  nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /F /IM Clipper.exe /T'
+  Pop $0
+  Pop $1
+
+${PREFIX}_close_done:
+!macroend
+
+Function CloseClipper
+  !insertmacro CloseClipperImpl install
+FunctionEnd
+
+Function un.CloseClipper
+  !insertmacro CloseClipperImpl uninstall
+FunctionEnd
+
 Section "Clipper" SecMain
   SetShellVarContext current
   SetOutPath "$INSTDIR"
+  File "desktop-dist\Clipper\close_clipper.ps1"
+  Call CloseClipper
+  Sleep 1000
+  ; Remove only known Clipper-owned files/directories, and only when this is
+  ; an existing Clipper install. Never wipe a user-chosen install directory
+  ; recursively.
+  ReadRegStr $0 HKCU "Software\Clipper" "InstallDir"
+  StrCmp $0 "$INSTDIR" 0 cleanup_done
+  IfFileExists "$INSTDIR\Clipper.exe" cleanup_old
+  IfFileExists "$INSTDIR\Uninstall.exe" cleanup_old
+  Goto cleanup_done
+
+cleanup_old:
+  Delete "$INSTDIR\Clipper.exe"
+  Delete "$INSTDIR\Uninstall.exe"
+  Delete "$INSTDIR\LICENSE"
+  Delete "$INSTDIR\README.txt"
+  Delete "$INSTDIR\THIRD_PARTY_NOTICES.txt"
+  Delete "$INSTDIR\FFMPEG_NOTICE.txt"
+  Delete "$INSTDIR\COPYING.GPLv3.txt"
+  Delete "$INSTDIR\close_clipper.ps1"
+  RMDir /r "$INSTDIR\_internal"
+  RMDir /r "$INSTDIR\bin"
+  RMDir /r "$INSTDIR\licenses"
+
+cleanup_done:
   File /r "desktop-dist\Clipper\*.*"
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -71,10 +125,25 @@ SectionEnd
 
 Section "Uninstall"
   SetShellVarContext current
+  Call un.CloseClipper
+  Sleep 1000
   Delete "$DESKTOP\Clipper.lnk"
   Delete "$SMPROGRAMS\Clipper.lnk"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Clipper"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\Clipper.exe"
   DeleteRegKey HKCU "Software\Clipper"
-  RMDir /r "$INSTDIR"
+  DeleteRegKey HKCU "Software\hatermedia\Clipper"
+  DeleteRegKey /ifempty HKCU "Software\hatermedia"
+  Delete "$INSTDIR\Clipper.exe"
+  Delete "$INSTDIR\Uninstall.exe"
+  Delete "$INSTDIR\LICENSE"
+  Delete "$INSTDIR\README.txt"
+  Delete "$INSTDIR\THIRD_PARTY_NOTICES.txt"
+  Delete "$INSTDIR\FFMPEG_NOTICE.txt"
+  Delete "$INSTDIR\COPYING.GPLv3.txt"
+  Delete "$INSTDIR\close_clipper.ps1"
+  RMDir /r "$INSTDIR\_internal"
+  RMDir /r "$INSTDIR\bin"
+  RMDir /r "$INSTDIR\licenses"
+  RMDir "$INSTDIR"
 SectionEnd

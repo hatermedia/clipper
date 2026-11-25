@@ -133,9 +133,9 @@ def _build_batch_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ai-mode",
-        choices=("director", "review"),
+        choices=("director", "lite", "review"),
         default="director",
-        help="director watches the whole clip; review only checks heuristic peaks",
+        help="director watches the whole clip; lite uses OCR + signals; review only checks heuristic peaks",
     )
     parser.add_argument(
         "--ai-min-confidence",
@@ -417,8 +417,13 @@ def _run_batch(args: argparse.Namespace) -> int:
             f"proxy {settings.proxy_width}px @ {settings.sample_fps:g}fps | GPU: {gpu_label}"
         )
         if settings.ai:
+            engine = (
+                "lite (OCR + signals)"
+                if settings.ai_mode == "lite"
+                else settings.ai_model
+            )
             print(
-                f"AI: {settings.ai_model} | mode: {settings.ai_mode} | "
+                f"AI: {engine} | mode: {settings.ai_mode} | "
                 f"game: {settings.ai_game or 'generic'}"
             )
 

@@ -26,6 +26,23 @@ if (-not $SkipBuild) {
 if (-not (Test-Path (Join-Path $AppDir "Clipper.exe"))) {
     throw "Clipper.exe not found in $AppDir. Run packaging\build_desktop.ps1 first."
 }
+$RequiredFiles = @(
+    "Clipper.exe",
+    "close_clipper.ps1",
+    "THIRD_PARTY_NOTICES.txt",
+    "FFMPEG_NOTICE.txt",
+    "COPYING.GPLv3.txt",
+    "licenses\Apache-2.0.txt",
+    "licenses\MPL-2.0.txt",
+    "bin\ffmpeg.exe",
+    "bin\ffprobe.exe",
+    "_internal\clipper\assets\models\base.en\model.bin"
+)
+foreach ($relative in $RequiredFiles) {
+    if (-not (Test-Path (Join-Path $AppDir $relative))) {
+        throw "Release payload is missing $relative. Rebuild with packaging\build_desktop.ps1."
+    }
+}
 if (-not (Test-Path $Makensis)) {
     throw "NSIS not found at $Makensis"
 }
@@ -39,17 +56,28 @@ if ($LASTEXITCODE -ne 0) { throw "makensis failed with exit code $LASTEXITCODE" 
 $Setup = Join-Path $Release "ClipperSetup-$Version.exe"
 if (-not (Test-Path $Setup)) { throw "Installer not found: $Setup" }
 
-# Keep SHA256SUMS.txt in sync so the in-app updater can verify downloads.
+# Keep SHA256SUMS.txt in sync so the in-app updater and portable users can
+# verify downloads.
+$Artifacts = @($Setup)
+$Portable = Join-Path $Release "clipper-$Version-windows-x64-native.zip"
+if (Test-Path $Portable) { $Artifacts += $Portable }
 $Sums = Join-Path $Release "SHA256SUMS.txt"
-$Hash = (Get-FileHash $Setup -Algorithm SHA256).Hash.ToLower()
-$Name = Split-Path $Setup -Leaf
+$Names = @($Artifacts | ForEach-Object { Split-Path $_ -Leaf })
 $Lines = @()
 if (Test-Path $Sums) {
     $Lines = @(Get-Content $Sums | Where-Object {
-        $_ -and ($_ -notmatch ("\s+" + [regex]::Escape($Name) + "$"))
+        if (-not $_) { return $false }
+        foreach ($name in $Names) {
+            if ($_ -match ("\s+" + [regex]::Escape($name) + "$")) { return $false }
+        }
+        return $true
     })
 }
-$Lines += "$Hash  $Name"
+foreach ($artifact in $Artifacts) {
+    $Hash = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLower()
+    $Name = Split-Path $artifact -Leaf
+    $Lines += "$Hash  $Name"
+    Write-Host "SHA-256: $Hash  $Name" -ForegroundColor DarkGray
+}
 Set-Content -Path $Sums -Value $Lines -Encoding ascii
-Write-Host "SHA-256: $Hash" -ForegroundColor DarkGray
 Write-Host ("Installer: {0} ({1:N1} MB)" -f $Setup, ((Get-Item $Setup).Length / 1MB)) -ForegroundColor Green

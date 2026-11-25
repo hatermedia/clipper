@@ -1,0 +1,19 @@
+YAMNet audio event model
+=======================
+
+This product bundles an ONNX export of Google's YAMNet model.
+
+Model: YAMNet (AudioSet)
+Upstream code and weights: Google, Apache License 2.0
+  https://github.com/tensorflow/models/tree/master/research/audioset/yamnet
+  https://tfhub.dev/google/yamnet/1
+ONNX export: rostrumstudios/yamnet (mirrored from zeropointnine/yamnet-onnx)
+  https://huggingface.co/rostrumstudios/yamnet
+Class map: AudioSet ontology, CC BY-SA 4.0
+  https://research.google.com/audioset/
+
+The model is used locally on the CPU to tag laughter, cheering, and shouting.
+No audio leaves the machine.
+
+Bundled file: yamnet.onnx
+SHA-256: 1510041DCE24A2E9E84EC546807AC408AE496DA6D1ED41BC3CCBA649623F8E19

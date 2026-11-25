@@ -1,0 +1,109 @@
+Clipper third-party notices
+===========================
+
+Clipper itself is MIT licensed. See LICENSE.
+
+This distribution includes or links against the following third-party
+components. The versions shipped are those resolved in the build environment
+recorded in the release notes. Full license texts are included in `licenses/`;
+the FFmpeg GPLv3 text is `COPYING.GPLv3.txt`.
+
+Python / video / AI runtime
+---------------------------
+- PySide6 / Qt 6 - LGPL-3.0 (dynamic linking); Qt commercial licensing is also
+  available from The Qt Company.
+  https://www.qt.io/licensing/
+  https://doc.qt.io/qt-6/lgpl.html
+- NumPy - BSD-3-Clause. https://numpy.org/
+- SciPy - BSD-3-Clause. https://scipy.org/
+- OpenCV (opencv-python / opencv-python-headless) - Apache-2.0.
+  https://opencv.org/license/
+- ONNX Runtime - MIT. https://github.com/microsoft/onnxruntime
+- RapidOCR / RapidOCR ONNX Runtime - Apache-2.0.
+  https://github.com/RapidAI/RapidOCR
+- PaddleOCR models used by RapidOCR - Apache-2.0.
+  https://github.com/PaddlePaddle/PaddleOCR
+- faster-whisper - MIT. https://github.com/SYSTRAN/faster-whisper
+- CTranslate2 - MIT. https://github.com/OpenNMT/CTranslate2
+- tokenizers - Apache-2.0. https://github.com/huggingface/tokenizers
+- PyAV / FFmpeg libraries - BSD-3-Clause for PyAV; FFmpeg licensing depends on
+  the exact build (see FFmpeg section).
+- Pillow - HPND. https://python-pillow.org/
+- Shapely - BSD-3-Clause. https://shapely.readthedocs.io/
+- pyclipper - MIT. https://github.com/fonttools/pyclipper
+- PyYAML - MIT. https://pyyaml.org/
+- six - MIT. https://github.com/benjaminp/six
+- tqdm - MPL-2.0. https://tqdm.github.io/
+- click - BSD-3-Clause. https://click.palletsprojects.com/
+- pydantic - MIT. https://docs.pydantic.dev/
+- httpcore / httpx - BSD-3-Clause. https://www.python-httpx.org/
+- websockets - BSD-3-Clause. https://websockets.readthedocs.io/
+- opentelemetry-api - Apache-2.0. https://opentelemetry.io/
+
+Whisper model
+-------------
+- Systran/faster-whisper-base.en, revision
+  3d3d5dee26484f91867d81cb899cfcf72b96be6c.
+  The model card and license are published at
+  https://huggingface.co/Systran/faster-whisper-base.en
+  and the upstream Whisper project is MIT licensed:
+  https://github.com/openai/whisper
+
+YAMNet
+------
+- YAMNet model and code: Google, Apache-2.0.
+  https://github.com/tensorflow/models/tree/master/research/audioset/yamnet
+  https://tfhub.dev/google/yamnet/1
+- ONNX export: zeropointnine / rostrumstudios, Apache-2.0.
+  https://huggingface.co/rostrumstudios/yamnet
+- AudioSet class map / ontology: Google, CC BY-SA 4.0.
+  https://research.google.com/audioset/
+  The bundled `yamnet_class_map.csv` is redistributed unchanged.
+- The bundled model file is `yamnet.onnx`; its SHA-256 is recorded in
+  `YAMNET_NOTICE.txt`.
+
+FFmpeg
+------
+The installer bundles FFmpeg 9.1-essentials_build from gyan.dev (source commit
+74e4393595), a GPLv3 build that statically links GPL libraries including x264
+and x265. The exact build, executable SHA-256, source locations, and release
+obligations are recorded in `FFMPEG_NOTICE.txt`; the GPLv3 text is
+`COPYING.GPLv3.txt`. Do not publish an installer until the Corresponding Source
+is attached or hosted as described there.
+  https://www.gyan.dev/ffmpeg/builds/
+  https://ffmpeg.org/legal.html
+
+Microsoft and Intel runtime DLLs
+--------------------------------
+The app-local runtime DLLs copied by `packaging/bundle_runtime.ps1`
+(`msvcp140*.dll`, `vcruntime140*.dll`, `concrt140.dll`, `vcamp140.dll`,
+`vccorlib140.dll`, `vcomp140.dll`, and `libiomp5md.dll`) originate from the
+CTranslate2 Python package installed in the active build environment. They are
+Microsoft Visual C++ Redistributable and Intel OpenMP runtime components.
+Their redistribution is governed by the Microsoft Visual Studio and Intel
+runtime licenses. Verify the exact package versions against those licenses
+before a public release. They are not copied from arbitrary System32 files.
+
+Fonts
+-----
+- Inter - SIL Open Font License 1.1. See `assets/fonts/OFL.txt`.
+- IBM Plex Mono - SIL Open Font License 1.1. See `assets/fonts/OFL.txt`.
+
+Installer / build tooling
+-------------------------
+- NSIS - zlib/libpng license. https://nsis.sourceforge.io/License
+- PyInstaller - GPL-2.0-or-later with a special exception allowing
+  distribution of bundled applications. https://pyinstaller.org/
+
+Model provider terms
+--------------------
+- Qwen2.5-VL and Gemma models are optional external Ollama downloads and are
+  not redistributed by Clipper. Users must comply with the respective model
+  licenses and Ollama's terms. The bundled Python code does not include model
+  weights for Qwen or Gemma.
+
+Privacy
+-------
+All audio, video, OCR, acoustic analysis, and optional Ollama inference run on
+the user's machine. Clipper does not upload footage. GitHub is contacted only
+for the user-initiated or scheduled update check.

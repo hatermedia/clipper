@@ -1,4 +1,4 @@
-Clipper 0.2.0 - Windows x64 CLI portable
+Clipper 0.7.0 - Windows x64 CLI portable
 ====================================
 
 No Python install. No FFmpeg install. Everything is in this folder.
@@ -22,6 +22,8 @@ The bundled ffmpeg/ffprobe live in the bin folder.
 NOTES
 -----
 - Footage never leaves this machine. The UI binds to 127.0.0.1.
+- Whisper transcription, RapidOCR HUD reading, and YAMNet audio tagging are
+  bundled, so AI/OCR works without downloads after install.
 - Default export uses FFmpeg stream copy (instant, lossless). Stream copy can
   start on an earlier keyframe; use --reencode for exact edges.
 - Windows SmartScreen may warn about an unsigned executable. The source is at

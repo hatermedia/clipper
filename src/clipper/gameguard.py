@@ -15,6 +15,8 @@ from pathlib import Path
 KNOWN_GAMES = {
     "rocketleague.exe": "Rocket League",
     "rocketleague-win64-shipping.exe": "Rocket League",
+    "tftclient-win64-shipping.exe": "Teamfight Tactics",
+    "league of legends.exe": "League of Legends",
     "mimesis.exe": "Mimesis",
     "mimesis-win64-shipping.exe": "Mimesis",
     "valorant.exe": "Valorant",
@@ -124,6 +126,8 @@ def detect_running_game() -> str | None:
 PATH_GAME_ALIASES = (
     ("rocket league", "Rocket League"),
     ("rocketleague", "Rocket League"),
+    ("teamfight tactics", "Teamfight Tactics"),
+    ("tft", "Teamfight Tactics"),
     ("mimesis", "Mimesis"),
     ("valorant", "Valorant"),
     ("apex legends", "Apex Legends"),

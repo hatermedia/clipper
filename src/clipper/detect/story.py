@@ -17,9 +17,10 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import cv2
 import numpy as np
@@ -27,18 +28,86 @@ import numpy as np
 from ..config import DetectionSettings
 from ..ffmpeg import FFmpegBinaries, make_thumbnail
 from ..models import ClipWindow
-from .ai import AIError, AI_CROP, OLLAMA_URL, _parse_json, model_available, unload_model
+from .ai import AIError, OLLAMA_URL, _parse_json, model_available, num_gpu_for, unload_model
 from .audio import ScoreTrack
+from .hud import HudLine, HudReading, chat_cue, display_text, event_lines, read_hud
+from .signals import SIGNAL_VERSION, WindowSignal, analyze_signals, tag_transcript, window_signal
 
-PROMPT_VERSION = "director-v3"
+PROMPT_VERSION = "director-v6"
 ProgressFn = Callable[[float, str], None]
 MAX_SEGMENT_SECONDS = 120.0
+SOCIAL_MAX_SECONDS = 45.0
+ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
+BUNDLED_WHISPER = ASSET_DIR / "models" / "base.en"
+HUD_KIND_ORDER = ("round", "goal", "multikill", "clutch", "save", "demo")
+SOCIAL_KINDS = {"funny", "banter", "reaction", "rage", "hype"}
+KIND_ALIASES = {
+    "ace": "multikill",
+    "doublekill": "multikill",
+    "triplekill": "multikill",
+    "quadrakill": "multikill",
+    "pentakill": "multikill",
+    "roundwin": "round",
+    "won": "round",
+    "win": "round",
+    "victory": "round",
+    "loss": "round",
+    "defeat": "round",
+    "chaos": "hype",
+}
+
+
+def _window_kind(window: StoryWindow) -> str:
+    kind = (
+        str(window.visual.get("kind") or "gameplay")
+        .split("|")[0]
+        .strip()
+        .lower()
+        or "gameplay"
+    )
+    return KIND_ALIASES.get(kind, kind)
 HUMOR_CUES = re.compile(
     r"\b(fuck|fucking|shit|bitch|ass|damn|bro|dude|bruh|lmao|lol|joke|joking|"
-    r"troll|trolling|funny|haha|laugh|laughed|wtf|no way|what the|why would|"
-    r"stop|serious|holy|clip that|did you see|can't say)\b",
+    r"troll|trolling|funny|haha|laugh|laughed|scream|screaming|yell|yelling|"
+    r"rage|angry|cry|crying|wtf|no way|no no|oh my|what the|why would|"
+    r"stop|serious|seriously|holy|clip that|clip it|did you see|can't say|"
+    r"cannot say|wow|crazy|insane|unbelievable|kidding|my god|jesus|"
+    r"nice one|great job|well done)\b",
     re.IGNORECASE,
 )
+
+# Concrete, observable game events. The VLM is allowed to be unsure, but a
+# gameplay clip must name the HUD/event that proves it. This is what stops
+# "player executes a clutch move" from becoming a posted clip.
+_EVIDENCE_RULES = {
+    "multikill": re.compile(
+        r"kill ?feed|killfeed|\bace\b|double kill|triple kill|quadra|penta|"
+        r"\b[2345] kills?\b|two kills|three kills|four kills|five kills",
+        re.IGNORECASE,
+    ),
+    "goal": re.compile(r"\bgoal\b|goal line|score|explosion|ball", re.IGNORECASE),
+    "round": re.compile(
+        r"banner|\bwon\b|\blost\b|round (win|loss|result)|spike|defus|plant|"
+        r"score|match point",
+        re.IGNORECASE,
+    ),
+    "clutch": re.compile(
+        r"kill ?feed|killfeed|banner|round|last (enemy|opponent|man)|1v\d|"
+        r"clutch|defus|plant|ace",
+        re.IGNORECASE,
+    ),
+    "save": re.compile(r"\bsave\b|\bgoal\b|ball|shot", re.IGNORECASE),
+    "demo": re.compile(r"\bdemo\b|explosion|destroy", re.IGNORECASE),
+}
+
+
+def _evidence_supports(kind: str, evidence: str) -> bool:
+    rule = _EVIDENCE_RULES.get(kind)
+    if rule is None:
+        return bool(evidence.strip())
+    return bool(rule.search(evidence))
+
+
 GAME_GUIDANCE = {
     "rocket league": (
         "This is Rocket League. Strong highlights: goals, aerial goals, redirects, "
@@ -91,6 +160,7 @@ class StoryWindow:
     transcript: str
     audio_label: str
     visual: dict[str, Any]
+    signals: WindowSignal | None = None
 
 
 @dataclass
@@ -98,8 +168,11 @@ class TranscriptLine:
     start: float
     end: float
     text: str
+    tags: str = ""
 
     def label(self) -> str:
+        if self.tags:
+            return f"[{self.start:.1f}-{self.end:.1f} | {self.tags}] {self.text}"
         return f"[{self.start:.1f}-{self.end:.1f}] {self.text}"
 
 
@@ -115,7 +188,7 @@ def _cache_key(video: Path, tag: str, model: str) -> Path:
         mtime = video.stat().st_mtime
     except OSError:
         mtime = 0
-    raw = f"{video.resolve()}|{mtime}|{tag}|{model}|{PROMPT_VERSION}"
+    raw = f"{video.resolve()}|{mtime}|{tag}|{model}|{PROMPT_VERSION}|{SIGNAL_VERSION}"
     return _cache_dir() / (hashlib.sha256(raw.encode()).hexdigest()[:24] + ".json")
 
 
@@ -142,7 +215,9 @@ def _ollama_chat(
             "temperature": 0.1,
             "num_predict": num_predict,
             "num_ctx": 4096,
-            "num_gpu": 99,
+            "num_gpu": num_gpu_for(model),
+            "repeat_penalty": 1.25,
+            "repeat_last_n": 64,
         },
         "keep_alive": "10m",
     }
@@ -158,9 +233,16 @@ def _ollama_chat(
     except urllib.error.HTTPError as exc:
         body = exc.read(800).decode("utf-8", errors="replace")
         raise AIError(f"Ollama HTTP {exc.code}: {body}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise AIError(f"Ollama returned malformed JSON: {exc}") from exc
     except Exception as exc:
         raise AIError(f"Ollama request failed: {exc}") from exc
-    content = str((data.get("message") or {}).get("content") or "").strip()
+    if not isinstance(data, dict):
+        raise AIError("Ollama returned an unexpected response")
+    message = data.get("message")
+    if not isinstance(message, dict):
+        raise AIError("Ollama returned no message object")
+    content = str(message.get("content") or "").strip()
     if not content:
         raise AIError("The local model returned an empty response")
     return _parse_json(content)
@@ -176,7 +258,8 @@ def transcribe_audio(
 
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".cache")
-    os.environ.setdefault("HF_HOME", str(base / "Clipper" / "models" / "huggingface"))
+    download_root = base / "Clipper" / "models" / "huggingface"
+    os.environ.setdefault("HF_HOME", str(download_root))
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
@@ -185,11 +268,16 @@ def transcribe_audio(
             "Install the desktop extra or run: pip install faster-whisper"
         ) from exc
 
+    bundled_override = os.environ.get("CLIPPER_WHISPER_MODEL")
+    bundled = Path(bundled_override).expanduser() if bundled_override else BUNDLED_WHISPER
+    local_model = (bundled / "model.bin").is_file()
     model = WhisperModel(
-        model_name,
+        str(bundled) if local_model else model_name,
         device="cpu",
         compute_type="int8",
         cpu_threads=max(1, min(8, threads or 6)),
+        download_root=str(download_root),
+        local_files_only=local_model,
     )
     segments, _info = model.transcribe(
         str(wav),
@@ -259,7 +347,7 @@ def _contact_sheet(
         for index, offset in enumerate(offsets):
             timestamp = min(end - 0.05, start + span * offset)
             jpg = temp / f"frame_{index}.jpg"
-            make_thumbnail(video, timestamp, jpg, width=320, bins=bins, crop=AI_CROP)
+            make_thumbnail(video, timestamp, jpg, width=480, bins=bins, crop=None)
             image = cv2.imread(str(jpg))
             if image is None:
                 image = np.zeros((180, 320, 3), dtype=np.uint8)
@@ -282,27 +370,45 @@ def _contact_sheet(
 
 
 def _window_prompt(window: StoryWindow, game: str) -> str:
-    return f"""You are reviewing one window of a gaming clip for a highlight editor.
+    return f"""You are the strict highlight editor for a gaming channel.
 Game: {game or "generic"}.
 {_game_guidance(game)}
 Window: {window.start:.1f}s to {window.end:.1f}s.
 Audio energy: {window.audio_label}.
 Transcript or game audio in this window: {window.transcript or "(none)"}
-The image is four chronological frames, left to right then top to bottom.
-The timestamps are drawn on each frame.
+Acoustic/motion evidence for this window:
+{window.signals.prompt_text() if window.signals else "(none)"}
+Only cite signal tags that literally appear in that evidence line. If it says
+"(no strong acoustic or motion signals)", do not claim LAUGH, JERK, or LOUD.
+Audio energy high/medium/low is not a signal tag.
+The image is four chronological FULL frames, including the HUD, left to right then
+top to bottom. The timestamps are drawn on each frame. Read the kill feed, score,
+and round banner when they are visible.
 
-Decide whether this window contains something worth keeping in a highlight reel:
-funny banter or trolling, a genuine reaction, rage, a clutch, a multikill,
-a round result, a notable goal/play, a spike/objective play, or a clearly unusual moment.
-Buy phase, menus, loading screens, walking, ordinary driving, and filler are not interesting.
-Ordinary game callouts and strategy talk ("enemy remaining", "reloading", "B site")
-are NOT funny banter. Banter requires people joking, teasing, laughing, or reacting.
-Ignore game voice lines when judging whether people are being funny.
+Keep this window ONLY for one of these reasons:
+1. Social: a person is joking, teasing, trolling, raging, laughing, or reacting.
+   Evidence must quote their actual words from the transcript. Game voice lines,
+   tactical callouts, and strategy talk do NOT count as banter.
+2. Gameplay: a concrete result is visible. Name it and its timestamp: a kill-feed
+   entry, ace/multikill, WON/LOST banner, score change, goal explosion, save,
+   spike plant/defuse, or demo.
+3. Hype/chaos: use the acoustic/motion evidence. A high-energy human reaction can
+   be kind="hype" with NO HUD event when at least two independent signals agree:
+   LAUGH + JERK, LAUGH + LOUD, or LOUD + FAST + JERK. Pure laughter may have no
+   transcript words; quote the signal tags in that case. Explosions and scene cuts
+   can produce LOUD or JERK alone: never call those hype without LAUGH or a real
+   excited human quote.
+4. A clearly unusual visible event that a viewer would react to.
 
-Scoring: 0.0 filler/menu, 0.3-0.5 ordinary gameplay, 0.6-0.8 notable,
-0.8-1.0 must keep. Be conservative. Do not invent audio or events.
+Reject buy phase, menus, loading, walking, rotations, looting, ordinary fights,
+and any "player reacts" claim without a quoted human line. Never guess an event
+that happens off-screen or between frames. If you cannot name the exact evidence,
+set interesting to false. Vague summaries like "player executes a clutch move"
+are not evidence.
+Scoring: 0.0 filler/menu, 0.3-0.5 ordinary gameplay, 0.6-0.8 notable with concrete
+evidence, 0.8-1.0 must keep. Be conservative.
 Return JSON only:
-{{"interesting": true|false, "score": 0.0, "kind": "funny|banter|rage|clutch|multikill|goal|round|reaction|gameplay|filler", "summary": "one short sentence", "evidence": "what you saw or heard"}}"""
+{{"interesting": true|false, "score": 0.0, "kind": "funny|banter|rage|hype|clutch|multikill|goal|round|reaction|gameplay|filler", "summary": "one short sentence", "evidence": "timestamp + exact HUD text, visible event, human quote, or signal tags"}}"""
 
 
 def _review_window(
@@ -328,7 +434,7 @@ def _review_window(
             model,
             _window_prompt(window, game),
             images=[encoded],
-            num_predict=180,
+            num_predict=360 if "7b" in model.lower() else 240,
         )
     interesting = verdict.get("interesting")
     if isinstance(interesting, str):
@@ -361,6 +467,7 @@ def _segments_from_windows(
     duration: float,
     settings: DetectionSettings,
     audio: ScoreTrack | None = None,
+    hud_reader: Callable[[float, float], HudReading] | None = None,
 ) -> list[ClipWindow]:
     threshold = max(0.45, min(0.95, settings.ai_min_confidence))
     clusters: list[list[StoryWindow]] = []
@@ -377,47 +484,187 @@ def _segments_from_windows(
 
     clips: list[ClipWindow] = []
     for cluster in clusters:
-        best = max(
+        ranked = sorted(
             cluster,
             key=lambda item: (
                 float(item.visual.get("score", 0.0)),
                 _audio_rank(item.audio_label),
                 item.start,
             ),
+            reverse=True,
         )
+        chosen: StoryWindow | None = None
+        chosen_kind = ""
+        chosen_signal: WindowSignal | None = None
+        hud_hits: list[HudLine] = []
+        chat_line: HudLine | None = None
+
+        # Verify in strict priority order:
+        # 1. concrete gameplay HUD events
+        # 2. HUD events inside a window the VLM called social/hype
+        # 3. strong acoustic/motion agreement
+        # 4. transcript/chat humor cues
+        gameplay = [
+            window for window in ranked if _window_kind(window) not in SOCIAL_KINDS
+        ]
+        social = [
+            window for window in ranked if _window_kind(window) in SOCIAL_KINDS
+        ]
+        readings: dict[tuple[float, float], HudReading | None] = {}
+
+        def read_candidate(candidate: StoryWindow) -> HudReading | None:
+            key = (round(candidate.start, 3), round(candidate.end, 3))
+            if key not in readings and hud_reader is not None:
+                readings[key] = hud_reader(candidate.start, candidate.end)
+            return readings.get(key)
+
+        for candidate in gameplay:
+            candidate_kind = _window_kind(candidate)
+            candidate_evidence = str(candidate.visual.get("evidence") or "").strip()
+            checked = read_candidate(candidate)
+            if checked is not None and checked.available:
+                hits = event_lines(candidate_kind, checked.lines)
+                if not hits:
+                    for alt in HUD_KIND_ORDER:
+                        hits = event_lines(alt, checked.lines)
+                        if hits:
+                            candidate_kind = alt
+                            break
+                if hits:
+                    chosen = candidate
+                    chosen_kind = candidate_kind
+                    hud_hits = hits
+                    break
+                continue
+            if not _evidence_supports(candidate_kind, candidate_evidence):
+                continue
+            chosen = candidate
+            chosen_kind = candidate_kind
+            break
+
+        if chosen is None:
+            for candidate in social:
+                checked = read_candidate(candidate)
+                if checked is None or not checked.available:
+                    continue
+                for alt in HUD_KIND_ORDER:
+                    hits = event_lines(alt, checked.lines)
+                    if hits:
+                        chosen = candidate
+                        chosen_kind = alt
+                        chosen_signal = candidate.signals
+                        hud_hits = hits
+                        break
+                if chosen is not None:
+                    break
+
+        if chosen is None:
+            for candidate in social:
+                if candidate.signals is not None and candidate.signals.agreement():
+                    chosen = candidate
+                    chosen_kind = "hype"
+                    chosen_signal = candidate.signals
+                    break
+
+        if chosen is None:
+            for candidate in social:
+                candidate_kind = _window_kind(candidate)
+                if candidate_kind == "hype":
+                    # Hype must be earned by real signal agreement, never by a
+                    # quick-chat line or a flat transcript phrase.
+                    continue
+                candidate_lines = [
+                    line
+                    for line in lines
+                    if line.end > candidate.start + 0.2
+                    and line.start < candidate.end - 0.2
+                ]
+                if any(HUMOR_CUES.search(line.text) for line in candidate_lines):
+                    chosen = candidate
+                    chosen_kind = candidate_kind
+                    chosen_signal = candidate.signals
+                    break
+                checked = read_candidate(candidate)
+                if checked is not None and checked.available:
+                    cue = chat_cue(checked.lines)
+                    if cue is not None:
+                        chosen = candidate
+                        chosen_kind = candidate_kind
+                        chosen_signal = candidate.signals
+                        chat_line = cue
+                        break
+
+        if chosen is None:
+            continue
+
+        best = chosen
+        kind = chosen_kind
+        social_kind = kind in SOCIAL_KINDS
+        evidence = str(best.visual.get("evidence") or "").strip()
         start = cluster[0].start
         end = cluster[-1].end
-        kind = str(best.visual.get("kind") or "gameplay").split("|")[0].strip() or "gameplay"
         peak = (best.start + best.end) / 2
-        if kind in {"funny", "banter"}:
-            spoken = " ".join(
-                line.text
-                for line in lines
-                if line.end > start + 0.2 and line.start < end - 0.2
-            )
-            if not HUMOR_CUES.search(spoken):
-                # Game voice lines and tactical callouts are transcribed the
-                # same way as people talking. Do not sell a strategy chat as a
-                # funny clip unless there is an actual humour cue.
-                continue
+        spoken_lines = [
+            line
+            for line in lines
+            if line.end > start + 0.2 and line.start < end - 0.2
+        ]
+        cue_lines = [line for line in spoken_lines if HUMOR_CUES.search(line.text)]
+
         # For a conversation, trim to the spoken interaction instead of the
         # arbitrary window boundary. Keep a little breath before/after.
-        if kind in {"funny", "banter", "reaction", "rage"}:
-            spoken_lines = [
-                line
-                for line in lines
-                if line.end > start + 0.2 and line.start < end - 0.2
-            ]
+        if social_kind:
             if spoken_lines:
                 start = max(start, spoken_lines[0].start - 1.0)
                 end = min(end, spoken_lines[-1].end + 1.0)
-                cue_lines = [line for line in spoken_lines if HUMOR_CUES.search(line.text)]
                 if cue_lines:
                     peak = (cue_lines[-1].start + cue_lines[-1].end) / 2
+                elif chosen_signal is not None:
+                    peak = chosen_signal.peak_time
+            elif chat_line is not None:
+                start = max(cluster[0].start, chat_line.time - 8.0)
+                end = min(cluster[-1].end, chat_line.time + 8.0)
+                peak = chat_line.time
+            elif chosen_signal is not None:
+                center = chosen_signal.peak_time
+                start = max(cluster[0].start, center - 8.0)
+                end = min(cluster[-1].end, center + 8.0)
+                peak = center
+        if social_kind and end - start > SOCIAL_MAX_SECONDS:
+            # Do not ship a 90-second VOD because the model liked every window.
+            # Keep a tight window around the strongest cue in the best window.
+            if cue_lines:
+                center = (best.start + best.end) / 2
+                chosen = min(
+                    cue_lines,
+                    key=lambda line: abs((line.start + line.end) / 2 - center),
+                )
+                middle = (chosen.start + chosen.end) / 2
+                start = max(cluster[0].start, middle - SOCIAL_MAX_SECONDS / 2)
+                end = min(cluster[-1].end, start + SOCIAL_MAX_SECONDS)
+                peak = middle
+                cue_lines = [
+                    line for line in cue_lines
+                    if line.end > start and line.start < end
+                ] or [chosen]
+            elif chat_line is not None:
+                start = max(cluster[0].start, chat_line.time - SOCIAL_MAX_SECONDS / 2)
+                end = min(cluster[-1].end, start + SOCIAL_MAX_SECONDS)
+                peak = chat_line.time
+            elif chosen_signal is not None:
+                center = chosen_signal.peak_time
+                start = max(cluster[0].start, center - SOCIAL_MAX_SECONDS / 2)
+                end = min(cluster[-1].end, start + SOCIAL_MAX_SECONDS)
+                peak = center
         if end - start < 4.0:
             middle = (best.start + best.end) / 2
             start = max(0.0, middle - 2.5)
             end = min(duration, middle + 2.5)
+        if not social_kind:
+            start = max(cluster[0].start, best.start - 5.0)
+            end = min(cluster[-1].end, best.end + 5.0)
+        if not social_kind and end - start > 30.0:
+            end = min(cluster[-1].end, start + 30.0)
         if end - start > MAX_SEGMENT_SECONDS:
             middle = (best.start + best.end) / 2
             start = max(cluster[0].start, middle - MAX_SEGMENT_SECONDS / 2)
@@ -434,6 +681,30 @@ def _segments_from_windows(
                 ),
                 "notable moment",
             )
+        if (
+            social_kind
+            and kind == "hype"
+            and chosen_signal is not None
+            and chosen_signal.agreement()
+        ):
+            reason = f"AI hype: {chosen_signal.reason()}"[:180]
+        elif social_kind and cue_lines:
+            quotes = [line.text.strip().strip('"') for line in cue_lines]
+            quote = quotes[-1] if len(quotes) == 1 else f"{quotes[0]} / {quotes[-1]}"
+            if len(quote) > 110:
+                quote = quote[:107].rsplit(" ", 1)[0] + "..."
+            reason = f'AI {kind}: "{quote}"'[:180]
+        elif social_kind and chat_line is not None:
+            reason = f'AI {kind}: chat "{chat_line.text}"'[:180]
+        elif social_kind and chosen_signal is not None:
+            reason = f"AI hype: {chosen_signal.reason()}"[:180]
+        elif hud_hits:
+            limit = 2 if kind == "round" else 1
+            reason = f"AI {kind} (HUD): {display_text(hud_hits, limit)}"[:180]
+        elif evidence:
+            reason = f"AI {kind}: {evidence}"[:180]
+        else:
+            reason = f"AI {kind}: {summary}"[:180]
         clips.append(
             ClipWindow(
                 start=max(0.0, start),
@@ -442,7 +713,7 @@ def _segments_from_windows(
                 score=max(0.05, min(0.99, float(best.visual.get("score", 0.7)))),
                 audio_score=0.0,
                 visual_score=0.0,
-                reason=f"AI {kind}: {summary}"[:180],
+                reason=reason,
             )
         )
     return _merge(clips)
@@ -475,6 +746,7 @@ def direct_clip(
     audio: ScoreTrack | None,
     bins: FFmpegBinaries,
     progress: ProgressFn | None = None,
+    jerk: ScoreTrack | None = None,
 ) -> tuple[list[ClipWindow], list[str]]:
     if not model_available(settings.ai_model):
         raise AIError(
@@ -516,8 +788,16 @@ def direct_clip(
     else:
         warnings.append("AI director: no audio track to transcribe.")
 
+    if progress:
+        progress(0.865, "AI director: reading audio/motion signals")
+    signal_analysis = analyze_signals(wav, jerk, threads=settings.threads)
+    tag_transcript(lines, signal_analysis)
+    if wav is not None and not signal_analysis.acoustic.yamnet:
+        warnings.append("AI director: YAMNet unavailable; laughter tags are off.")
+
     size = _window_size(duration)
     windows: list[StoryWindow] = []
+    failed_windows = 0
     count = max(1, int(np.ceil(duration / size)))
     for index in range(count):
         start = index * size
@@ -530,6 +810,7 @@ def direct_clip(
             transcript=_window_transcript(lines, start, end),
             audio_label=_audio_label(audio, start, end),
             visual={},
+            signals=window_signal(signal_analysis, start, end, lines),
         )
         if progress:
             progress(
@@ -541,8 +822,8 @@ def direct_clip(
             window.visual = _review_window(
                 video, window, settings.ai_model, bins, settings.ai_game
             )
-        except AIError as exc:
-            warnings.append(f"AI director window failed: {exc}")
+        except AIError:
+            failed_windows += 1
             window.visual = {
                 "interesting": False,
                 "score": 0.0,
@@ -552,9 +833,27 @@ def direct_clip(
             }
         windows.append(window)
 
+    if failed_windows:
+        warnings.append(
+            f"AI director skipped {failed_windows} unreadable window(s)."
+        )
+
     if progress:
         progress(0.96, "AI director: choosing the story")
-    clips = _segments_from_windows(windows, lines, duration, settings, audio=audio)
+
+    def read_hud_window(start: float, end: float) -> HudReading:
+        if progress:
+            progress(0.96, "AI director: checking HUD evidence")
+        return read_hud(video, start, end, bins)
+
+    clips = _segments_from_windows(
+        windows,
+        lines,
+        duration,
+        settings,
+        audio=audio,
+        hud_reader=read_hud_window,
+    )
     if not clips:
         warnings.append("AI director found no story beats in this clip.")
     clips = [clip for clip in _merge(clips) if clip.duration >= settings.min_clip]

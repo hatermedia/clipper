@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clipper-gg"
-version = "0.6.0"
+version = "0.7.0"
 description = "Automatic gaming highlight trimmer with a local AI director, audio + motion detection, and lossless FFmpeg cuts."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,6 +38,8 @@ dependencies = [
   "numpy>=1.26",
   "scipy>=1.11",
   "opencv-python-headless>=4.9",
+  "rapidocr-onnxruntime>=1.2.3",
+  "onnxruntime>=1.17",
   "fastapi>=0.110",
   "uvicorn[standard]>=0.27",
   "faster-whisper>=1.2",
@@ -66,7 +68,7 @@ Issues = "https://github.com/hatermedia/clipper/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"clipper" = ["assets/*", "assets/fonts/*"]
+"clipper" = ["assets/*", "assets/fonts/*", "assets/licenses/*"]
 "clipper.web" = ["static/*"]
 
 [tool.pytest.ini_options]
