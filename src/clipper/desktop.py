@@ -1888,7 +1888,7 @@ class MainWindow(QMainWindow):
         self.update_label.setText(
             f"Update ready · Clipper {version} downloaded and SHA-256 verified"
         )
-        self.update_action.setText("Restart & install")
+        self.update_action.setText("Restart and install")
         self.update_action.setEnabled(True)
         self.update_bar.show()
 

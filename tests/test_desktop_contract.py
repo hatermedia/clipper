@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +22,12 @@ def test_titlebar_hit_testing_uses_laid_out_header_and_widgets() -> None:
     assert "_header_layout" in source
     assert "childAt" in source
     assert "QAbstractButton" in source
+
+
+def test_update_button_has_no_mnemonic_ampersand() -> None:
+    source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert 'setText("Restart and install")' in source
+    assert "Restart & install" not in source
 
 
 def test_close_event_stops_previews_workers_and_ffmpeg() -> None:
