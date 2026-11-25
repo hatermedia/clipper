@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -42,6 +44,7 @@ from PySide6.QtGui import (
     QGuiApplication,
     QIcon,
     QPainter,
+    QPen,
     QPixmap,
 )
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -65,6 +68,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -117,6 +121,8 @@ ASSET_DIR = Path(__file__).resolve().parent / "assets"
 VIDEO_ICON = ASSET_DIR / "icon.png"
 TOGGLE_ON_ICON = (ASSET_DIR / "toggle_on.png").as_posix()
 TOGGLE_OFF_ICON = (ASSET_DIR / "toggle_off.png").as_posix()
+CHEVRON_DOWN_ICON = (ASSET_DIR / "chevron_down.png").as_posix()
+CHEVRON_UP_ICON = (ASSET_DIR / "chevron_up.png").as_posix()
 ROLE_PREVIEW = int(Qt.UserRole)
 ROLE_VIDEO = ROLE_PREVIEW + 1
 ROLE_START = ROLE_PREVIEW + 2
@@ -216,19 +222,23 @@ QPushButton#Preset:checked {
     font-weight: 600;
 }
 QPushButton#Mono { font-size: 11px; padding: 5px 9px; }
+QWidget#TitleBar {
+    background: #1a1a1a;
+    border-bottom: 1px solid #2a2a2a;
+}
 QPushButton#WindowButton {
     background: transparent;
     border: none;
+    border-radius: 0;
     color: #b0b0b0;
-    font-size: 17px;
     padding: 0;
 }
 QPushButton#WindowButton:hover { background: #333333; color: #ffffff; }
 QPushButton#WindowClose {
     background: transparent;
     border: none;
+    border-radius: 0;
     color: #b0b0b0;
-    font-size: 19px;
     padding: 0;
 }
 QPushButton#WindowClose:hover { background: #d9534f; color: #ffffff; }
@@ -260,6 +270,13 @@ QFrame#UpdateBar {
     border-left: 3px solid #2f9bff;
     border-radius: 7px;
 }
+QFrame#AiSetup {
+    background: #232323;
+    border: 1px solid #383838;
+    border-left: 3px solid #2f9bff;
+    border-radius: 7px;
+}
+QLabel#AiSetupTitle { color: #ffffff; font-weight: 600; font-size: 12px; }
 QFrame#UpdateBar QLabel { color: #d8d8d8; font-size: 12px; }
 QFrame#UpdateBar QPushButton { padding: 5px 10px; }
 QLineEdit, QComboBox, QSpinBox {
@@ -500,6 +517,61 @@ class UpdateDownloadWorker(QThread):
         self.progress.emit(done, total)
 
 
+class OllamaPullWorker(QThread):
+    line = Signal(str)
+    done = Signal(bool, str)
+
+    def __init__(self, model: str) -> None:
+        super().__init__()
+        self.model = model
+        self._process: subprocess.Popen[str] | None = None
+
+    def cancel(self) -> None:
+        process = self._process
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+            except OSError:
+                pass
+
+    def run(self) -> None:
+        exe = shutil.which("ollama")
+        if not exe:
+            candidates = [
+                Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe",
+                Path(os.environ.get("ProgramFiles", "")) / "Ollama" / "ollama.exe",
+            ]
+            exe = next((str(path) for path in candidates if path.is_file()), None)
+        if not exe:
+            self.done.emit(False, "Ollama is not installed or not on PATH.")
+            return
+        try:
+            process = subprocess.Popen(
+                [exe, "pull", self.model],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=0x08000000 if os.name == "nt" else 0,
+            )
+        except OSError as exc:
+            self.done.emit(False, str(exc))
+            return
+        self._process = process
+        if process.stdout is not None:
+            for raw in process.stdout:
+                line = raw.strip()
+                if line:
+                    self.line.emit(line)
+        code = process.wait()
+        self._process = None
+        if code == 0:
+            self.done.emit(True, f"{self.model} is ready.")
+        else:
+            self.done.emit(False, f"ollama pull exited with code {code}.")
+
+
 class ClickablePreview(QLabel):
     clicked = Signal()
 
@@ -507,6 +579,31 @@ class ClickablePreview(QLabel):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
+
+
+def _window_icon(kind: str) -> QIcon:
+    pixmap = QPixmap(32, 32)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    pen = QPen(QColor("#d6d6d6"))
+    pen.setWidthF(2.0)
+    pen.setCapStyle(Qt.RoundCap)
+    painter.setPen(pen)
+    if kind == "min":
+        painter.drawLine(10, 17, 22, 17)
+    elif kind == "max":
+        painter.drawRect(10, 10, 12, 12)
+    elif kind == "restore":
+        painter.drawRect(9, 13, 10, 10)
+        painter.drawLine(13, 9, 23, 9)
+        painter.drawLine(23, 9, 23, 19)
+        painter.drawLine(19, 19, 23, 19)
+    elif kind == "close":
+        painter.drawLine(10, 10, 22, 22)
+        painter.drawLine(22, 10, 10, 22)
+    painter.end()
+    return QIcon(pixmap)
 
 
 class InlineClipPreview(QFrame):
@@ -770,23 +867,34 @@ class InlineClipPreview(QFrame):
 
 class DropZone(QFrame):
     pathDropped = Signal(str)
+    clicked = Signal()
 
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("DropZone")
         self.setAcceptDrops(True)
         self.setMinimumHeight(68)
+        self.setCursor(Qt.PointingHandCursor)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(2)
         title = QLabel("Drop a folder or video here")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("color: #f5f5f7; font-weight: 500;")
-        subtitle = QLabel("or use Browse to pick a folder")
+        title.setAttribute(Qt.WA_TransparentForMouseEvents)
+        subtitle = QLabel("or click to choose a folder or video")
         subtitle.setAlignment(Qt.AlignCenter)
         subtitle.setObjectName("Muted")
+        subtitle.setAttribute(Qt.WA_TransparentForMouseEvents)
         layout.addWidget(title)
         layout.addWidget(subtitle)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
@@ -825,7 +933,7 @@ def _clock(seconds: float) -> str:
 
 
 class HelpLabel(QLabel):
-    """A small ? marker whose tooltip survives left/right clicks."""
+    """Small ? marker with a deliberate hover delay and generous hide grace."""
 
     def __init__(self, text: str, parent: QWidget | None = None) -> None:
         super().__init__("?", parent)
@@ -833,30 +941,42 @@ class HelpLabel(QLabel):
         self.setAlignment(Qt.AlignCenter)
         self.setFixedSize(16, 16)
         self.setCursor(Qt.WhatsThisCursor)
-        self.setToolTip(text)
+        self._tooltip_text = text
+        self._show_timer = QTimer(self)
+        self._show_timer.setSingleShot(True)
+        self._show_timer.setInterval(1000)
+        self._show_timer.timeout.connect(self._really_show)
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.setInterval(500)
+        self._hide_timer.timeout.connect(QToolTip.hideText)
 
-    def _show(self) -> None:
-        QToolTip.hideText()
-        QTimer.singleShot(0, self._really_show)
+    def enterEvent(self, event) -> None:  # noqa: N802
+        self._hide_timer.stop()
+        if not QToolTip.isVisible():
+            self._show_timer.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        self._show_timer.stop()
+        self._hide_timer.start()
+        super().leaveEvent(event)
 
     def _really_show(self) -> None:
-        if self.toolTip():
+        if self.underMouse() and self._tooltip_text:
             QToolTip.showText(
                 self.mapToGlobal(QPoint(0, self.height() + 4)),
-                self.toolTip(),
+                self._tooltip_text,
                 self,
             )
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
-        self._show()
         event.accept()
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        self._show()
         event.accept()
 
     def contextMenuEvent(self, event) -> None:  # noqa: N802
-        self._show()
         event.accept()
 
 
@@ -1361,11 +1481,14 @@ class MainWindow(QMainWindow):
         self.nvenc = False
         self._screenshot_path: Path | None = None
         ai_state = ollama_status(timeout=1.5)
+        self.ollama_ok = bool(ai_state.get("ok"))
         installed = {str(name).lower(): str(name) for name in ai_state.get("models", [])}
+        self.installed_models = installed
         vision = [
             name for name in installed.values()
             if any(token in name.lower() for token in ("vl", "llava", "minicpm", "moondream", "gemma3"))
             and not name.lower().startswith("qwen3")
+            and "qwen2.5vl:3b" not in name.lower()
         ]
         self.ai_models = vision
         self.vlm_available = bool(vision)
@@ -1375,13 +1498,12 @@ class MainWindow(QMainWindow):
         self.low_vram = bool(self.gpu_vram_mb and self.gpu_vram_mb <= 7000)
         if self.low_vram and "gemma3:4b" in installed:
             self.ai_default = "gemma3:4b"
-        elif self.low_vram and "qwen2.5vl:3b" in installed:
-            self.ai_default = "qwen2.5vl:3b"
         self._detected_game: str | None = None
         self.update_release: ReleaseInfo | None = None
         self.update_installer: Path | None = None
         self.update_check_worker: UpdateCheckWorker | None = None
         self.update_download_worker: UpdateDownloadWorker | None = None
+        self.pull_worker: OllamaPullWorker | None = None
         self._manual_update_check = False
         self._job_running = False
 
@@ -1418,11 +1540,14 @@ class MainWindow(QMainWindow):
         root = QWidget()
         self.setCentralWidget(root)
         outer = QVBoxLayout(root)
-        outer.setContentsMargins(18, 12, 18, 16)
-        outer.setSpacing(12)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        header = QHBoxLayout()
-        header.setSpacing(12)
+        titlebar = QWidget()
+        titlebar.setObjectName("TitleBar")
+        header = QHBoxLayout(titlebar)
+        header.setContentsMargins(18, 8, 0, 8)
+        header.setSpacing(10)
         self._header_layout = header
         logo = QLabel()
         if VIDEO_ICON.is_file():
@@ -1459,28 +1584,42 @@ class MainWindow(QMainWindow):
         header.addWidget(updates)
         github = QPushButton("GitHub ↗")
         github.setObjectName("Mono")
-        github.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/hatermedia/clipper")))
+        github.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://github.com/hatermedia/clipper"))
+        )
         header.addWidget(github)
-        header.addSpacing(8)
-        minimize = QPushButton("–")
+        header.addSpacing(6)
+
+        minimize = QPushButton()
         minimize.setObjectName("WindowButton")
-        minimize.setFixedSize(42, 30)
-        minimize.setToolTip("Minimize")
+        minimize.setFixedSize(46, 32)
+        minimize.setIcon(_window_icon("min"))
+        minimize.setIconSize(QSize(16, 16))
         minimize.clicked.connect(self.showMinimized)
         header.addWidget(minimize)
-        self.max_btn = QPushButton("□")
+
+        self.max_btn = QPushButton()
         self.max_btn.setObjectName("WindowButton")
-        self.max_btn.setFixedSize(42, 30)
-        self.max_btn.setToolTip("Maximize")
+        self.max_btn.setFixedSize(46, 32)
+        self.max_btn.setIcon(_window_icon("max"))
+        self.max_btn.setIconSize(QSize(16, 16))
         self.max_btn.clicked.connect(self._toggle_maximize)
         header.addWidget(self.max_btn)
-        close = QPushButton("×")
+
+        close = QPushButton()
         close.setObjectName("WindowClose")
-        close.setFixedSize(42, 30)
-        close.setToolTip("Close")
+        close.setFixedSize(46, 32)
+        close.setIcon(_window_icon("close"))
+        close.setIconSize(QSize(16, 16))
         close.clicked.connect(self.close)
         header.addWidget(close)
-        outer.addLayout(header)
+        outer.addWidget(titlebar)
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(18, 0, 18, 16)
+        content_layout.setSpacing(12)
+        outer.addWidget(content, 1)
 
         self.update_bar = QFrame()
         self.update_bar.setObjectName("UpdateBar")
@@ -1497,11 +1636,11 @@ class MainWindow(QMainWindow):
         update_later.clicked.connect(self.update_bar.hide)
         update_row.addWidget(update_later)
         self.update_bar.hide()
-        outer.addWidget(self.update_bar)
+        content_layout.addWidget(self.update_bar)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
-        outer.addWidget(splitter, 1)
+        content_layout.addWidget(splitter, 1)
 
         # ---------------- left controls ----------------
         left_panel = QFrame()
@@ -1527,7 +1666,7 @@ class MainWindow(QMainWindow):
         self.input_edit.setPlaceholderText("No folder selected")
         self.input_edit.editingFinished.connect(lambda: self.set_input(self.input_edit.text(), scan=False))
         browse = QPushButton("Browse…")
-        browse.clicked.connect(self.choose_folder)
+        browse.clicked.connect(self.choose_input)
         path_row.addWidget(self.input_edit, 1)
         path_row.addWidget(browse)
         left.addLayout(path_row)
@@ -1535,6 +1674,7 @@ class MainWindow(QMainWindow):
         self.drop = DropZone()
         self.drop.setFixedHeight(88)
         self.drop.pathDropped.connect(lambda p: self.set_input(p, scan=True))
+        self.drop.clicked.connect(self.choose_input)
         left.addWidget(self.drop)
 
         row = QHBoxLayout()
@@ -1637,7 +1777,7 @@ class MainWindow(QMainWindow):
         if self.low_vram:
             self.ai_model.setToolTip(
                 f"{self.gpu_vram_mb} MB VRAM detected. Lite mode is recommended. "
-                "gemma3:4b fits a 6 GB card; qwen2.5vl:3b partial offload is a slow fallback."
+                "gemma3:4b is tested on 6 GB cards; qwen2.5vl:7b is best on 8 GB+."
             )
         elif not self.vlm_available:
             self.ai_model.setToolTip(
@@ -1646,8 +1786,8 @@ class MainWindow(QMainWindow):
         ai_controls.addWidget(self.ai_model, 0, 1)
         ai_controls.addWidget(
             self._help(
-                "Ollama vision model. qwen2.5vl:7b is the best local default and needs ~6 GB VRAM; "
-                "qwen2.5vl:3b is the 6 GB-card fallback and is less accurate."
+                "Lite needs no model. gemma3:4b is tested on 6 GB cards; "
+                "qwen2.5vl:7b is the better choice on 8 GB+."
             ),
             0,
             2,
@@ -1695,23 +1835,57 @@ class MainWindow(QMainWindow):
             2,
         )
         left.addLayout(ai_controls)
+
+        self.ai_setup = QFrame()
+        self.ai_setup.setObjectName("AiSetup")
+        setup_layout = QVBoxLayout(self.ai_setup)
+        setup_layout.setContentsMargins(10, 8, 10, 8)
+        setup_layout.setSpacing(4)
+        self.ai_setup_title = QLabel("Lite mode is ready")
+        self.ai_setup_title.setObjectName("AiSetupTitle")
+        setup_layout.addWidget(self.ai_setup_title)
+        self.ai_setup_text = QLabel("")
+        self.ai_setup_text.setObjectName("Muted")
+        self.ai_setup_text.setWordWrap(True)
+        setup_layout.addWidget(self.ai_setup_text)
+        self.ai_setup_status = QLabel("")
+        self.ai_setup_status.setObjectName("Muted")
+        self.ai_setup_status.setWordWrap(True)
+        self.ai_setup_status.hide()
+        setup_layout.addWidget(self.ai_setup_status)
+        setup_actions = QHBoxLayout()
+        setup_actions.setSpacing(6)
+        self.get_ollama_btn = QPushButton("Get Ollama")
+        self.get_ollama_btn.setObjectName("Mono")
+        self.get_ollama_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://ollama.com/download"))
+        )
+        setup_actions.addWidget(self.get_ollama_btn)
+        self.refresh_ai_btn = QPushButton("Refresh")
+        self.refresh_ai_btn.setObjectName("Mono")
+        self.refresh_ai_btn.clicked.connect(self._refresh_ai_models)
+        setup_actions.addWidget(self.refresh_ai_btn)
+        self.pull_ai_btn = QPushButton("Install model")
+        self.pull_ai_btn.setObjectName("Mono")
+        self.pull_ai_btn.clicked.connect(self._pull_ai_model)
+        setup_actions.addWidget(self.pull_ai_btn)
+        setup_actions.addStretch(1)
+        setup_layout.addLayout(setup_actions)
+        left.addWidget(self.ai_setup)
+        self._update_ai_setup()
         self.ai.setEnabled(self.ai_available)
 
         game_row = QHBoxLayout()
         self.game_guard = ToggleRow("Pause AI while gaming", show_state=False)
         self.game_guard.setChecked(True)
         self.game_guard.setToolTip(
-            "Automatically pauses analysis and unloads the AI model while a known "
-            "game is running, then resumes when the game closes."
+            "Pause AI and free VRAM while a game is running."
         )
         game_row.addWidget(self.game_guard)
         game_row.addWidget(
             self._help(
-                "Watches the local process list for known games. While one is running, "
-                "Clipper pauses analysis and unloads the Ollama model if a vision-model "
-                "mode is selected so the game keeps its VRAM. It resumes automatically when "
-                "the game closes. Discord does not expose other games' presence, so this uses "
-                "local process detection."
+                "Uses the local process list, not Discord presence.\n"
+                "Pauses analysis and unloads the vision model while a game runs."
             )
         )
         game_row.addStretch(1)
@@ -1740,28 +1914,73 @@ class MainWindow(QMainWindow):
         advanced_layout.setContentsMargins(0, 0, 0, 0)
         advanced_layout.setHorizontalSpacing(8)
         advanced_layout.setVerticalSpacing(7)
-        advanced_layout.addWidget(QLabel("Max clips"), 0, 0)
+
+        def advanced_label(text: str, tip: str) -> QHBoxLayout:
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(4)
+            row.addWidget(QLabel(text))
+            row.addWidget(self._help(tip))
+            row.addStretch(1)
+            return row
+
+        advanced_layout.addLayout(
+            advanced_label(
+                "Max clips",
+                "Maximum number of highlights kept per video. Lower it for a short reel.",
+            ),
+            0,
+            0,
+        )
         self.max_clips = QSpinBox()
         self.max_clips.setRange(1, 200)
         self.max_clips.setValue(30)
+        self.max_clips.setToolTip("Maximum highlights kept per video.")
         advanced_layout.addWidget(self.max_clips, 0, 1)
-        advanced_layout.addWidget(QLabel("Sample FPS"), 1, 0)
+        advanced_layout.addLayout(
+            advanced_label(
+                "Sample FPS",
+                "How many frames per second the visual detector checks. Higher catches "
+                "faster flashes but uses more CPU.",
+            ),
+            1,
+            0,
+        )
         self.sample_fps = QComboBox()
         for label, value in (("2 fps", 2.0), ("4 fps", 4.0), ("8 fps", 8.0)):
             self.sample_fps.addItem(label, value)
         self.sample_fps.setCurrentIndex(1)
+        self.sample_fps.setToolTip("Visual sampling rate for detection.")
         advanced_layout.addWidget(self.sample_fps, 1, 1)
-        advanced_layout.addWidget(QLabel("Proxy width"), 2, 0)
+        advanced_layout.addLayout(
+            advanced_label(
+                "Proxy width",
+                "Width of the low-resolution copy used for motion scoring. Higher is "
+                "more accurate; lower is faster.",
+            ),
+            2,
+            0,
+        )
         self.proxy_width = QComboBox()
         for label, value in (("256 px", 256), ("320 px", 320), ("480 px", 480)):
             self.proxy_width.addItem(label, value)
         self.proxy_width.setCurrentIndex(1)
+        self.proxy_width.setToolTip("Resolution of the analysis-only proxy.")
         advanced_layout.addWidget(self.proxy_width, 2, 1)
-        advanced_layout.addWidget(QLabel("CPU threads"), 3, 0)
+        advanced_layout.addLayout(
+            advanced_label(
+                "CPU threads",
+                "Threads used by FFmpeg and the detectors. Balanced uses about half "
+                "the cores; Low uses two; Max lets FFmpeg decide.",
+            ),
+            3,
+            0,
+        )
         self.threads = QComboBox()
         self.threads.addItem("Balanced", default_threads())
         self.threads.addItem("Low (2)", 2)
         self.threads.addItem("Max (all)", 0)
+        self.threads.setToolTip("CPU thread cap for analysis and export.")
         advanced_layout.addWidget(self.threads, 3, 1)
         pre_labels = QHBoxLayout()
         pre_labels.addWidget(QLabel("Pre-roll (s)"))
@@ -1787,8 +2006,22 @@ class MainWindow(QMainWindow):
         advanced_layout.addWidget(self.post, 5, 1)
         advanced_layout.addLayout(self.gpu_row, 6, 0, 1, 2)
         self.low_power = ToggleRow("Low-power mode")
-        self.low_power.setToolTip("Caps threads at 2, uses a 256px/2fps proxy, and lowers process priority.")
-        advanced_layout.addWidget(self.low_power, 7, 0, 1, 2)
+        self.low_power.setToolTip(
+            "Performance preset: 2 threads, 256px/2fps analysis proxy, below-normal "
+            "process priority.\nAI Director still runs if enabled."
+        )
+        low_row = QHBoxLayout()
+        low_row.setContentsMargins(0, 0, 0, 0)
+        low_row.setSpacing(4)
+        low_row.addWidget(self.low_power)
+        low_row.addWidget(
+            self._help(
+                "Reduces CPU and proxy cost. It does not disable AI; turn off "
+                "AI Director separately if you want heuristic-only detection."
+            )
+        )
+        low_row.addStretch(1)
+        advanced_layout.addLayout(low_row, 7, 0, 1, 2)
         advanced_layout.addWidget(
             QLabel("GPU helps decode/encode; motion scoring remains CPU-bound."),
             8, 0, 1, 2,
@@ -1888,17 +2121,41 @@ class MainWindow(QMainWindow):
         export_layout = QGridLayout(export_group)
         export_layout.setHorizontalSpacing(8)
         export_layout.setVerticalSpacing(7)
-        export_layout.addWidget(QLabel("Output"), 0, 0)
+        output_label = QHBoxLayout()
+        output_label.setContentsMargins(0, 0, 0, 0)
+        output_label.setSpacing(4)
+        output_label.addWidget(QLabel("Output"))
+        output_label.addWidget(
+            self._help("Folder where exported highlight files are written.")
+        )
+        output_label.addStretch(1)
+        export_layout.addLayout(output_label, 0, 0)
         self.output_edit = QLineEdit()
         self.output_edit.setPlaceholderText("Choose an output folder")
+        self.output_edit.setToolTip("Folder where exported highlight files are written.")
         export_layout.addWidget(self.output_edit, 0, 1)
         out_browse = QPushButton("Browse…")
         out_browse.clicked.connect(self.choose_output)
         export_layout.addWidget(out_browse, 0, 2)
         self.reencode = ToggleRow("Frame-accurate re-encode")
-        self.reencode.setToolTip("Re-encode for exact cut edges instead of stream copy.")
+        self.reencode.setToolTip(
+            "Off: stream copy, nearly instant and lossless, but cuts start on the "
+            "nearest keyframe.\nOn: re-encode for exact cut edges, slower and uses "
+            "more CPU/GPU."
+        )
         self.reencode.toggled.connect(self._update_encoder_state)
-        export_layout.addWidget(self.reencode, 1, 0, 1, 2)
+        reencode_row = QHBoxLayout()
+        reencode_row.setContentsMargins(0, 0, 0, 0)
+        reencode_row.setSpacing(4)
+        reencode_row.addWidget(self.reencode)
+        reencode_row.addWidget(
+            self._help(
+                "Stream copy is faster and preserves the original video stream. "
+                "Frame-accurate re-encode is slower but cuts exactly at the requested second."
+            )
+        )
+        reencode_row.addStretch(1)
+        export_layout.addLayout(reencode_row, 1, 0, 1, 2)
         self.encoder = QComboBox()
         for label, value in (
             ("Auto", "auto"),
@@ -1909,16 +2166,31 @@ class MainWindow(QMainWindow):
         ):
             self.encoder.addItem(label, value)
         self.encoder.setToolTip(
-            "Auto uses stream copy by default and hardware encode when needed. "
-            "Choosing a specific encoder turns on frame-accurate re-encode."
+            "Encoder for frame-accurate re-encode. Auto prefers NVENC when it works, "
+            "then falls back to CPU."
         )
         self.encoder.currentIndexChanged.connect(self._encoder_changed)
         export_layout.addWidget(self.encoder, 1, 2)
-        export_layout.addWidget(QLabel("CRF"), 2, 0)
+        crf_label = QHBoxLayout()
+        crf_label.setContentsMargins(0, 0, 0, 0)
+        crf_label.setSpacing(4)
+        crf_label.addWidget(QLabel("CRF"))
+        crf_label.addWidget(
+            self._help(
+                "Quality for re-encode. Lower is higher quality and larger files. "
+                "Auto uses 20; set 0 in the spinner to return to Auto."
+            )
+        )
+        crf_label.addStretch(1)
+        export_layout.addLayout(crf_label, 2, 0)
         self.crf = QSpinBox()
         self.crf.setRange(0, 51)
-        self.crf.setValue(20)
-        self.crf.setToolTip("Quality for re-encode; lower is higher quality.")
+        self.crf.setValue(0)
+        self.crf.setSpecialValueText("Auto")
+        self.crf.setToolTip(
+            "Auto uses CRF 20. Lower values (18) are higher quality; higher values "
+            "(23–28) make smaller files."
+        )
         export_layout.addWidget(self.crf, 2, 1)
         export_actions = QHBoxLayout()
         export_actions.setSpacing(6)
@@ -2240,6 +2512,123 @@ class MainWindow(QMainWindow):
                 "Local AI; GPU when available. Director also transcribes audio locally."
             )
 
+    def _update_ai_setup(self) -> None:
+        if not hasattr(self, "ai_setup"):
+            return
+        self.ai_setup.setVisible(not self.vlm_available)
+        if self.vlm_available:
+            return
+        if self.ollama_ok:
+            self.ai_setup_title.setText("Ollama found · model needed")
+            self.ai_setup_text.setText(
+                "Lite mode works now. Install a vision model to enable AI Director."
+            )
+            self.get_ollama_btn.hide()
+            self.pull_ai_btn.show()
+        else:
+            self.ai_setup_title.setText("Lite mode is ready")
+            self.ai_setup_text.setText(
+                "No extra install needed for OCR + Whisper + signal detection. "
+                "AI Director needs Ollama and a local vision model."
+            )
+            self.get_ollama_btn.show()
+            self.pull_ai_btn.hide()
+        self.refresh_ai_btn.show()
+
+    def _refresh_ai_models(self) -> None:
+        state = ollama_status(timeout=3)
+        self.ollama_ok = bool(state.get("ok"))
+        installed = {
+            str(name).lower(): str(name) for name in state.get("models", [])
+        }
+        self.installed_models = installed
+        vision = [
+            name for name in installed.values()
+            if any(
+                token in name.lower()
+                for token in ("vl", "llava", "minicpm", "moondream", "gemma3")
+            )
+            and not name.lower().startswith("qwen3")
+            and "qwen2.5vl:3b" not in name.lower()
+        ]
+        self.ai_models = vision
+        self.vlm_available = bool(vision)
+        if self.vlm_available:
+            preferred = (
+                "gemma3:4b"
+                if self.low_vram and "gemma3:4b" in installed
+                else (DEFAULT_MODEL if DEFAULT_MODEL.lower() in installed else vision[0])
+            )
+        else:
+            preferred = "No VLM installed (Lite mode)"
+        self.ai_default = preferred
+        self.ai_model.blockSignals(True)
+        self.ai_model.clear()
+        for model in self.ai_models or [self.ai_default]:
+            self.ai_model.addItem(model)
+        index = self.ai_model.findText(self.ai_default)
+        if index >= 0:
+            self.ai_model.setCurrentIndex(index)
+        self.ai_model.blockSignals(False)
+        if not self.vlm_available:
+            lite_index = self.ai_mode.findData("lite")
+            if lite_index >= 0:
+                self.ai_mode.setCurrentIndex(lite_index)
+        self._update_ai_setup()
+        self._ai_changed(self.ai.isChecked())
+
+    def _pull_ai_model(self) -> None:
+        if self.pull_worker is not None and self.pull_worker.isRunning():
+            return
+        if not self.ollama_ok:
+            QDesktopServices.openUrl(QUrl("https://ollama.com/download"))
+            return
+        model = "gemma3:4b" if self.low_vram else DEFAULT_MODEL
+        if not ask_confirm(
+            self,
+            "Install local AI model",
+            f"Download {model} now?",
+            confirm="Download",
+            detail=(
+                "This can be several GB and is downloaded by Ollama, not Clipper. "
+                "Lite mode already works without it."
+            ),
+        ):
+            return
+        self.pull_ai_btn.setEnabled(False)
+        self.pull_ai_btn.setText("Starting…")
+        self.ai_setup_status.setText(f"Downloading {model}…")
+        self.ai_setup_status.show()
+        worker = OllamaPullWorker(model)
+        worker.line.connect(self._pull_ai_line)
+        worker.done.connect(self._pull_ai_done)
+        self.pull_worker = worker
+        worker.start()
+
+    def _pull_ai_line(self, line: str) -> None:
+        self.ai_setup_status.setText(line[:180])
+
+    def _pull_ai_done(self, ok: bool, message: str) -> None:
+        self.pull_worker = None
+        self.pull_ai_btn.setEnabled(True)
+        self.pull_ai_btn.setText("Install model")
+        self.ai_setup_status.setText(message)
+        if not ok:
+            show_message(self, "Model download failed", message, kind="warning")
+            return
+        self._refresh_ai_models()
+        self.ai.setChecked(True)
+        director_index = self.ai_mode.findData("director")
+        if director_index >= 0:
+            self.ai_mode.setCurrentIndex(director_index)
+        self._ai_changed(True)
+        show_message(
+            self,
+            "AI Director ready",
+            f"{message} The local director is enabled.",
+            kind="info",
+        )
+
     def _gpu_changed(self, checked: bool) -> None:
         if not self.nvenc:
             self.gpu_label.setText("nvenc / unavailable")
@@ -2296,6 +2685,26 @@ class MainWindow(QMainWindow):
         return str(Path.home())
 
     # --------------------------------------------------------------- input
+    def choose_input(self) -> None:
+        menu = QMenu(self)
+        folder_action = menu.addAction("Choose folder…")
+        video_action = menu.addAction("Choose video…")
+        chosen = menu.exec(self.drop.mapToGlobal(QPoint(0, self.drop.height())))
+        if chosen is folder_action:
+            self.choose_folder()
+            return
+        if chosen is not video_action:
+            return
+        start = self._choose_start()
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Choose gameplay video",
+            start,
+            "Video files (*.mp4 *.mkv *.mov *.avi);;All files (*.*)",
+        )
+        if path:
+            self.set_input(path, scan=True)
+
     def choose_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose gameplay folder", self._choose_start())
         if path:
@@ -2664,7 +3073,7 @@ class MainWindow(QMainWindow):
             output,
             self.reencode.isChecked(),
             str(self.encoder.currentData()),
-            self.crf.value(),
+            self.crf.value() or 20,
             settings.threads,
         )
         self.export_worker.progress.connect(self._on_progress)
@@ -2832,8 +3241,9 @@ class MainWindow(QMainWindow):
 
     def changeEvent(self, event) -> None:  # noqa: N802
         if event.type() == QEvent.WindowStateChange and hasattr(self, "max_btn"):
-            self.max_btn.setText("❐" if self.isMaximized() else "□")
-            self.max_btn.setToolTip("Restore" if self.isMaximized() else "Maximize")
+            self.max_btn.setIcon(
+                _window_icon("restore" if self.isMaximized() else "max")
+            )
         super().changeEvent(event)
 
     def showEvent(self, event) -> None:  # noqa: N802
@@ -2923,6 +3333,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self.preview_player.release_media()
+        if self.pull_worker is not None and self.pull_worker.isRunning():
+            self.pull_worker.cancel()
+            self.pull_worker.wait(3000)
         for dialog in self.findChildren(ClipPreviewDialog):
             dialog.close()
         running = bool(
@@ -2973,6 +3386,50 @@ QTreeWidget::indicator, QTreeView::indicator {{
 }}
 QTreeWidget::indicator:checked, QTreeView::indicator:checked {{
     image: url("{TOGGLE_ON_ICON}");
+}}
+QComboBox {{
+    padding-right: 28px;
+}}
+QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 26px;
+    border: none;
+    background: transparent;
+}}
+QComboBox::down-arrow {{
+    image: url("{CHEVRON_DOWN_ICON}");
+    width: 10px;
+    height: 6px;
+}}
+QComboBox::down-arrow:on {{
+    image: url("{CHEVRON_UP_ICON}");
+}}
+QSpinBox {{
+    padding-right: 22px;
+}}
+QSpinBox::up-button, QSpinBox::down-button {{
+    width: 20px;
+    background: transparent;
+    border-left: 1px solid #3b3b3b;
+}}
+QSpinBox::up-button {{
+    subcontrol-position: top right;
+    border-top-right-radius: 6px;
+}}
+QSpinBox::down-button {{
+    subcontrol-position: bottom right;
+    border-bottom-right-radius: 6px;
+}}
+QSpinBox::up-arrow {{
+    image: url("{CHEVRON_UP_ICON}");
+    width: 9px;
+    height: 6px;
+}}
+QSpinBox::down-arrow {{
+    image: url("{CHEVRON_DOWN_ICON}");
+    width: 9px;
+    height: 6px;
 }}
 """
     )

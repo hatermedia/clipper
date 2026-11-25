@@ -1,447 +1,274 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Clipper — automatic gaming highlight trimmer (open source)</title>
-  <meta name="description" content="Clipper scans a folder of gameplay, finds loud reactions and sudden motion, and cuts highlight clips with FFmpeg. Local-first, MIT licensed, no uploads." />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clipper - automatic gaming highlight trimmer</title>
+  <meta name="description" content="Clipper is a native Windows app that finds highlights in gameplay footage and cuts them with FFmpeg. Local AI, no uploads, no admin install." />
   <link rel="canonical" href="https://hatermedia.github.io/clipper/" />
-  <meta name="theme-color" content="#06090f" />
+  <meta property="og:title" content="Clipper - raw gameplay in. Highlights out." />
+  <meta property="og:description" content="Native Windows highlight trimmer with local AI, smart padding, and lossless FFmpeg cuts. No uploads, no accounts." />
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="Clipper — raw gameplay in. Highlights out." />
-  <meta property="og:description" content="Open-source, local-first gameplay highlight trimmer. Audio spikes + motion detection + FFmpeg. No uploads, no accounts." />
   <meta property="og:url" content="https://hatermedia.github.io/clipper/" />
   <meta property="og:image" content="https://hatermedia.github.io/clipper/og.png" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Clipper — raw gameplay in. Highlights out." />
-  <meta name="twitter:description" content="Open-source, local-first gameplay highlight trimmer. No uploads, no accounts." />
+  <meta name="twitter:title" content="Clipper - raw gameplay in. Highlights out." />
+  <meta name="twitter:description" content="Native Windows highlight trimmer with local AI and lossless FFmpeg cuts." />
   <meta name="twitter:image" content="https://hatermedia.github.io/clipper/og.png" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322d3ee' stroke-width='2'%3E%3Ccircle cx='6' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="site.css?v=20261123" />
+  <link rel="icon" href="media/icon.png" />
+  <link rel="stylesheet" href="site.css" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Clipper",
     "applicationCategory": "MultimediaApplication",
-    "operatingSystem": "Windows, macOS, Linux",
-    "description": "Local-first automatic gaming highlight trimmer with audio spike and motion detection, optional whole-clip AI director, smart padding, and lossless FFmpeg export.",
+    "operatingSystem": "Windows 10, Windows 11",
+    "description": "Native Windows highlight trimmer with local AI, smart padding, and lossless FFmpeg cuts.",
     "url": "https://hatermedia.github.io/clipper/",
-    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.7.2",
-    "license": "https://opensource.org/licenses/MIT",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "author": { "@type": "Person", "name": "hatermedia", "url": "https://github.com/hatermedia" }
+    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.7.3",
+    "license": "https://opensource.org/license/mit",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
   }
   </script>
 </head>
 <body>
-
-<header class="site-header">
-  <div class="container nav">
-    <a class="brand" href="./" aria-label="Clipper home">
-      <span class="brand-mark">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"></path></svg>
-      </span>
-      <span>
-        <span class="brand-name">CLIPPER</span>
-        <span class="brand-sub">gaming highlight trimmer</span>
-      </span>
-    </a>
-    <nav class="nav-links" aria-label="Primary">
-      <a href="#features">Features</a>
-      <a href="#demo">Demo</a>
-      <a href="#install">Install</a>
-      <a href="#guides">Guides</a>
-      <a href="#service">Done for you</a>
-      <a class="btn btn-ghost btn-sm nav-cta" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub ↗</a>
-    </nav>
-  </div>
-</header>
-
-<main>
-  <section class="hero container">
-    <div class="hero-grid">
-      <div>
-        <span class="eyebrow"><span class="dot"></span> Native Windows app · local AI · open source · MIT</span>
-        <h1>Raw gameplay in.<br /><span class="grad">Highlights out.</span></h1>
-        <p class="lead">
-          Clipper is a native Windows app that scans a folder, finds the loud reactions
-          and sudden motion, and cuts the boring parts with FFmpeg. Add an optional local
-          GPU vision model to skip menus and dead time. Native folder picker, GPU encoding,
-          CPU caps. No browser, no uploads, no accounts.
-        </p>
-        <div class="cta-row" style="margin-top: 28px;">
-          <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.2/ClipperSetup-0.7.2.exe" target="_blank" rel="noreferrer">
-            Download for Windows
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-          </a>
-          <a class="btn btn-ghost" href="#demo">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5Z"/></svg>
-            Watch web UI demo
-          </a>
-        </div>
-        <p class="cta-note" style="margin-top: 12px;">Windows 10/11 installer · no admin · auto-updates · macOS/Linux via the CLI below</p>
-        <div class="hero-meta">
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg> MIT licensed</span>
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6"/></svg> Native Windows · CLI everywhere</span>
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> NVENC · local AI · CPU caps</span>
-        </div>
-      </div>
-      <div class="hero-visual">
-        <div class="floating-chip chip-top"><strong>AI directed</strong>funny moments · local GPU</div>
-        <div class="hero-shot"><img src="media/desktop.png" alt="Clipper native Windows desktop app showing local AI review controls and detected gameplay highlights" /></div>
-        <div class="floating-chip chip-bottom"><strong>Native app</strong>no browser · auto-updates<div class="bar"><span></span></div></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="section-tight container" id="demo">
-    <div class="section-head">
-      <span class="eyebrow">20-second optional web UI demo</span>
-      <h2>See it find the good parts.</h2>
-      <p>The native app does this with a folder picker, previews, GPU toggle, and CPU caps. This recording is the optional local web UI (same engine) doing scan → detect → export on a synthetic 46-second clip.</p>
-    </div>
-    <div class="demo-frame">
-      <video controls preload="metadata" poster="media/demo-poster.jpg" width="1440" height="900">
-        <source src="media/demo.mp4" type="video/mp4" />
-        Your browser does not support video. <a href="media/demo.mp4">Download the demo</a>.
-      </video>
-    </div>
-    <div class="demo-caption">
-      <span>Recorded from the actual UI · synthetic demo footage · 19.5s</span>
-      <span class="keys"><span class="kbd">scan</span><span class="kbd">detect</span><span class="kbd">export</span></span>
-    </div>
-  </section>
-
-  <section class="section container" id="features">
-    <div class="section-head">
-      <span class="eyebrow">Why Clipper</span>
-      <h2>Your best moments are buried under 40GB of footage.</h2>
-      <p>Most auto-clippers are tied to one game, one platform, or a cloud pipeline. Clipper is deliberately smaller and more general: any game, any folder, entirely on your machine.</p>
-    </div>
-    <div class="grid-3">
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></div>
-        <h3>Batch a whole folder</h3>
-        <p>Point it at ShadowPlay, OBS, Steam, or a drive full of VODs. It handles .mp4, .mkv, .mov, and .avi, with optional recursive scanning.</p>
-      </div>
-      <div class="card rose">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h3l2-7 3 14 3-10 2 3h5"/></svg></div>
-        <h3>Audio spike detection</h3>
-        <p>Short-time RMS compared to a rolling loudness baseline. Gunfights, reactions, and hype moments surface without a cloud model.</p>
-      </div>
-      <div class="card green">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg></div>
-        <h3>Visual motion detection</h3>
-        <p>OpenCV samples a tiny proxy and scores frame deltas, hard cuts, and kill-feed flashes. Combined with audio for a single excitement score.</p>
-      </div>
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
-        <h3>Smart padding + merging</h3>
-        <p>8 seconds before and 5 after by default. Overlapping windows merge, so a continuous fight stays one clip instead of six fragments.</p>
-      </div>
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg></div>
-        <h3>Lossless or frame-accurate</h3>
-        <p>Stream copy by default for instant, quality-preserving exports. Add <span class="mono">--reencode</span> for exact edges with libx264 or NVENC.</p>
-      </div>
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg></div>
-        <h3>Native desktop app</h3>
-        <p>Native folder picker, drag-and-drop, preview frames, progress, cancel, and export. No browser tab, no console window, no background command prompt.</p>
-      </div>
-      <div class="card green">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg></div>
-        <h3>Whole-clip AI director</h3>
-        <p>An optional local director transcribes the audio, watches every window, and keeps funny interactions, trolling, banter, and big plays. Rocket League and Mimesis profiles included; Auto reads the game from the folder. Game Guard unloads the model while you play. No audio or frames leave the machine.</p>
-      </div>
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
-        <h3>Proper installer</h3>
-        <p>Per-user install with no admin prompt, Desktop and Start Menu shortcuts, and a normal uninstaller. The portable zip is still there if you prefer it.</p>
-      </div>
-      <div class="card rose">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></div>
-        <h3>Updates that verify</h3>
-        <p>The app checks GitHub Releases, downloads the installer, checks its SHA-256, then installs silently and reopens. A bad or missing checksum is refused.</p>
-      </div>
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg></div>
-        <h3>Review while it scans</h3>
-        <p>Each file appears with its AI clips as soon as it finishes, so you can preview the first result while the rest of the folder is still running.</p>
-      </div>
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16v10H4z"/><path d="m9 10 4 3-4 3v-6Z"/></svg></div>
-        <h3>Preview + choose</h3>
-        <p>Click a clip to play that exact segment in the built-in player. Tick only the ones you want, then Export selected or Export all.</p>
-      </div>
-      <div class="card rose">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 8l7-5 7 5v8l-7 5-7-5Z"/></svg></div>
-        <h3>Tooltips that explain</h3>
-        <p>Every AI and detection option has a ? icon. Hover for the model/VRAM trade-off, Auto game behaviour, Director vs Review, and Game Guard details.</p>
-      </div>
-      <div class="card green">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 10h8M8 14h5"/></svg></div>
-        <h3>Game Guard</h3>
-        <p>Detects Rocket League, Mimesis, Valorant, Apex, CS2, and other known games. When one is running, Clipper pauses AI and unloads the model so the game keeps the VRAM. Resumes when you close it.</p>
-      </div>
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16v10H4z"/><path d="M7 10h4M8.5 8.5v3M15 10h.01M17 12h.01"/></svg></div>
-        <h3>6 GB friendly</h3>
-        <p>On a 6 GB card Clipper uses the smaller 3B vision model and a 4k context. Less accurate than 7B, but it fits. Use 7B on 8 GB+ for the best results.</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="section-tight container" id="performance">
-    <div class="section-head">
-      <span class="eyebrow">Hardware controls</span>
-      <h2>Built for a PC you are actually using.</h2>
-      <p>The old version could pin every core. The native app defaults to a balanced thread cap and exposes the knobs.</p>
-    </div>
-    <div class="grid-3">
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg></div>
-        <h3>GPU on by default</h3>
-        <p>Clipper runs a real NVENC test encode, not just an encoder-list check. When it passes, GPU is on by default for the analysis proxy, re-encode, and local AI runtime. If it fails, it falls back to libx264 and tells you.</p>
-      </div>
-      <div class="card rose">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
-        <h3>Cap the CPU</h3>
-        <p>Choose Balanced (half the cores), Low (2 threads), or Max. The default is balanced, so a folder scan does not take over your machine.</p>
-      </div>
-      <div class="card green">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 8l7-5 7 5v8l-7 5-7-5Z"/></svg></div>
-        <h3>Low-power mode</h3>
-        <p>2 threads, a 256px / 2fps analysis proxy, and below-normal process priority. Use it while gaming, streaming, or on battery.</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="section container">
-    <div class="section-head">
-      <span class="eyebrow">How it works</span>
-      <h2>Three steps. No cloud round-trip.</h2>
-    </div>
-    <div class="steps">
-      <div class="step">
-        <h3>Scan your footage</h3>
-        <p>Pick a folder or a single file. Clipper probes duration, resolution, FPS, and audio in one FFprobe pass.</p>
-      </div>
-      <div class="step">
-        <h3>Score the moment</h3>
-        <p>A 16kHz audio pass and a 320px / 4fps video proxy produce timing and energy. The optional AI director then transcribes the audio, reviews every window, and cuts around the story instead of only the loudest peaks.</p>
-      </div>
-      <div class="step">
-        <h3>Export and post</h3>
-        <p><code>ffmpeg -c copy</code> cuts in seconds. Or re-encode for frame-accurate edges and hardware speed.</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="section-tight container" id="guides">
-    <div class="section-head">
-      <span class="eyebrow">Guides</span>
-      <h2>Go deeper.</h2>
-      <p>Practical write-ups on batch trimming, detection, and choosing a local tool.</p>
-    </div>
-    <div class="grid-3">
-      <a class="card card-link" href="guides/batch-trim-shadowplay.html">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></div>
-        <h3>Batch trim ShadowPlay clips</h3>
-        <p>The folder workflow, the flags that matter, and why stream copy can start early.</p>
-        <span class="more">Read the guide →</span>
-      </a>
-      <a class="card card-link" href="guides/auto-detect-game-highlights.html">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h3l2-7 3 14 3-10 2 3h5"/></svg></div>
-        <h3>Auto-detect highlights</h3>
-        <p>How RMS spikes, frame deltas, fusion, and adaptive peak picking actually work.</p>
-        <span class="more">Read the guide →</span>
-      </a>
-      <a class="card card-link" href="guides/open-source-game-clipper.html">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 8l7-5 7 5v8l-7 5-7-5Z"/></svg></div>
-        <h3>Open-source game clippers</h3>
-        <p>A fair comparison of local vs cloud, heuristic vs semantic, and where Clipper fits.</p>
-        <span class="more">Read the guide →</span>
-      </a>
-      <a class="card card-link" href="guides/lossless-vs-reencode-gameplay.html">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg></div>
-        <h3>Lossless vs re-encode</h3>
-        <p>Why stream copy starts on a keyframe, and when exact edges are worth a re-encode.</p>
-        <span class="more">Read the guide →</span>
-      </a>
-      <a class="card card-link" href="guides/trim-twitch-vod-locally.html">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg></div>
-        <h3>Trim Twitch VODs locally</h3>
-        <p>A local workflow for VODs you own: download, scan, review, export, no SaaS upload.</p>
-        <span class="more">Read the guide →</span>
-      </a>
-      <a class="card card-link" href="guides/where-shadowplay-saves-highlights.html">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></div>
-        <h3>Where ShadowPlay saves clips</h3>
-        <p>Find the NVIDIA capture folder, then batch-scan it without moving the originals.</p>
-        <span class="more">Read the guide →</span>
-      </a>
-    </div>
-  </section>
-
-  <section class="section container" id="install">
-    <div class="section-head">
-      <span class="eyebrow">Install</span>
-      <h2>Install the native app, or use the CLI.</h2>
-      <p>Windows users get a per-user installer with no admin prompt and automatic updates. macOS/Linux use the CLI; the optional web UI remains available for remote/headless use.</p>
-    </div>
-    <div class="code-card" style="padding: 20px; margin-bottom: 18px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
-      <div style="min-width:240px; flex:1;">
-        <div class="tiny mono dim" style="margin-bottom:4px;">WINDOWS 10/11 · X64 INSTALLER</div>
-        <strong style="color:#fff; font-size:15px;">No Python. No FFmpeg. No admin. ~365 MB.</strong>
-        <p class="small muted" style="margin-top:4px;">Installs to <span class="mono">%LOCALAPPDATA%\Programs\Clipper</span>, adds shortcuts, and auto-updates. Pick a folder, review previews, export. GPU/NVENC is on by default when the test passes. Prefer portable? <a href="https://github.com/hatermedia/clipper/releases/download/v0.7.2/clipper-0.7.2-windows-x64-native.zip" target="_blank" rel="noreferrer">Download the zip</a>.</p>
-      </div>
-      <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.2/ClipperSetup-0.7.2.exe" target="_blank" rel="noreferrer">Download installer</a>
-    </div>
-    <div class="install-grid">
-      <div class="install-list">
-        <div class="install-item"><span class="num">01</span><div><strong>Install FFmpeg (source/CLI only)</strong><span>Windows: <span class="mono">winget install Gyan.FFmpeg</span> · macOS: <span class="mono">brew install ffmpeg</span> · Ubuntu: <span class="mono">sudo apt install ffmpeg</span></span></div></div>
-        <div class="install-item"><span class="num">02</span><div><strong>Install Clipper</strong><span><span class="mono">pip install "clipper-gg[desktop]"</span> for the CLI + native app, or use the Windows installer above.</span></div></div>
-        <div class="install-item"><span class="num">03</span><div><strong>Dry-run your folder</strong><span>See timestamps and preview frames before rendering anything. Run <span class="mono">clipper gpu</span> to verify NVENC and Ollama; add <span class="mono">--low-power</span> to cap CPU.</span></div></div>
-        <div class="install-item"><span class="num">04</span><div><strong>Open the native app or optional web UI</strong><span><span class="mono">clipper desktop</span> (PySide6) · <span class="mono">clipper ui</span> for the browser UI.</span></div></div>
-        <div class="install-item"><span class="num">05</span><div><strong>Optional: whole-clip AI director</strong><span>Install <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a>, run <span class="mono">ollama pull qwen2.5vl:7b</span> (or <span class="mono">qwen2.5vl:3b</span> on a 6 GB card), then tick <span class="mono">AI director</span>. The Whisper transcription model ships with the Windows installer and portable build.</span></div></div>
-      </div>
-      <div style="display:grid; gap:14px;">
-        <div class="code-card">
-          <div class="code-head"><span>Windows · PowerShell</span><button class="copy-btn" data-copy="winget install Gyan.FFmpeg
-pip install &quot;clipper-gg[desktop]&quot;
-clipper --input &quot;D:\Captures&quot; --dry-run --low-power">Copy</button></div>
-          <pre><span class="cmt"># 1. FFmpeg (source/CLI only)</span>
-<span class="cmd">winget install Gyan.FFmpeg</span>
-
-<span class="cmt"># 2. Clipper from PyPI</span>
-<span class="cmd">pip install "clipper-gg[desktop]"</span>
-
-<span class="cmt"># 3. Dry run with a CPU cap</span>
-<span class="cmd">clipper --input "D:\Captures" --dry-run --low-power</span></pre>
-        </div>
-        <div class="code-card">
-          <div class="code-head"><span>Export + native/web UI</span><button class="copy-btn" data-copy="clipper --input &quot;D:\Captures&quot; --output &quot;D:\Highlights&quot; --gpu
-clipper desktop
-clipper ui">Copy</button></div>
-          <pre><span class="cmt"># Export with NVENC when available</span>
-<span class="cmd">clipper --input "D:\Captures" --output "D:\Highlights" --gpu</span>
-
-<span class="cmt"># Native app (PySide6) or optional web UI</span>
-<span class="cmd">clipper desktop</span>
-<span class="cmd">clipper ui</span></pre>
-        </div>
-        <div class="code-card">
-          <div class="code-head"><span>Optional AI director</span><button class="copy-btn" data-copy="ollama pull qwen2.5vl:7b
-clipper --input &quot;D:\Captures&quot; --ai --ai-game &quot;Rocket League&quot; --game-guard --dry-run">Copy</button></div>
-          <pre><span class="cmt"># One-time model pull (runs on the GPU)</span>
-<span class="cmd">ollama pull qwen2.5vl:7b</span>
-
-<span class="cmt"># Review candidates before cutting</span>
-<span class="cmd">clipper --input "D:\Captures" --ai --ai-game Valorant --dry-run</span></pre>
-        </div>
-        <p class="small dim">For the native app from source: <span class="mono">pip install "clipper-gg[desktop]"</span>. Lost FFmpeg on PATH? Set <span class="mono">CLIPPER_FFMPEG</span>.</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="section container" id="service">
-    <div class="service-wrap">
-      <span class="eyebrow"><span class="dot" style="background: var(--rose); box-shadow: 0 0 10px var(--rose);"></span> Done for you · pilot slots</span>
-      <h2 style="font-size: clamp(28px, 4vw, 40px); color:#fff; margin: 16px 0 12px;">Rather not touch FFmpeg?</h2>
-      <p class="lead" style="max-width: 720px;">Send raw footage. Get a reviewed pack of trimmed highlights back. Useful for streamers, editors, and creators who want the output without the setup. You keep the rights.</p>
-      <div class="tiers">
-        <div class="tier">
-          <div class="tiny dim mono">WARM-UP</div>
-          <div class="price">$29 <span>intro · then $49</span></div>
-          <ul><li>10 highlight clips</li><li>Up to 2 hours of footage</li><li>48-hour turnaround</li><li>1 revision round</li><li>16:9 lossless, no watermark</li></ul>
-          <a class="btn btn-ghost btn-sm" href="https://github.com/hatermedia/clipper/issues/new?template=clip-request.yml&title=%5BClip+request%5D+Warm-up" target="_blank" rel="noreferrer">Request a slot ↗</a>
-        </div>
-        <div class="tier featured">
-          <div class="tag">Popular</div>
-          <div class="tiny dim mono">SESSION</div>
-          <div class="price">$99 <span>one-off</span></div>
-          <ul><li>25 highlight clips</li><li>Up to 6 hours of footage</li><li>72-hour turnaround</li><li>2 revision rounds</li><li>Lossless + re-encoded MP4</li></ul>
-          <a class="btn btn-primary btn-sm" href="https://github.com/hatermedia/clipper/issues/new?template=clip-request.yml&title=%5BClip+request%5D+Session" target="_blank" rel="noreferrer">Request a slot ↗</a>
-        </div>
-        <div class="tier">
-          <div class="tiny dim mono">GRIND</div>
-          <div class="price">$249 <span>one-off</span></div>
-          <ul><li>60 highlight clips</li><li>Up to 20 hours of footage</li><li>5-day turnaround</li><li>2 revision rounds</li><li>Priority queue + presets</li></ul>
-          <a class="btn btn-ghost btn-sm" href="https://github.com/hatermedia/clipper/issues/new?template=clip-request.yml&title=%5BClip+request%5D+Grind" target="_blank" rel="noreferrer">Request a slot ↗</a>
-        </div>
-      </div>
-      <p class="service-note">
-        First five orders are $29; standard Warm-up is $49. No payment is collected on this page. Request a slot and we will confirm scope, footage rights, and delivery before anything is charged.
-        Footage is processed on one local machine and deleted 7 days after delivery. Do not post private footage links in a public issue — we will reply with a private intake method.
-        <a href="service/">Full service page ↗</a> · <a href="https://github.com/hatermedia/clipper/blob/main/SERVICE.md" target="_blank" rel="noreferrer">Terms &amp; process ↗</a>
-      </p>
-    </div>
-  </section>
-
-  <section class="section container">
-    <div class="section-head">
-      <span class="eyebrow">FAQ</span>
-      <h2>Honest answers.</h2>
-    </div>
-    <div class="faq">
-      <details open>
-        <summary>Is Clipper really free?</summary>
-        <p>Yes. The code is MIT licensed and the release wheel is free. The done-for-you service is separate and optional; you can always run the tool yourself.</p>
-      </details>
-      <details>
-        <summary>Is it really a native app?</summary>
-        <p>Yes. The Windows download is a windowed Qt app (`Clipper.exe`) with a native folder picker, drag-and-drop, previews, progress, and export. There is no browser tab and no console window left running. The optional web UI is still available with <span class="mono">clipper ui</span>.</p>
-      </details>
-      <details>
-        <summary>Does it upload my footage?</summary>
-        <p>No. Analysis and export run locally with FFmpeg and OpenCV. There are no accounts and no telemetry.</p>
-      </details>
-      <details>
-        <summary>Does it work with any game?</summary>
-        <p>If FFmpeg can decode it, Clipper can usually analyze it. It understands loud and fast-moving, not game-specific context. Quiet tactical gameplay may need a higher motion weight.</p>
-      </details>
-      <details>
-        <summary>Will it use my GPU and max out my CPU?</summary>
-        <p>GPU/NVENC is on by default when Clipper's real NVENC test passes. It handles the analysis proxy and optional re-encode; decoding may still use the CPU depending on the codec, and OpenCV motion scoring/audio RMS are CPU work. Run <span class="mono">clipper gpu</span> to see the test result. CPU defaults to a balanced half-core cap; choose Low (2 threads) or low-power mode to keep the machine usable.</p>
-      </details>
-      <details>
-        <summary>Is it on PyPI?</summary>
-        <p>Yes — <span class="mono">pip install clipper-gg</span>. Add the <span class="mono">desktop</span> extra for PySide6: <span class="mono">pip install "clipper-gg[desktop]"</span>.</p>
-      </details>
-      <details>
-        <summary>What about the done-for-you service?</summary>
-        <p>It is a pilot for people who want the output without the setup. Request a slot, confirm scope, then send footage through a private intake method. Payment and delivery are agreed before work starts.</p>
-      </details>
-    </div>
-  </section>
-</main>
-
-<footer>
-  <div class="container footer-grid">
-    <div>
-      <div class="brand" style="margin-bottom: 8px;">
-        <span class="brand-mark" style="width:30px;height:30px;border-radius:9px;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"></path></svg>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="./" aria-label="Clipper home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/>
+            <path d="M8.2 7.6 20 18M8.2 16.4 20 6"/>
+          </svg>
         </span>
-        <span class="brand-name" style="font-size:12px;">CLIPPER</span>
-      </div>
-      <div class="tiny">MIT licensed · not affiliated with Twitch, YouTube, or any game publisher.</div>
+        <span>
+          <span class="brand-name">CLIPPER</span>
+          <span class="brand-sub">local highlight engine</span>
+        </span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#ai">Local AI</a>
+        <a href="#install">Install</a>
+        <a href="#faq">FAQ</a>
+        <a class="btn btn-ghost btn-sm nav-cta" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </nav>
     </div>
-    <div class="footer-links">
-      <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
-      <a href="https://github.com/hatermedia/clipper/releases/tag/v0.7.2" target="_blank" rel="noreferrer">Release</a>
-      <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">Docs</a>
-      <a href="https://github.com/hatermedia/clipper/issues" target="_blank" rel="noreferrer">Issues</a>
-      <a href="service/">Service</a>
-      <a href="https://github.com/hatermedia/clipper/blob/main/SERVICE.md" target="_blank" rel="noreferrer">Service terms</a>
-      <a href="guides/batch-trim-shadowplay.html">ShadowPlay guide</a>
-      <span>Native app + optional web UI · © <span id="year">2026</span></span>
-    </div>
-  </div>
-</footer>
+  </header>
 
-<script src="site.js"></script>
+  <main>
+    <section class="hero container">
+      <div class="hero-grid">
+        <div>
+          <span class="eyebrow"><span class="dot"></span> Windows 10/11 · local AI · MIT</span>
+          <h1>Raw gameplay in.<br />Highlights out.</h1>
+          <p class="lead">
+            Clipper scans a folder, finds the loud reactions and sudden motion,
+            merges nearby moments, and cuts clean clips with FFmpeg. Everything
+            runs on your machine. No accounts, no uploads, no admin prompt.
+          </p>
+          <div class="cta-row" style="margin-top: 24px;">
+            <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.3/ClipperSetup-0.7.3.exe" target="_blank" rel="noreferrer">Download for Windows</a>
+            <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">View source</a>
+          </div>
+          <div class="hero-meta">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 21h14"/></svg> ~365 MB installer</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg> no Python or FFmpeg install</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/></svg> footage never uploaded</span>
+          </div>
+        </div>
+        <figure class="hero-shot">
+          <img src="media/desktop.png" alt="Clipper native Windows app showing a flat highlight list and inline preview player" />
+          <figcaption>The native app: scan, review, preview, and export without leaving the window.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Why Clipper</span>
+          <h2>Automatic, local, and predictable.</h2>
+          <p>Built for the “I have 40 GB of ShadowPlay clips and want the good 30 seconds” problem.</p>
+        </div>
+        <div class="grid-3">
+          <article class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h4l2-6 4 12 2-6h4"/></svg></div>
+            <h3>Smart padding + merging</h3>
+            <p>Each detected peak gets <strong>8 seconds before</strong> and <strong>5 seconds after</strong>. Overlapping or near-adjacent windows merge when the gap is under a second, keeping a continuous fight as one clip instead of six fragments.</p>
+          </article>
+          <article class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H4z"/><path d="M8 20h8M12 16v4"/></svg></div>
+            <h3>Inline preview, no popups</h3>
+            <p>Select a row to see its peak frame immediately. Play, pause, seek, and nudge with the inline player. A single click never starts playback; the controls are always visible.</p>
+          </article>
+          <article class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></div>
+            <h3>Lossless or exact cuts</h3>
+            <p>Stream copy is instant and preserves the original stream. Turn on frame-accurate re-encode when you need exact edges, with CPU or NVENC encoding.</p>
+          </article>
+          <article class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+            <h3>Game Guard</h3>
+            <p>When a game is running, Clipper pauses analysis and unloads the local vision model so the game keeps its VRAM. It resumes when you close the game.</p>
+          </article>
+          <article class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></div>
+            <h3>GPU when it helps</h3>
+            <p>A real NVENC test enables GPU encoding by default. Motion scoring and audio analysis stay on the CPU, where they belong. Threads are capped so your machine stays usable.</p>
+          </article>
+          <article class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12a7 7 0 0 1 14 0"/><path d="M8 12a4 4 0 0 1 8 0"/><circle cx="12" cy="17" r="1"/></svg></div>
+            <h3>Low-power analysis</h3>
+            <p>A performance preset, not a fake “AI off” mode: 2 threads, a 256 px / 2 fps proxy, and below-normal priority. AI Director still runs if it is enabled.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="ai" style="background: var(--panel-2); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft);">
+      <div class="container split">
+        <div>
+          <span class="eyebrow">Local AI · two honest modes</span>
+          <h2 style="font-size: clamp(27px, 3.6vw, 38px); color: #fff; margin: 14px 0 12px;">Lite works immediately. Director is optional.</h2>
+          <p class="muted" style="margin-bottom: 18px;">The installer includes the speech and OCR models. A multi-gigabyte vision model is not bundled; Director uses Ollama so you control the download and the model.</p>
+          <div class="compare">
+            <div class="compare-row compare-head">
+              <div class="compare-cell">Lite <span class="tag on">included</span></div>
+              <div class="compare-cell">Director <span class="tag">optional</span></div>
+            </div>
+            <div class="compare-row">
+              <div class="compare-cell">Whisper transcription + HUD OCR + YAMNet audio tags. No extra install or VRAM.</div>
+              <div class="compare-cell">A local vision model reviews every window and follows the story across a long interaction.</div>
+            </div>
+            <div class="compare-row">
+              <div class="compare-cell">Works offline as soon as Clipper is installed.</div>
+              <div class="compare-cell">Needs Ollama and one model: <strong>gemma3:4b</strong> on 6 GB cards, <strong>qwen2.5vl:7b</strong> on 8 GB+.</div>
+            </div>
+          </div>
+          <p class="small dim" style="margin-top: 14px;">We no longer recommend the 3B vision model; the 4B Gemma model is the tested 6 GB choice.</p>
+        </div>
+        <figure>
+          <img src="media/desktop-ai-setup.png" alt="Clipper showing Lite mode ready and an optional local AI setup panel" />
+          <figcaption class="small dim" style="margin-top: 8px;">When no vision model is installed, Clipper says so and keeps working in Lite mode. “Install model” only appears after Ollama is detected.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">How it works</span>
+          <h2>Three steps. No cloud round-trip.</h2>
+        </div>
+        <div class="steps">
+          <article class="step">
+            <h3>Pick a folder or clip</h3>
+            <p>Drop footage in or click the drop zone. Clipper probes duration, resolution, FPS, and audio locally.</p>
+          </article>
+          <article class="step">
+            <h3>Score the moment</h3>
+            <p>Audio spikes, motion, and optional local AI produce candidate windows. Padding and merging turn them into clean clips.</p>
+          </article>
+          <article class="step">
+            <h3>Review and export</h3>
+            <p>Preview in the app, keep the rows you want, and export selected or all. Stream copy for speed, re-encode for exact edges.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-tight" id="install">
+      <div class="container">
+        <div class="install">
+          <div class="install-grid">
+            <div>
+              <h2>Install the native app.</h2>
+              <p>Windows 10/11, per-user install, no admin prompt. The installer includes FFmpeg, Whisper <span class="mono">base.en</span>, RapidOCR, YAMNet, and the runtime it needs.</p>
+              <ul class="check-list">
+                <li>Installs to <span class="mono">%LOCALAPPDATA%\Programs\Clipper</span></li>
+                <li>Lite mode works immediately, offline</li>
+                <li>Adds Desktop and Start Menu shortcuts</li>
+                <li>Built-in SHA-256 verified updates</li>
+                <li>User footage and caches stay on your machine</li>
+              </ul>
+            </div>
+            <div class="download-box">
+              <strong style="color: #fff; font-size: 15px;">Clipper v0.7.3</strong>
+              <p class="muted" style="margin-top: 6px;">Native Windows x64. No Python. No FFmpeg install. No admin.</p>
+              <div class="cta-row" style="margin-top: 16px;">
+                <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.3/ClipperSetup-0.7.3.exe" target="_blank" rel="noreferrer">Download installer</a>
+                <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.7.3/clipper-0.7.3-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
+              </div>
+              <p class="meta">SHA-256 checksums are published with every release. The portable zip is for people who do not want an installer.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="faq">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Honest answers</span>
+          <h2>Straight questions.</h2>
+        </div>
+        <div class="faq">
+          <details>
+            <summary>Is it really all local?</summary>
+            <p>Yes. Analysis, OCR, transcription, and export run on your machine. Clipper does not upload footage. The only network request is the optional GitHub update check; the app has no accounts and no telemetry.</p>
+          </details>
+          <details>
+            <summary>Does AI Director require Ollama?</summary>
+            <p>Director does. It is optional. Lite mode is included and works with no extra install: Whisper, HUD OCR, and YAMNet ship with the app. If Director is not set up, Clipper stays in Lite mode and keeps working.</p>
+          </details>
+          <details>
+            <summary>What is smart padding and merging?</summary>
+            <p>Each detected peak gets 8 seconds before and 5 seconds after. If two candidates overlap or are less than a second apart, they merge into one window and keep the stronger peak. That keeps a fight, a goal replay, or a reaction as one coherent clip instead of several fragments.</p>
+          </details>
+          <details>
+            <summary>What does low-power mode do?</summary>
+            <p>It is a performance preset: 2 CPU threads, a 256 px / 2 fps analysis proxy, and below-normal process priority. It does not disable AI. If AI Director is enabled, it still runs; turn AI off separately if you want heuristic-only detection.</p>
+          </details>
+          <details>
+            <summary>Is 6 GB enough for the AI Director?</summary>
+            <p>Use <span class="mono">gemma3:4b</span>. It is the tested 6 GB choice. On 8 GB or more, <span class="mono">qwen2.5vl:7b</span> gives better story judgment. The old 3B recommendation is retired.</p>
+          </details>
+          <details>
+            <summary>Does Game Guard know my game?</summary>
+            <p>It ships with a large title map, detects Unreal Engine shipping processes, and recognizes games installed through Steam, Epic, GOG, Riot, EA, Ubisoft, and Xbox paths. If a title is missed, you can add it to <span class="mono">%LOCALAPPDATA%\Clipper\games.json</span>.</p>
+          </details>
+          <details>
+            <summary>Is it free?</summary>
+            <p>Yes. Clipper is MIT licensed and the Windows build is free. There is no paid clip service or cloud tier.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <a class="brand" href="./" aria-label="Clipper home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.2 7.6 20 18M8.2 16.4 20 6"/>
+            </svg>
+          </span>
+          <span class="brand-name" style="font-size: 12px;">CLIPPER</span>
+        </a>
+        <div class="footer-links">
+          <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://github.com/hatermedia/clipper/releases/tag/v0.7.3" target="_blank" rel="noreferrer">Release</a>
+          <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">README</a>
+          <a href="https://github.com/hatermedia/clipper/issues" target="_blank" rel="noreferrer">Issues</a>
+        </div>
+      </div>
+      <div class="footer-bottom">MIT licensed · not affiliated with Twitch, YouTube, or any game publisher · © <span id="year">2026</span></div>
+    </div>
+  </footer>
+  <script src="site.js"></script>
 </body>
 </html>

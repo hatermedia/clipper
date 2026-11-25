@@ -135,6 +135,27 @@ def test_ffmpeg_source_manifest_matches_fetch_script() -> None:
     assert "x264" in manifest and "x265" in manifest
 
 
+def test_game_title_map_is_large_and_has_core_titles() -> None:
+    import json
+
+    payload = json.loads(
+        (ROOT / "src" / "clipper" / "assets" / "game_titles.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    games = payload["processes"]
+    assert len(games) >= 150
+    for exe in (
+        "rocketleague.exe",
+        "valorant.exe",
+        "cs2.exe",
+        "mimesis.exe",
+        "league of legends.exe",
+        "r5apex.exe",
+    ):
+        assert exe in games
+
+
 def test_notices_name_bundled_models_and_runtime() -> None:
     notices = _read(ROOT / "THIRD_PARTY_NOTICES.txt")
     for token in ("YAMNet", "faster-whisper", "PySide6", "FFmpeg", "ONNX Runtime"):

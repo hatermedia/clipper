@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clipper-gg"
-version = "0.7.2"
+version = "0.7.3"
 description = "Automatic gaming highlight trimmer with a local AI director, audio + motion detection, and lossless FFmpeg cuts."
 readme = "README.md"
 requires-python = ">=3.10"

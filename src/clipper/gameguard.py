@@ -1,18 +1,25 @@
 """Detect running games so the AI can step out of the way.
 
 Discord does not expose other apps' Rich Presence to third parties; the reliable
-local signal is the process list. Clipper uses that to pause AI work and unload
-the Ollama model while a game is running, keeping VRAM free for the game.
+local signal is the process list. Clipper combines a bundled game-title map,
+Unreal Engine shipping-process names, and game-library paths so it keeps working
+for titles that are not in the curated list yet.
 """
 
 from __future__ import annotations
 
 import ctypes
+import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
-KNOWN_GAMES = {
+ASSET_DIR = Path(__file__).resolve().parent / "assets"
+GAME_TITLES_FILE = ASSET_DIR / "game_titles.json"
+
+# Keep a small fallback for source installs where package data is incomplete.
+_FALLBACK_GAMES = {
     "rocketleague.exe": "Rocket League",
     "rocketleague-win64-shipping.exe": "Rocket League",
     "tftclient-win64-shipping.exe": "Teamfight Tactics",
@@ -23,75 +30,165 @@ KNOWN_GAMES = {
     "valorant-win64-shipping.exe": "Valorant",
     "r5apex.exe": "Apex Legends",
     "cs2.exe": "Counter-Strike 2",
-    "fortniteclient-win64-shipping.exe": "Fortnite",
-    "gta5.exe": "Grand Theft Auto V",
-    "rainbowsix.exe": "Rainbow Six Siege",
-    "rainbowsix_dx11.exe": "Rainbow Six Siege",
-    "overwatch.exe": "Overwatch",
-    "leagueclient.exe": "League of Legends",
-    "league of legends.exe": "League of Legends",
-    "dota2.exe": "Dota 2",
-    "minecraft.exe": "Minecraft",
-    "javaw.exe": "Minecraft",
-    "robloxplayerbeta.exe": "Roblox",
-    "pubg.exe": "PUBG",
-    "cod.exe": "Call of Duty",
-    "eldenring.exe": "Elden Ring",
-    "bg3.exe": "Baldur's Gate 3",
-    "cyberpunk2077.exe": "Cyberpunk 2077",
-    "helldivers2.exe": "Helldivers 2",
-    "lethalcompany.exe": "Lethal Company",
-    "contentwarning.exe": "Content Warning",
-    "peak.exe": "PEAK",
-    "repoonline.exe": "REPO",
-    "phasmophobia.exe": "Phasmophobia",
-    "amongus.exe": "Among Us",
-    "gtav.exe": "Grand Theft Auto V",
 }
 
 
-def _windows_process_names() -> set[str]:
-    class PROCESSENTRY32W(ctypes.Structure):
-        _fields_ = [
-            ("dwSize", ctypes.c_ulong),
-            ("cntUsage", ctypes.c_ulong),
-            ("th32ProcessID", ctypes.c_ulong),
-            ("th32DefaultHeapID", ctypes.c_size_t),
-            ("th32ModuleID", ctypes.c_ulong),
-            ("cntThreads", ctypes.c_ulong),
-            ("th32ParentProcessID", ctypes.c_ulong),
-            ("pcPriClassBase", ctypes.c_long),
-            ("dwFlags", ctypes.c_ulong),
-            ("szExeFile", ctypes.c_wchar * 260),
-        ]
+def _load_known_games() -> dict[str, str]:
+    games = dict(_FALLBACK_GAMES)
+    try:
+        payload = json.loads(GAME_TITLES_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return games
+    entries = payload.get("processes") if isinstance(payload, dict) else None
+    if isinstance(entries, dict):
+        for exe, label in entries.items():
+            exe_text = str(exe).strip().lower()
+            label_text = str(label).strip()
+            if exe_text and label_text:
+                games[exe_text] = label_text
+    return games
 
+
+KNOWN_GAMES = _load_known_games()
+
+_UNREAL_SUFFIXES = (
+    "-win64-shipping.exe",
+    "-wing64-shipping.exe",
+    "-win64-shipping",
+    "-shipping.exe",
+)
+
+_GAME_PATH_MARKERS = (
+    "\\steamapps\\common\\",
+    "\\epic games\\",
+    "\\gog games\\",
+    "\\riot games\\",
+    "\\ubisoft game launcher\\games\\",
+    "\\ea games\\",
+    "\\xboxgames\\",
+    "\\battle.net\\",
+)
+
+_NON_GAME_FOLDERS = {
+    "launcher",
+    "epic online services",
+    "steamvr",
+    "wallpaper_engine",
+    "obs-studio",
+    "source sdk base 2013",
+    "destinations workshop tools",
+    "steamworks sdk",
+    "commonredist",
+    "easyanticheat",
+    "battleye",
+    "support",
+    "redistributables",
+}
+
+_NON_GAME_PROCESSES = {
+    "steam.exe",
+    "steamwebhelper.exe",
+    "steamservice.exe",
+    "epicgameslauncher.exe",
+    "epicwebhelper.exe",
+    "riotclientservices.exe",
+    "riotclientux.exe",
+    "battle.net.exe",
+    "agent.exe",
+    "origin.exe",
+    "eadesktop.exe",
+    "ubisoftconnect.exe",
+    "upc.exe",
+    "galaxyclient.exe",
+    "goggalaxy.exe",
+    "wallpaper32.exe",
+    "wallpaper64.exe",
+    "obs64.exe",
+    "obs32.exe",
+    "discord.exe",
+    "chrome.exe",
+    "msedge.exe",
+    "firefox.exe",
+}
+
+
+class _ProcessEntry32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", ctypes.c_ulong),
+        ("cntUsage", ctypes.c_ulong),
+        ("th32ProcessID", ctypes.c_ulong),
+        ("th32DefaultHeapID", ctypes.c_size_t),
+        ("th32ModuleID", ctypes.c_ulong),
+        ("cntThreads", ctypes.c_ulong),
+        ("th32ParentProcessID", ctypes.c_ulong),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", ctypes.c_ulong),
+        ("szExeFile", ctypes.c_wchar * 260),
+    ]
+
+
+def _windows_snapshot() -> list[tuple[str, int]]:
     kernel32 = ctypes.windll.kernel32
     kernel32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
     kernel32.CreateToolhelp32Snapshot.argtypes = [ctypes.c_ulong, ctypes.c_ulong]
     kernel32.Process32FirstW.argtypes = [
         ctypes.c_void_p,
-        ctypes.POINTER(PROCESSENTRY32W),
+        ctypes.POINTER(_ProcessEntry32W),
     ]
     kernel32.Process32NextW.argtypes = [
         ctypes.c_void_p,
-        ctypes.POINTER(PROCESSENTRY32W),
+        ctypes.POINTER(_ProcessEntry32W),
     ]
     kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
     snapshot = kernel32.CreateToolhelp32Snapshot(0x00000002, 0)
     if not snapshot or snapshot == ctypes.c_void_p(-1).value:
-        return set()
-    names: set[str] = set()
-    entry = PROCESSENTRY32W()
-    entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        return []
+    entries: list[tuple[str, int]] = []
+    entry = _ProcessEntry32W()
+    entry.dwSize = ctypes.sizeof(_ProcessEntry32W)
     try:
         if kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
             while True:
-                names.add(str(entry.szExeFile).lower())
+                entries.append(
+                    (str(entry.szExeFile).lower(), int(entry.th32ProcessID))
+                )
                 if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
                     break
     finally:
         kernel32.CloseHandle(snapshot)
-    return names
+    return entries
+
+
+def _windows_process_names() -> set[str]:
+    return {name for name, _pid in _windows_snapshot()}
+
+
+def _windows_process_paths() -> dict[str, str]:
+    kernel32 = ctypes.windll.kernel32
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    kernel32.QueryFullProcessImageNameW.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.c_wchar_p,
+        ctypes.POINTER(ctypes.c_ulong),
+    ]
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    paths: dict[str, str] = {}
+    for name, pid in _windows_snapshot():
+        handle = kernel32.OpenProcess(0x1000, 0, pid)
+        if not handle:
+            continue
+        try:
+            buffer = ctypes.create_unicode_buffer(32768)
+            size = ctypes.c_ulong(len(buffer))
+            if kernel32.QueryFullProcessImageNameW(
+                handle, 0, buffer, ctypes.byref(size)
+            ):
+                paths[name] = buffer.value
+        finally:
+            kernel32.CloseHandle(handle)
+    return paths
 
 
 def _posix_process_names() -> set[str]:
@@ -104,7 +201,11 @@ def _posix_process_names() -> set[str]:
         )
     except (OSError, subprocess.SubprocessError):
         return set()
-    return {Path(line.strip()).name.lower() for line in output.splitlines() if line.strip()}
+    return {
+        Path(line.strip()).name.lower()
+        for line in output.splitlines()
+        if line.strip()
+    }
 
 
 def running_process_names() -> set[str]:
@@ -113,12 +214,73 @@ def running_process_names() -> set[str]:
     return _posix_process_names()
 
 
+def running_process_paths() -> dict[str, str]:
+    if os.name == "nt":
+        return _windows_process_paths()
+    return {}
+
+
+def _pretty_name(stem: str) -> str:
+    text = stem.replace("_", " ").replace("-", " ")
+    text = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
+    cleaned = " ".join(text.split())
+    if cleaned and cleaned.islower():
+        cleaned = cleaned.title()
+    return cleaned or stem
+
+
+def _custom_games() -> dict[str, str]:
+    path = custom_game_names_path()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        str(exe).strip().lower(): str(label).strip()
+        for exe, label in payload.items()
+        if str(exe).strip() and str(label).strip()
+    }
+
+
+def _game_from_path(path: str) -> str | None:
+    text = str(path).replace("/", "\\")
+    lowered = text.lower()
+    for marker in _GAME_PATH_MARKERS:
+        index = lowered.find(marker)
+        if index < 0:
+            continue
+        remainder = text[index + len(marker) :]
+        folder = remainder.split("\\", 1)[0].strip()
+        if not folder or folder.lower() in _NON_GAME_FOLDERS:
+            continue
+        return _pretty_name(folder)
+    return None
+
+
 def detect_running_game() -> str | None:
     names = running_process_names()
     if not names:
         return None
-    for exe, label in KNOWN_GAMES.items():
-        if exe in names:
+    games = dict(KNOWN_GAMES)
+    games.update(_custom_games())
+    for exe in names:
+        label = games.get(exe)
+        if label:
+            return label
+    for exe in names:
+        for suffix in _UNREAL_SUFFIXES:
+            if exe.endswith(suffix):
+                stem = exe[: -len(suffix)]
+                if stem and stem not in {"launcher", "crashreportclient"}:
+                    return _pretty_name(stem)
+    paths = running_process_paths()
+    for exe, path in paths.items():
+        if exe in _NON_GAME_PROCESSES:
+            continue
+        label = _game_from_path(path)
+        if label:
             return label
     return None
 
@@ -138,12 +300,12 @@ PATH_GAME_ALIASES = (
     ("grand theft auto", "Grand Theft Auto V"),
     ("gta v", "Grand Theft Auto V"),
     ("rainbow six", "Rainbow Six Siege"),
-    ("overwatch", "Overwatch"),
+    ("overwatch", "Overwatch 2"),
     ("league of legends", "League of Legends"),
     ("dota 2", "Dota 2"),
     ("minecraft", "Minecraft"),
     ("roblox", "Roblox"),
-    ("pubg", "PUBG"),
+    ("pubg", "PUBG: Battlegrounds"),
     ("call of duty", "Call of Duty"),
     ("elden ring", "Elden Ring"),
     ("baldur's gate", "Baldur's Gate 3"),
@@ -153,6 +315,16 @@ PATH_GAME_ALIASES = (
     ("content warning", "Content Warning"),
     ("phasmophobia", "Phasmophobia"),
     ("among us", "Among Us"),
+    ("the finals", "The Finals"),
+    ("marvel rivals", "Marvel Rivals"),
+    ("deadlock", "Deadlock"),
+    ("escape from tarkov", "Escape from Tarkov"),
+    ("warframe", "Warframe"),
+    ("genshin", "Genshin Impact"),
+    ("honkai", "Honkai: Star Rail"),
+    ("palworld", "Palworld"),
+    ("valheim", "Valheim"),
+    ("rust", "Rust"),
 )
 
 

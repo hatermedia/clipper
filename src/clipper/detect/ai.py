@@ -38,7 +38,7 @@ def num_gpu_for(model: str) -> int:
     if "qwen2.5vl:3b" in model.lower():
         return 20
     return 99
-FAST_MODEL = "qwen2.5vl:3b"
+FAST_MODEL = "gemma3:4b"
 DEEP_MODEL = "qwen3-vl:4b"
 PROMPT_VERSION = "valorant-v5"
 AI_CROP = (0.10, 0.08, 0.80, 0.84)

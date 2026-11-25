@@ -1,4 +1,4 @@
-Clipper 0.7.2 - Windows x64 native
+Clipper 0.7.3 - Windows x64 native
 =================================
 
 No Python. No FFmpeg. No browser. No console window.
@@ -9,7 +9,7 @@ Double-click Clipper.exe.
 
 1. Choose a folder (or drag one onto the drop zone).
 2. Watch clips appear per file as the AI scan finishes.
-3. Click a clip row to preview that segment; tick the clips you want.
+3. Select a clip row to see its peak frame; press Play to watch it. Tick the clips you want.
 4. Pick an output folder and choose Export selected or Export all.
 
 AI DIRECTOR (OPTIONAL)
@@ -31,17 +31,18 @@ goals, saves, passing plays, demos, overtime/0-second goals, and late-night
 fakes. Mimesis prioritises screaming, trolling, betrayal, prop chases, and
 friend banter.
 
-Game Guard is on by default. When Rocket League, Mimesis, Valorant, Apex, CS2,
-or another known game is running, Clipper pauses the director and unloads the
-Ollama model so the game gets the VRAM. It resumes when the game closes. Discord
-does not expose other apps' Rich Presence, so this uses the local process list.
+Game Guard is on by default. It uses a large title map, Unreal Engine process
+detection, and Steam/Epic/GOG/Riot/EA/Ubisoft/Xbox install paths. When a known
+game is running, Clipper pauses the director and unloads the Ollama model so the
+game gets the VRAM. It resumes when the game closes. You can add a missed title
+in %LOCALAPPDATA%\Clipper\games.json.
 
-On a 6 GB card use qwen2.5vl:3b; the app selects it automatically when it is
-installed on a <=7 GB GPU. 7B is noticeably better and recommended on 8 GB+.
-The Windows installer and portable build include the Whisper base.en model, so
-speech transcription works offline. Source installs download it once (~145 MB)
-into %LOCALAPPDATA%\Clipper\models\huggingface. Window verdicts are cached under
-%LOCALAPPDATA%\Clipper\ai-cache. Nothing is uploaded.
+On a 6 GB card use gemma3:4b (tested). On 8 GB+ use qwen2.5vl:7b. The old 3B
+recommendation is retired. The Windows installer and portable build include the
+Whisper base.en model, so speech transcription works offline. Source installs
+download it once (~145 MB) into %LOCALAPPDATA%\Clipper\models\huggingface.
+Window verdicts are cached under %LOCALAPPDATA%\Clipper\ai-cache. Nothing is
+uploaded.
 
 Honest limits: game voice lines and human chat share one audio track, so the
 director can mistake tactical callouts for banter. It requires a humour cue
@@ -57,7 +58,7 @@ PERFORMANCE
 - CPU threads: Balanced uses about half the cores. Low uses 2. Max lets FFmpeg
   decide.
 - Low-power mode: 2 threads, 2fps/256px analysis proxy, below-normal process
-  priority. This is the setting to use while gaming or on a laptop.
+  priority. It is a performance preset; AI still runs if enabled.
 
 UPDATES
 -------
@@ -65,15 +66,6 @@ The installed build (the per-user installer, not this portable zip) checks
 GitHub Releases at launch, downloads the installer, verifies its SHA-256, and
 installs silently. The portable build opens the release page instead of
 replacing itself.
-
-CLI (OPTIONAL)
---------------
-The native portable build is GUI-only. For scripting, install the Python package:
-
-  python -m pip install clipper-gg
-  clipper --input "D:\Captures" --dry-run
-  clipper --input "D:\Captures" --ai --ai-game Valorant --dry-run
-  clipper update
 
 NOTES
 -----

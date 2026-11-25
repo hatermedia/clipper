@@ -30,6 +30,14 @@ def test_update_button_has_no_mnemonic_ampersand() -> None:
     assert "Restart & install" not in source
 
 
+def test_tooltips_have_delay_and_click_guards() -> None:
+    source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert "self._show_timer.setInterval(1000)" in source
+    assert "self._hide_timer.setInterval(500)" in source
+    assert "QWidget#TitleBar" in source
+    assert "QToolTip.showText" in source
+
+
 def test_highlights_are_flat_and_use_inline_player() -> None:
     source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
     assert "InlineClipPreview" in source

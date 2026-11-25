@@ -1,63 +1,42 @@
-# Publishing Clipper to PyPI
+# Publishing Clipper
 
-The GitHub release works today. PyPI publication is the only blocked release
-step because this machine has no PyPI API token stored.
+Clipper ships two ways from the same version:
 
-## Status
+- Windows installer and portable zip from GitHub Releases
+- Python wheel/sdist on PyPI as `clipper-gg`
 
-- PyPI distribution name: **`clipper-gg`**
-- Import package: `clipper`
-- Console command: `clipper`
-- `clipper` on PyPI is an unrelated 2014 CLIP-seq package. Do not use it.
-- `clipper-gg` was unregistered when checked on 2026-11-22. Re-check before
-  uploading.
+## Before publishing
 
-## One-time setup
+1. Bump the version in `pyproject.toml` and `src/clipper/__init__.py`.
+2. Run `pytest -q` and the frozen self-test.
+3. Run `packaging\build_installer.ps1`. It creates the installer, portable
+   zip, `SHA256SUMS.txt`, and verifies the release payload.
+4. Build wheel/sdist with `python -m build`.
+5. Verify notices and license files are present in the payload.
 
-1. Create or sign in to a PyPI account at <https://pypi.org>.
-2. Verify the email and enable 2FA.
-3. Go to **Account settings → API tokens → Add API token**.
-4. Scope the token to the `clipper-gg` project (or "Entire account" for the
-   first upload, then replace it with a project-scoped token).
-5. Do **not** paste the token into chat, a commit, or `opencode.jsonc`.
-
-## Upload
+## GitHub release
 
 ```powershell
-cd C:\Users\ADMIN\clipper
-.venv\Scripts\activate
-
-python -m build
-python -m twine check dist\*
-
-# Option A: environment variable (current shell only)
-$env:TWINE_USERNAME = "__token__"
-$env:TWINE_PASSWORD = "pypi-..."
-python -m twine upload dist\clipper_gg-0.2.1-py3-none-any.whl dist\clipper_gg-0.2.1.tar.gz
-
-# Option B: prompt (no shell history)
-python -m twine upload dist\clipper_gg-0.2.1-py3-none-any.whl dist\clipper_gg-0.2.1.tar.gz
+git add -A
+git commit -m "vX.Y.Z: ..."
+git tag -a vX.Y.Z -m "Clipper vX.Y.Z"
+git push origin main
+git push origin vX.Y.Z
+gh release create vX.Y.Z --title "vX.Y.Z" --notes-file docs\RELEASE_NOTES_vX.Y.Z.md `
+  packaging\release\ClipperSetup-X.Y.Z.exe `
+  packaging\release\clipper-X.Y.Z-windows-x64-native.zip `
+  packaging\release\SHA256SUMS.txt `
+  dist\clipper_gg-X.Y.Z-py3-none-any.whl `
+  dist\clipper_gg-X.Y.Z.tar.gz `
+  packaging\release\ffmpeg-source\*.tar.gz `
+  packaging\FFMPEG_SOURCE_MANIFEST.txt
 ```
 
-## Verify
+## PyPI
 
 ```powershell
-curl.exe -s https://pypi.org/pypi/clipper-gg/json
-pipx install clipper-gg
-clipper --version
+python -m twine upload --repository pypi dist\clipper_gg-X.Y.Z-py3-none-any.whl dist\clipper_gg-X.Y.Z.tar.gz
 ```
 
-## After the first publish
-
-- Add the PyPI badge and replace "once the PyPI release is live" with the
-  install command in `README.md`.
-- Create a project-scoped token and revoke the broader first-upload token.
-- Keep the GitHub release assets as the offline fallback.
-- For later versions: bump `version` in `pyproject.toml`, rebuild, upload, tag,
-  and publish a GitHub release.
-
-## Why this is not automated
-
-An API token is a credential, not a code change. Automating token creation
-requires interactive account access and 2FA. The upload command is ready; the
-token must come from you.
+Do not publish if the clean-profile install test, checksum manifest, or
+FFmpeg source assets are missing.
