@@ -16,12 +16,12 @@ Windows portable build, public landing page, and a lower-friction download path.
 - **Public site** — [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/)
   with a 20-second real UI demo, install paths, guides, and an optional
   done-for-you clip service.
-- **Demo assets** — `docs/media/demo.mp4` (19.5s, 630 KB) and `demo.gif` (3.7 MB),
+- **Historical demo assets** — `docs/media/demo.mp4` (19.5s, 630 KB) and `demo.gif` (3.7 MB),
   recorded from the actual UI doing scan → detect → export.
-- **Guides** — batch ShadowPlay trimming, automatic highlight detection, and an
+- **Historical guides** — batch ShadowPlay trimming, automatic highlight detection, and an
   honest open-source comparison.
 - **Service pilot** — a separate, optional done-for-you clip pack. The software
-  stays free and MIT licensed. Terms: [SERVICE.md](https://github.com/hatermedia/clipper/blob/main/SERVICE.md).
+  stays free and MIT licensed. The pilot has since been retired.
 
 ## Install
 
