@@ -58,7 +58,10 @@ installs.
 - `pytest -q` covers updater adversarial cases, helper syntax/exit codes,
   FFmpeg child cleanup, OCR/YAMNet cooldowns, Lite HUD retention, Ollama
   malformed responses, packaging contracts, and desktop shutdown/DPI contracts.
-- A clean Windows VM still needs the installer, DPI, offline-AI, and
-  update-from-0.6.0 checks listed in the release checklist.
-- FFmpeg is the gyan.dev 9.1 GPLv3 build; the corresponding source must be
-  attached or hosted with the release as described in `FFMPEG_NOTICE.txt`.
+- A true clean Windows VM run is still recommended for DPI, multi-monitor, and
+  update-from-0.6.0 coverage. A fresh standard-user profile on the build
+  machine passed install, self-test, offline demo scan, and uninstall with no
+  prior Clipper caches or external FFmpeg.
+- FFmpeg is the gyan.dev 9.1 GPLv3 build. The release includes the exact FFmpeg,
+  x264, and x265 source archives; remaining statically linked library versions
+  are recorded in `FFMPEG_SOURCE_MANIFEST.txt`.

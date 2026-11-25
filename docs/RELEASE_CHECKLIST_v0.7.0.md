@@ -64,13 +64,12 @@ Clipper install. Take a checkpoint before each scenario.
 ## Release blockers
 
 - **FFmpeg source offer:** the bundled FFmpeg is the gyan.dev 9.1 GPLv3 build
-  (source commit `74e4393595`). The exact source archives for FFmpeg, x264, and
-  x265 are staged under `packaging\release\ffmpeg-source\` and can be reproduced
-  with `packaging\fetch_ffmpeg_source.ps1`. Upload that folder with the
-  release (or provide the GPLv3 section 6 written offer) and review the
-  remaining statically linked library sources in
-  `packaging\FFMPEG_SOURCE_MANIFEST.txt`.
-- **Clean VM:** the checks above have not yet been run on a clean VM. A local
-  clean-environment simulation (no external FFmpeg, no Whisper/AI cache,
-  temp install) passed; do not publish until the VM checks also pass.
+  (source commit `74e4393595`). The exact FFmpeg, x264, and x265 source archives
+  are attached to the v0.7.0 GitHub release and can be reproduced with
+  `packaging\fetch_ffmpeg_source.ps1`. Review the remaining statically linked
+  library sources in `packaging\FFMPEG_SOURCE_MANIFEST.txt`.
+- **Clean VM:** a true clean VM run is still recommended for DPI, multi-monitor,
+  and update-from-0.6.0 coverage. The elevated fresh-profile test and local
+  clean-environment simulation both passed install, self-test, offline scan, and
+  uninstall.
 - **Signing:** the executable is unsigned. SmartScreen warnings are expected.
