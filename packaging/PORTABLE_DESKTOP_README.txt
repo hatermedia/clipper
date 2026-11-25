@@ -1,4 +1,4 @@
-Clipper 0.7.3 - Windows x64 native
+Clipper 0.7.4 - Windows x64 native
 =================================
 
 No Python. No FFmpeg. No browser. No console window.
@@ -15,7 +15,12 @@ Double-click Clipper.exe.
 AI DIRECTOR (OPTIONAL)
 ----------------------
 The local audio + motion detector works without any model. For whole-clip story
-detection, install Ollama from https://ollama.com and pull a vision model:
+detection, open Clipper's AI setup panel and click "Install Ollama". Clipper
+downloads the official installer, verifies its SHA-256 and Authenticode
+signature, installs it for the current user, and starts it. Then click
+"Install model" to download gemma3:4b or qwen2.5vl:7b through Ollama.
+
+You can also install Ollama manually from https://ollama.com and run:
 
   ollama pull qwen2.5vl:7b
 

@@ -47,6 +47,15 @@ def test_highlights_are_flat_and_use_inline_player() -> None:
     assert "self.preview_player.load" in source
 
 
+def test_ai_setup_installs_ollama_from_inside_the_app() -> None:
+    source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert "OllamaInstallWorker" in source
+    assert "Install Ollama" in source
+    assert "install_prerequisite" in source
+    assert "ai_setup_progress" in source
+    assert "https://ollama.com/download" not in source
+
+
 def test_close_event_stops_previews_workers_and_ffmpeg() -> None:
     source = inspect.getsource(MainWindow.closeEvent)
     assert "ClipPreviewDialog" in source

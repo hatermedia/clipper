@@ -26,7 +26,7 @@
     "operatingSystem": "Windows 10, Windows 11",
     "description": "Native Windows highlight trimmer with local AI, smart padding, and lossless FFmpeg cuts.",
     "url": "https://hatermedia.github.io/clipper/",
-    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.7.3",
+    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.7.4",
     "license": "https://opensource.org/license/mit",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
   }
@@ -69,7 +69,7 @@
             runs on your machine. No accounts, no uploads, no admin prompt.
           </p>
           <div class="cta-row" style="margin-top: 24px;">
-            <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.3/ClipperSetup-0.7.3.exe" target="_blank" rel="noreferrer">Download for Windows</a>
+            <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.4/ClipperSetup-0.7.4.exe" target="_blank" rel="noreferrer">Download for Windows</a>
             <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">View source</a>
           </div>
           <div class="hero-meta">
@@ -132,7 +132,7 @@
         <div>
           <span class="eyebrow">Local AI · two honest modes</span>
           <h2 style="font-size: clamp(27px, 3.6vw, 38px); color: #fff; margin: 14px 0 12px;">Lite works immediately. Director is optional.</h2>
-          <p class="muted" style="margin-bottom: 18px;">The installer includes the speech and OCR models. A multi-gigabyte vision model is not bundled; Director uses Ollama so you control the download and the model.</p>
+          <p class="muted" style="margin-bottom: 18px;">The installer includes the speech and OCR models. Ollama and the multi-gigabyte vision model are not bundled: Clipper can install Ollama with one click, then download Director's model only when you ask for it.</p>
           <div class="compare">
             <div class="compare-row compare-head">
               <div class="compare-cell">Lite <span class="tag on">included</span></div>
@@ -144,14 +144,14 @@
             </div>
             <div class="compare-row">
               <div class="compare-cell">Works offline as soon as Clipper is installed.</div>
-              <div class="compare-cell">Needs Ollama and one model: <strong>gemma3:4b</strong> on 6 GB cards, <strong>qwen2.5vl:7b</strong> on 8 GB+.</div>
+              <div class="compare-cell">Needs one click to install Ollama, then one model: <strong>gemma3:4b</strong> on 6 GB cards, <strong>qwen2.5vl:7b</strong> on 8 GB+.</div>
             </div>
           </div>
           <p class="small dim" style="margin-top: 14px;">We no longer recommend the 3B vision model; the 4B Gemma model is the tested 6 GB choice.</p>
         </div>
         <figure>
-          <img src="media/desktop-ai-setup.png" alt="Clipper showing Lite mode ready and an optional local AI setup panel" />
-          <figcaption class="small dim" style="margin-top: 8px;">When no vision model is installed, Clipper says so and keeps working in Lite mode. “Install model” only appears after Ollama is detected.</figcaption>
+          <img src="media/desktop-ai-setup.png" alt="Clipper showing Lite mode ready with Install Ollama and Refresh actions" />
+          <figcaption class="small dim" style="margin-top: 8px;">When no vision model is installed, Clipper says so and keeps working in Lite mode. <strong>Install Ollama</strong> downloads and verifies the prerequisite; <strong>Install model</strong> appears after it is ready.</figcaption>
         </figure>
       </div>
     </section>
@@ -195,11 +195,11 @@
               </ul>
             </div>
             <div class="download-box">
-              <strong style="color: #fff; font-size: 15px;">Clipper v0.7.3</strong>
+              <strong style="color: #fff; font-size: 15px;">Clipper v0.7.4</strong>
               <p class="muted" style="margin-top: 6px;">Native Windows x64. No Python. No FFmpeg install. No admin.</p>
               <div class="cta-row" style="margin-top: 16px;">
-                <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.3/ClipperSetup-0.7.3.exe" target="_blank" rel="noreferrer">Download installer</a>
-                <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.7.3/clipper-0.7.3-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
+                <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.7.4/ClipperSetup-0.7.4.exe" target="_blank" rel="noreferrer">Download installer</a>
+                <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.7.4/clipper-0.7.4-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
               </div>
               <p class="meta">SHA-256 checksums are published with every release. The portable zip is for people who do not want an installer.</p>
             </div>
@@ -217,11 +217,11 @@
         <div class="faq">
           <details>
             <summary>Is it really all local?</summary>
-            <p>Yes. Analysis, OCR, transcription, and export run on your machine. Clipper does not upload footage. The only network request is the optional GitHub update check; the app has no accounts and no telemetry.</p>
+            <p>Yes. Analysis, OCR, transcription, and export run on your machine. Clipper does not upload footage. Network access is limited to the optional GitHub update check and, only when you click them, the one-click Ollama install and model download. The app has no accounts and no telemetry.</p>
           </details>
           <details>
             <summary>Does AI Director require Ollama?</summary>
-            <p>Director does. It is optional. Lite mode is included and works with no extra install: Whisper, HUD OCR, and YAMNet ship with the app. If Director is not set up, Clipper stays in Lite mode and keeps working.</p>
+            <p>Director does. It is optional. Lite mode is included and works with no extra install: Whisper, HUD OCR, and YAMNet ship with the app. If Director is not set up, Clipper stays in Lite mode and keeps working. When you want it, <strong>Install Ollama</strong> downloads and verifies the prerequisite from inside Clipper.</p>
           </details>
           <details>
             <summary>What is smart padding and merging?</summary>
@@ -230,6 +230,10 @@
           <details>
             <summary>What does low-power mode do?</summary>
             <p>It is a performance preset: 2 CPU threads, a 256 px / 2 fps analysis proxy, and below-normal process priority. It does not disable AI. If AI Director is enabled, it still runs; turn AI off separately if you want heuristic-only detection.</p>
+          </details>
+          <details>
+            <summary>How does Clipper install Ollama?</summary>
+            <p><strong>Install Ollama</strong> downloads the official Ollama installer (about 1.9 GB) from GitHub, checks its published SHA-256 and Authenticode signature, installs it for the current Windows user, and starts it. No admin prompt and no browser trip. Then <strong>Install model</strong> downloads <span class="mono">gemma3:4b</span> or <span class="mono">qwen2.5vl:7b</span> through Ollama. The base Clipper installer stays small because neither Ollama nor the model is bundled.</p>
           </details>
           <details>
             <summary>Is 6 GB enough for the AI Director?</summary>
@@ -261,7 +265,7 @@
         </a>
         <div class="footer-links">
           <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://github.com/hatermedia/clipper/releases/tag/v0.7.3" target="_blank" rel="noreferrer">Release</a>
+          <a href="https://github.com/hatermedia/clipper/releases/tag/v0.7.4" target="_blank" rel="noreferrer">Release</a>
           <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">README</a>
           <a href="https://github.com/hatermedia/clipper/issues" target="_blank" rel="noreferrer">Issues</a>
         </div>

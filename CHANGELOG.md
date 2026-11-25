@@ -6,6 +6,25 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-11-26
+
+### Added
+
+- **One-click Ollama setup.** The AI panel downloads the official Windows
+  installer, verifies GitHub's SHA-256 and Ollama's Authenticode signature,
+  installs it per-user, and starts the local server. Progress, cancel, and
+  resume are included.
+- **Model download after setup.** `gemma3:4b` for 6 GB cards and
+  `qwen2.5vl:7b` for 8 GB+ are offered by the existing in-app model action.
+- **Safe fallback.** If GitHub's release API is rate-limited, Clipper uses the
+  official latest download URL and still verifies the signer.
+
+### Changed
+
+- The AI setup panel no longer opens a browser for Ollama.
+- Privacy copy now distinguishes the update check, Ollama prerequisite
+  download, and model download from local analysis.
+
 ## [0.6.0] - 2026-11-24
 
 ### Added

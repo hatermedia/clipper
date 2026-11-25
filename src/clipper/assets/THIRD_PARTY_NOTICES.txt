@@ -19,6 +19,8 @@ Python / video / AI runtime
 - OpenCV (opencv-python / opencv-python-headless) - Apache-2.0.
   https://opencv.org/license/
 - ONNX Runtime - MIT. https://github.com/microsoft/onnxruntime
+- Ollama (optional, downloaded from GitHub and installed by the user) - MIT.
+  https://github.com/ollama/ollama
 - RapidOCR / RapidOCR ONNX Runtime - Apache-2.0.
   https://github.com/RapidAI/RapidOCR
 - PaddleOCR models used by RapidOCR - Apache-2.0.

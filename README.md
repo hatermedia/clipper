@@ -6,11 +6,11 @@ with FFmpeg. Everything runs locally. No accounts, no uploads, no browser.
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.7.3](https://github.com/hatermedia/clipper/releases/tag/v0.7.3)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.7.4](https://github.com/hatermedia/clipper/releases/tag/v0.7.4)
 
 ## Install
 
-**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.7.3.exe](https://github.com/hatermedia/clipper/releases/download/v0.7.3/ClipperSetup-0.7.3.exe) (~365 MB)
+**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.7.4.exe](https://github.com/hatermedia/clipper/releases/download/v0.7.4/ClipperSetup-0.7.4.exe) (~365 MB)
 
 - Per-user install, no admin prompt
 - Installs to `%LOCALAPPDATA%\Programs\Clipper`
@@ -19,10 +19,11 @@ with FFmpeg. Everything runs locally. No accounts, no uploads, no browser.
 - Uninstall removes the app and settings, not your footage or caches
 
 The installer includes FFmpeg, Whisper `base.en`, RapidOCR, YAMNet, and the
-runtime they need. A multi-gigabyte vision model is **not** bundled; the optional
-AI Director uses Ollama so you control that download.
+runtime they need. A multi-gigabyte vision model is **not** bundled. The optional
+AI Director can install Ollama from inside the app, and then download a model
+only when you ask for it.
 
-Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.7.3/clipper-0.7.3-windows-x64-native.zip)
+Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.7.4/clipper-0.7.4-windows-x64-native.zip)
 and run `Clipper.exe`.
 
 ## What it does
@@ -56,8 +57,11 @@ audio/motion detector. It needs no GPU model and no Ollama.
 model and can keep a 30–45 second interaction instead of only the loudest peak.
 To enable it:
 
-1. Install [Ollama](https://ollama.com/download).
-2. Open Clipper. The AI setup panel detects Ollama and offers **Install model**.
+1. Open Clipper and click **Install Ollama** in the AI setup panel. Clipper
+   downloads the official installer, verifies its SHA-256 and Authenticode
+   signature, installs it for the current user, and starts it. No browser trip.
+2. Click **Install model** to download `gemma3:4b` or `qwen2.5vl:7b` through
+   Ollama, with progress shown in the panel.
 3. On 6 GB cards use `gemma3:4b` (tested). On 8 GB+ use `qwen2.5vl:7b`.
 
 The old 3B Qwen recommendation is retired; `gemma3:4b` is the tested 6 GB
@@ -92,8 +96,9 @@ Xbox paths. You can add private or missed titles in
 ## Privacy
 
 Footage never leaves the machine. Analysis, OCR, transcription, and export are
-local. Clipper has no accounts and no telemetry. The only network request is the
-optional GitHub update check; release downloads are HTTPS and SHA-256 verified.
+local. Clipper has no accounts and no telemetry. Network access is limited to the
+optional GitHub update check and, only when you click them, the one-click Ollama
+install and model download. Release downloads are HTTPS and SHA-256 verified.
 
 ## Build from source
 
