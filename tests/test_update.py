@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import tempfile
 from pathlib import Path
 
@@ -329,6 +330,7 @@ def test_helper_script_is_valid_powershell(tmp_path: Path) -> None:
     assert result.stdout.strip() == "0", result.stdout
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows installer path behavior")
 def test_launch_installer_rejects_untrusted_location(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -343,6 +345,7 @@ def test_launch_installer_rejects_untrusted_location(
         update.launch_installer(installer)
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows installer path behavior")
 def test_launch_installer_rejects_non_update_folder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -355,6 +358,7 @@ def test_launch_installer_rejects_non_update_folder(
         update.launch_installer(installer)
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows installed-build detection")
 def test_installed_build_requires_exact_registered_exe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
