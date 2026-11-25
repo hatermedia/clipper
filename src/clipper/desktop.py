@@ -73,6 +73,7 @@ from PySide6.QtWidgets import (
     QSlider,
     QSpinBox,
     QSplitter,
+    QStackedWidget,
     QToolTip,
     QTreeWidget,
     QTreeWidgetItem,
@@ -161,6 +162,11 @@ QLabel#Section {
 QLabel#Muted { color: #9e9e9e; font-size: 11px; }
 QLabel#Status { color: #9e9e9e; font-size: 11px; }
 QLabel#Summary { color: #9e9e9e; font-size: 11px; }
+QFrame#PreviewPanel {
+    background: #202020;
+    border: 1px solid #333333;
+    border-radius: 7px;
+}
 QLabel#Preview {
     background: #202020;
     border: 1px solid #333333;
@@ -501,6 +507,265 @@ class ClickablePreview(QLabel):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
+
+
+class InlineClipPreview(QFrame):
+    """Inline video player for the selected highlight."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("PreviewPanel")
+        self.setFixedHeight(320)
+        self._video_path = ""
+        self._start_ms = 0
+        self._end_ms = 0
+        self._loaded = False
+        self._seeked = False
+        self._pending_seek = False
+        self._want_play = False
+        self._at_end = False
+        self._dragging = False
+        self._poster_source = QPixmap()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setSpacing(0)
+
+        self.stack = QStackedWidget()
+        self.poster = ClickablePreview("Select a clip to preview")
+        self.poster.setObjectName("Preview")
+        self.poster.setAlignment(Qt.AlignCenter)
+        self.poster.setCursor(Qt.PointingHandCursor)
+        self.poster.setToolTip("Click Play to watch this clip")
+        self.poster.clicked.connect(self.toggle_play)
+        self.video = QVideoWidget()
+        self.video.setMinimumHeight(220)
+        self.stack.addWidget(self.poster)
+        self.stack.addWidget(self.video)
+        layout.addWidget(self.stack, 1)
+
+        controls = QHBoxLayout()
+        controls.setContentsMargins(8, 5, 8, 7)
+        controls.setSpacing(6)
+        self.play_btn = QPushButton("Play")
+        self.play_btn.setFixedWidth(70)
+        self.play_btn.setEnabled(False)
+        self.play_btn.clicked.connect(self.toggle_play)
+        controls.addWidget(self.play_btn)
+        back_btn = QPushButton("-5s")
+        back_btn.setFixedWidth(52)
+        back_btn.clicked.connect(lambda: self.seek_relative(-5000))
+        controls.addWidget(back_btn)
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(0, 1)
+        self.slider.setEnabled(False)
+        self.slider.sliderPressed.connect(self._slider_pressed)
+        self.slider.sliderReleased.connect(self._slider_released)
+        self.slider.sliderMoved.connect(self._slider_moved)
+        controls.addWidget(self.slider, 1)
+        ahead_btn = QPushButton("+5s")
+        ahead_btn.setFixedWidth(52)
+        ahead_btn.clicked.connect(lambda: self.seek_relative(5000))
+        controls.addWidget(ahead_btn)
+        self.time_label = QLabel("0:00 / 0:00")
+        self.time_label.setObjectName("PreviewTime")
+        self.time_label.setMinimumWidth(88)
+        controls.addWidget(self.time_label)
+        self.open_btn = QPushButton("Open")
+        self.open_btn.setToolTip("Open the source video in the default player")
+        self.open_btn.setEnabled(False)
+        self.open_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self._video_path))
+        )
+        controls.addWidget(self.open_btn)
+        layout.addLayout(controls)
+
+        self.error_label = QLabel("")
+        self.error_label.setObjectName("Muted")
+        self.error_label.setWordWrap(True)
+        self.error_label.hide()
+        layout.addWidget(self.error_label)
+
+        self.player = QMediaPlayer(self)
+        self.audio = QAudioOutput(self)
+        self.audio.setVolume(0.85)
+        self.player.setAudioOutput(self.audio)
+        self.player.setVideoOutput(self.video)
+        self.player.positionChanged.connect(self._position_changed)
+        self.player.playbackStateChanged.connect(self._state_changed)
+        self.player.mediaStatusChanged.connect(self._media_status)
+        self.player.errorOccurred.connect(self._player_error)
+
+    def load(
+        self,
+        video_path: str,
+        start: float,
+        end: float,
+        poster_path: str | None = None,
+    ) -> None:
+        self.player.stop()
+        self._video_path = video_path
+        self._start_ms = max(0, int(start * 1000))
+        self._end_ms = max(self._start_ms + 250, int(end * 1000))
+        self._loaded = True
+        self._seeked = False
+        self._pending_seek = True
+        self._want_play = False
+        self._at_end = False
+        self._dragging = False
+        self.error_label.hide()
+        self.error_label.setText("")
+
+        self._poster_source = QPixmap(poster_path) if poster_path else QPixmap()
+        self.stack.setCurrentWidget(self.poster)
+        if self._poster_source.isNull():
+            self.poster.clear()
+            self.poster.setText("Press Play to preview this clip")
+        else:
+            self.poster.setText("")
+            self._scale_poster()
+
+        duration = self._end_ms - self._start_ms
+        self.slider.setRange(0, max(1, duration))
+        self.slider.setValue(0)
+        self.slider.setEnabled(True)
+        self.play_btn.setEnabled(True)
+        self.open_btn.setEnabled(True)
+        self.time_label.setText(f"0:00 / {self._mmss(duration)}")
+        self.player.setSource(QUrl.fromLocalFile(str(Path(video_path))))
+
+    def clear(self) -> None:
+        self._loaded = False
+        self._seeked = False
+        self._pending_seek = False
+        self._want_play = False
+        self._at_end = False
+        self._dragging = False
+        self._video_path = ""
+        self._poster_source = QPixmap()
+        self.player.stop()
+        self.player.setSource(QUrl())
+        self.stack.setCurrentWidget(self.poster)
+        self.poster.clear()
+        self.poster.setText("Select a clip to preview")
+        self.error_label.hide()
+        self.error_label.setText("")
+        self.slider.setRange(0, 1)
+        self.slider.setValue(0)
+        self.slider.setEnabled(False)
+        self.play_btn.setText("Play")
+        self.play_btn.setEnabled(False)
+        self.open_btn.setEnabled(False)
+        self.time_label.setText("0:00 / 0:00")
+
+    def release_media(self) -> None:
+        self.clear()
+
+    def toggle_play(self) -> None:
+        if not self._loaded:
+            return
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._want_play = False
+            self.player.pause()
+            return
+        if (
+            self._at_end
+            or not self._seeked
+            or self.player.position() < self._start_ms
+            or self.player.position() >= self._end_ms
+        ):
+            self._at_end = False
+            self.player.setPosition(self._start_ms)
+        self._want_play = True
+        self.stack.setCurrentWidget(self.video)
+        self.player.play()
+
+    def seek_relative(self, delta_ms: int) -> None:
+        if not self._loaded:
+            return
+        position = self.player.position() + delta_ms
+        position = max(self._start_ms, min(self._end_ms - 100, position))
+        self._at_end = False
+        self.player.setPosition(position)
+
+    def _slider_pressed(self) -> None:
+        self._dragging = True
+
+    def _slider_released(self) -> None:
+        self._dragging = False
+        self._at_end = False
+        self.player.setPosition(self._start_ms + self.slider.value())
+
+    def _slider_moved(self, value: int) -> None:
+        self._at_end = False
+        self.player.setPosition(self._start_ms + value)
+
+    def _media_status(self, status) -> None:
+        if status in {
+            QMediaPlayer.MediaStatus.LoadedMedia,
+            QMediaPlayer.MediaStatus.BufferedMedia,
+        } and self._pending_seek:
+            self._pending_seek = False
+            self.player.setPosition(self._start_ms)
+            self._seeked = True
+            if self._want_play:
+                self.player.play()
+            else:
+                self.player.pause()
+        elif status == QMediaPlayer.MediaStatus.InvalidMedia:
+            self._player_error(None, "This video codec cannot be previewed here.")
+
+    def _player_error(self, error, message: str) -> None:
+        self.error_label.setText(
+            f"Preview unavailable: {message or 'codec not supported'}. "
+            "Use Open to play the source file."
+        )
+        self.error_label.show()
+        self.stack.setCurrentWidget(self.poster)
+
+    def _position_changed(self, position: int) -> None:
+        if not self._seeked:
+            return
+        duration = self._end_ms - self._start_ms
+        if not self._dragging:
+            self.slider.setValue(max(0, min(duration, position - self._start_ms)))
+        self.time_label.setText(
+            f"{self._mmss(max(0, position - self._start_ms))} / {self._mmss(duration)}"
+        )
+        if position >= self._end_ms - 80 and not self._at_end:
+            self._at_end = True
+            self._want_play = False
+            self.player.pause()
+
+    def _state_changed(self, state) -> None:
+        playing = state == QMediaPlayer.PlaybackState.PlayingState
+        self.play_btn.setText("Pause" if playing else "Play")
+        if playing:
+            self.stack.setCurrentWidget(self.video)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._scale_poster()
+
+    def _scale_poster(self) -> None:
+        if self._poster_source.isNull() or self.stack.currentWidget() is not self.poster:
+            return
+        size = self.poster.size()
+        if size.width() < 8 or size.height() < 8:
+            return
+        self.poster.setPixmap(
+            self._poster_source.scaled(
+                size.width() - 12,
+                size.height() - 12,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+    @staticmethod
+    def _mmss(ms: int) -> str:
+        seconds = max(0, int(ms / 1000))
+        return f"{seconds // 60}:{seconds % 60:02d}"
 
 
 class DropZone(QFrame):
@@ -1586,45 +1851,38 @@ class MainWindow(QMainWindow):
         right.addLayout(results_header)
 
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(6)
-        self.tree.setHeaderLabels(["Keep", "Start", "End", "Length", "Score", "Why"])
+        self.tree.setColumnCount(7)
+        self.tree.setHeaderLabels(
+            ["Keep", "Video", "Start", "End", "Length", "Score", "Why"]
+        )
         header = self.tree.headerItem()
         header.setTextAlignment(0, Qt.AlignCenter)
-        header.setTextAlignment(4, Qt.AlignCenter)
-        header.setToolTip(0, "Toggle a clip to include it in the export. Click another column to preview the clip.")
-        header.setToolTip(4, "AI confidence blended with the audio/motion score.")
-        header.setToolTip(5, "Grounded reason: verified HUD text, a transcript quote, or a chat line.")
+        header.setTextAlignment(5, Qt.AlignCenter)
+        header.setToolTip(0, "Toggle a clip to include it in the export.")
+        header.setToolTip(1, "Source video. Select a row to preview it below.")
+        header.setToolTip(5, "AI confidence blended with the audio/motion score.")
+        header.setToolTip(6, "Grounded reason: verified HUD text, a transcript quote, or a chat line.")
         self.tree.setAlternatingRowColors(True)
-        self.tree.setRootIsDecorated(True)
+        self.tree.setRootIsDecorated(False)
+        self.tree.setIndentation(0)
         self.tree.setUniformRowHeights(True)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.header().setSectionResizeMode(0, QHeaderView.Fixed)
-        self.tree.setColumnWidth(0, 100)
-        self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.tree.setColumnWidth(0, 92)
+        self.tree.header().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.tree.setColumnWidth(1, 190)
         self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.tree.header().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.tree.header().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.tree.header().setSectionResizeMode(6, QHeaderView.Stretch)
         self.tree.currentItemChanged.connect(self._show_preview)
-        self.tree.itemClicked.connect(self._tree_clicked)
         self.tree.itemDoubleClicked.connect(self._tree_double_clicked)
         self.tree.itemChanged.connect(self._clip_check_changed)
         right.addWidget(self.tree, 1)
 
-        self.preview = ClickablePreview("Select a clip to preview its peak frame")
-        self.preview.setObjectName("Preview")
-        self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setMinimumHeight(170)
-        self.preview.setMaximumHeight(300)
-        self.preview.setFixedHeight(260)
-        self.preview.setCursor(Qt.PointingHandCursor)
-        self.preview.setToolTip("Click to play this clip")
-        self.preview.clicked.connect(
-            lambda: self._open_clip_preview(self.tree.currentItem())
-            if self.tree.currentItem() is not None
-            else None
-        )
-        right.addWidget(self.preview)
+        self.preview_player = InlineClipPreview()
+        right.addWidget(self.preview_player)
 
         export_group = QGroupBox("Export")
         export_layout = QGridLayout(export_group)
@@ -2057,8 +2315,7 @@ class MainWindow(QMainWindow):
             self.output_edit.setText(str(base / "trimmed"))
         self.summary = None
         self.tree.clear()
-        self.preview.clear()
-        self.preview.setText("Select a clip to preview its peak frame")
+        self.preview_player.clear()
         self.export_btn.setEnabled(False)
         self.open_folder.setEnabled(False)
         self.file_list.clear()
@@ -2156,8 +2413,7 @@ class MainWindow(QMainWindow):
             return
         self.summary = None
         self.tree.clear()
-        self.preview.clear()
-        self.preview.setText("Select a clip to preview its peak frame")
+        self.preview_player.clear()
         self.export_btn.setEnabled(False)
         self.open_folder.setEnabled(False)
         self.progress.setValue(0)
@@ -2234,41 +2490,33 @@ class MainWindow(QMainWindow):
         self.tree.clear()
         for analysis in summary.files:
             self._append_analysis(analysis, select_first=False)
-        self.tree.expandAll()
-        self.summary_label.setText(f"{summary.total_clips} clips · {len(summary.files)} files")
+        self.summary_label.setText(
+            f"{summary.total_clips} clips · {len(summary.files)} files"
+        )
         self._update_selection_label()
         for index in range(self.tree.topLevelItemCount()):
-            top = self.tree.topLevelItem(index)
-            if top.childCount():
-                self.tree.setCurrentItem(top.child(0))
+            item = self.tree.topLevelItem(index)
+            if item.data(0, ROLE_VIDEO) is not None:
+                self.tree.setCurrentItem(item)
+                self._show_preview(item)
                 break
 
     def _append_analysis(self, analysis, select_first: bool = True) -> None:
         self.tree.blockSignals(True)
-        count = len(analysis.clips)
-        label = f"{analysis.name}  ·  {count} clip" + ("" if count == 1 else "s")
+        first_clip: QTreeWidgetItem | None = None
         if analysis.error:
-            label = f"{analysis.name}  ·  error"
-        top = QTreeWidgetItem(
-            [
-                label,
-                "",
-                "",
-                "",
-                "",
-                analysis.error or "",
-            ]
-        )
-        top.setToolTip(0, analysis.path)
-        self.tree.addTopLevelItem(top)
-        top.setFirstColumnSpanned(True)
-        if analysis.error:
-            top.setForeground(5, Qt.red)
+            item = QTreeWidgetItem(
+                ["", analysis.name, "", "", "", "", analysis.error]
+            )
+            item.setToolTip(1, analysis.path)
+            item.setForeground(6, Qt.red)
+            self.tree.addTopLevelItem(item)
         else:
-            for index, clip in enumerate(analysis.clips, start=1):
-                child = QTreeWidgetItem(
+            for index, clip in enumerate(analysis.clips):
+                item = QTreeWidgetItem(
                     [
                         "",
+                        analysis.name,
                         _clock(clip.start),
                         _clock(clip.end),
                         _clock(clip.duration),
@@ -2276,48 +2524,42 @@ class MainWindow(QMainWindow):
                         clip.reason,
                     ]
                 )
-                child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
-                child.setCheckState(0, Qt.Checked)
-                child.setTextAlignment(4, Qt.AlignCenter)
-                child.setData(0, ROLE_VIDEO, analysis.path)
-                child.setData(0, ROLE_START, float(clip.start))
-                child.setData(0, ROLE_END, float(clip.end))
-                child.setData(0, ROLE_INDEX, index - 1)
-                child.setData(0, ROLE_NAME, analysis.name)
-                if index - 1 < len(analysis.previews):
-                    preview = analysis.previews[index - 1]
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setCheckState(0, Qt.Checked)
+                item.setTextAlignment(5, Qt.AlignCenter)
+                item.setData(0, ROLE_VIDEO, analysis.path)
+                item.setData(0, ROLE_START, float(clip.start))
+                item.setData(0, ROLE_END, float(clip.end))
+                item.setData(0, ROLE_INDEX, index)
+                item.setData(0, ROLE_NAME, analysis.name)
+                if index < len(analysis.previews):
+                    preview = analysis.previews[index]
                     if Path(preview).is_file():
-                        child.setData(0, ROLE_PREVIEW, preview)
-                child.setToolTip(
-                    0,
-                    f"{analysis.name} · {_clock(clip.start)}–{_clock(clip.end)} "
-                    "· click to preview",
-                )
-                child.setToolTip(5, clip.reason)
-                top.addChild(child)
-            top.setExpanded(True)
+                        item.setData(0, ROLE_PREVIEW, preview)
+                item.setToolTip(0, "Uncheck to exclude this clip from Export selected.")
+                item.setToolTip(1, analysis.path)
+                item.setToolTip(6, clip.reason)
+                self.tree.addTopLevelItem(item)
+                if first_clip is None:
+                    first_clip = item
         self.tree.blockSignals(False)
         self.select_all_btn.show()
         self.select_none_btn.show()
         self._update_selection_label()
-        if select_first:
-            current = self.tree.currentItem()
-            if current is None and top.childCount():
-                self.tree.setCurrentItem(top.child(0))
-                self._show_preview(top.child(0))
+        if select_first and self.tree.currentItem() is None and first_clip is not None:
+            self.tree.setCurrentItem(first_clip)
+            self._show_preview(first_clip)
 
     def _clip_check_changed(self, item: QTreeWidgetItem, column: int) -> None:
-        if column == 0 and item.parent() is not None:
+        if column == 0 and item.data(0, ROLE_VIDEO) is not None:
             self._update_selection_label()
 
     def _set_all_checked(self, checked: bool) -> None:
         self.tree.blockSignals(True)
         for index in range(self.tree.topLevelItemCount()):
-            top = self.tree.topLevelItem(index)
-            for child_index in range(top.childCount()):
-                top.child(child_index).setCheckState(
-                    0, Qt.Checked if checked else Qt.Unchecked
-                )
+            item = self.tree.topLevelItem(index)
+            if item.data(0, ROLE_VIDEO) is not None:
+                item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
         self.tree.blockSignals(False)
         self._update_selection_label()
 
@@ -2325,11 +2567,12 @@ class MainWindow(QMainWindow):
         total = 0
         selected = 0
         for index in range(self.tree.topLevelItemCount()):
-            top = self.tree.topLevelItem(index)
-            for child_index in range(top.childCount()):
-                total += 1
-                if top.child(child_index).checkState(0) == Qt.Checked:
-                    selected += 1
+            item = self.tree.topLevelItem(index)
+            if item.data(0, ROLE_VIDEO) is None:
+                continue
+            total += 1
+            if item.checkState(0) == Qt.Checked:
+                selected += 1
         if total:
             self.selection_label.setText(f"{selected} of {total} selected")
         else:
@@ -2344,16 +2587,14 @@ class MainWindow(QMainWindow):
             return None
         selected: dict[str, list[int]] = {}
         for index in range(self.tree.topLevelItemCount()):
-            top = self.tree.topLevelItem(index)
-            for child_index in range(top.childCount()):
-                child = top.child(child_index)
-                if child.checkState(0) != Qt.Checked:
-                    continue
-                video = child.data(0, ROLE_VIDEO)
-                clip_index = child.data(0, ROLE_INDEX)
-                if video is None or clip_index is None:
-                    continue
-                selected.setdefault(str(video), []).append(int(clip_index))
+            item = self.tree.topLevelItem(index)
+            if item.checkState(0) != Qt.Checked:
+                continue
+            video = item.data(0, ROLE_VIDEO)
+            clip_index = item.data(0, ROLE_INDEX)
+            if video is None or clip_index is None:
+                continue
+            selected.setdefault(str(video), []).append(int(clip_index))
         files = []
         for analysis in self.summary.files:
             indices = sorted(set(selected.get(analysis.path, [])))
@@ -2370,46 +2611,27 @@ class MainWindow(QMainWindow):
             return None
         return replace(self.summary, files=files)
 
-    def _tree_clicked(self, item: QTreeWidgetItem, column: int) -> None:
-        if item.parent() is not None and column > 0:
-            self._open_clip_preview(item)
-
     def _tree_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
-        if item.parent() is not None:
-            self._open_clip_preview(item)
+        if item is not None and item.data(0, ROLE_VIDEO) is not None:
+            self.preview_player.toggle_play()
 
-    def _open_clip_preview(self, item: QTreeWidgetItem) -> None:
-        video = item.data(0, ROLE_VIDEO)
-        start = item.data(0, ROLE_START)
-        end = item.data(0, ROLE_END)
-        if not video or start is None or end is None:
+    def _show_preview(self, current: QTreeWidgetItem | None, previous=None) -> None:
+        if current is None or current.data(0, ROLE_VIDEO) is None:
+            self.preview_player.clear()
             return
-        name = item.data(0, ROLE_NAME) or ""
-        caption = f"{name} · {item.text(1)}–{item.text(2)}"
-        ClipPreviewDialog(
-            self,
+        video = current.data(0, ROLE_VIDEO)
+        start = current.data(0, ROLE_START)
+        end = current.data(0, ROLE_END)
+        poster = current.data(0, ROLE_PREVIEW)
+        if not video or start is None or end is None:
+            self.preview_player.clear()
+            return
+        self.preview_player.load(
             str(video),
             float(start),
             float(end),
-            caption,
-            item.text(5),
-        ).exec()
-
-    def _show_preview(self, current: QTreeWidgetItem | None, previous=None) -> None:
-        if current is None:
-            return
-        path = current.data(0, Qt.UserRole)
-        if not path or not Path(path).is_file():
-            self.preview.clear()
-            self.preview.setText("Select a clip to preview its peak frame")
-            return
-        pix = QPixmap(str(path))
-        if pix.isNull():
-            return
-        self.preview.setPixmap(
-            pix.scaled(self.preview.width() - 16, self.preview.height() - 16, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            str(poster) if poster else None,
         )
-        self.preview.setText("")
 
     # ---------------------------------------------------------------- export
     def export(self, selected_only: bool = True) -> None:
@@ -2700,6 +2922,7 @@ class MainWindow(QMainWindow):
         return super().nativeEvent(event_type, message)
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        self.preview_player.release_media()
         for dialog in self.findChildren(ClipPreviewDialog):
             dialog.close()
         running = bool(

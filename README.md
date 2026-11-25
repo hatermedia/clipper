@@ -9,7 +9,7 @@ Clipper is a native Windows desktop app and Python CLI that scans a folder of ga
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![Local-first](https://img.shields.io/badge/local--first-no%20uploads-22d3ee.svg)](#privacy)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.7.1](https://github.com/hatermedia/clipper/releases/tag/v0.7.1)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.7.2](https://github.com/hatermedia/clipper/releases/tag/v0.7.2)
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
@@ -62,7 +62,7 @@ No shade to the bigger tools — they do things Clipper doesn't. Clipper is for 
 
 No Python install. No FFmpeg install. No console. No admin rights.
 
-**[Download ClipperSetup-0.7.1.exe](https://github.com/hatermedia/clipper/releases/download/v0.7.1/ClipperSetup-0.7.1.exe)** (~365 MB)
+**[Download ClipperSetup-0.7.2.exe](https://github.com/hatermedia/clipper/releases/download/v0.7.2/ClipperSetup-0.7.2.exe)** (~365 MB)
 
 The installer places Clipper in `%LOCALAPPDATA%\Programs\Clipper`, adds Desktop
 and Start Menu shortcuts, registers an uninstaller in Windows Settings, and can
@@ -75,7 +75,7 @@ to install a download that does not match.
 Prefer a portable copy? The zip still works: unzip it and double-click
 `Clipper.exe`.
 
-**[Download clipper-0.7.1-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.7.1/clipper-0.7.1-windows-x64-native.zip)** (~471 MB)
+**[Download clipper-0.7.2-windows-x64-native.zip](https://github.com/hatermedia/clipper/releases/download/v0.7.2/clipper-0.7.2-windows-x64-native.zip)** (~471 MB)
 
 ### Native app from source
 
@@ -148,7 +148,7 @@ pipx install clipper-gg
 ### Release wheel (fallback)
 
 ```bash
-python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.7.1/clipper_gg-0.7.1-py3-none-any.whl
+python -m pip install https://github.com/hatermedia/clipper/releases/download/v0.7.2/clipper_gg-0.7.2-py3-none-any.whl
 ```
 
 The installed command is `clipper`; the Python import is `clipper`; the PyPI distribution is `clipper-gg` (the plain `clipper` name on PyPI is an unrelated 2014 bioinformatics package).

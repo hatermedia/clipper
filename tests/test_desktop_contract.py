@@ -30,6 +30,15 @@ def test_update_button_has_no_mnemonic_ampersand() -> None:
     assert "Restart & install" not in source
 
 
+def test_highlights_are_flat_and_use_inline_player() -> None:
+    source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert "InlineClipPreview" in source
+    assert "setRootIsDecorated(False)" in source
+    assert "itemClicked.connect" not in source
+    assert "_open_clip_preview" not in source
+    assert "self.preview_player.load" in source
+
+
 def test_close_event_stops_previews_workers_and_ffmpeg() -> None:
     source = inspect.getsource(MainWindow.closeEvent)
     assert "ClipPreviewDialog" in source
