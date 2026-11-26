@@ -2715,26 +2715,19 @@ class MainWindow(QMainWindow):
         self.ai_ears_combo.blockSignals(True)
         self.ai_ears_combo.clear()
         self.ai_ears_combo.addItem("Off", "")
-        if model_ready(LFM3_OMNI_2B) and runtime_ready():
+        bundled_ready = model_ready(LFM3_OMNI_2B) and runtime_ready()
+        if bundled_ready:
             self._add_combo_header(self.ai_ears_combo, "Bundled")
-            self.ai_ears_combo.addItem(
-                "LFM3-Omni-2B · bundled", "lfm3-omni-2b"
-            )
-        if self._ollama_has("lfm3-omni"):
+            self.ai_ears_combo.addItem("LFM3-Omni-2B", "lfm3-omni-2b")
+        elif self._ollama_has("lfm3-omni"):
             self._add_combo_header(self.ai_ears_combo, "Ollama")
-            self.ai_ears_combo.addItem(
-                "LFM3-Omni · Ollama", "lfm3-omni"
-            )
+            self.ai_ears_combo.addItem("LFM3-Omni", "lfm3-omni")
         self.ai_ears_combo.blockSignals(False)
         if selected:
             index = self.ai_ears_combo.findData(selected)
             if index >= 0:
                 self.ai_ears_combo.setCurrentIndex(index)
-        if (
-            self.ai_ears_combo.currentData() in (None, "")
-            and model_ready(LFM3_OMNI_2B)
-            and runtime_ready()
-        ):
+        if self.ai_ears_combo.currentData() in (None, "") and bundled_ready:
             self.ai_ears_combo.setCurrentIndex(
                 self.ai_ears_combo.findData("lfm3-omni-2b")
             )
