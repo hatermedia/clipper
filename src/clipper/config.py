@@ -96,8 +96,11 @@ class DetectionSettings:
     low_power: bool = False
     ai: bool = False
     ai_model: str = "qwen2.5vl:7b"
+    ai_runtime: str = "auto"
     ai_game: str = "auto"
     ai_mode: str = "director"
+    ai_ears: bool = True
+    ai_ears_model: str = "lfm3-omni"
     ai_min_confidence: float = 0.55
     ai_max_candidates: int = 60
     game_guard: Callable[[], str | None] | None = field(
@@ -129,6 +132,10 @@ class DetectionSettings:
             raise ValueError("ai_max_candidates must be between 1 and 200")
         if self.ai_mode != "director":
             raise ValueError("ai_mode must be 'director'")
+        if self.ai_runtime not in {"auto", "ollama", "llamacpp"}:
+            raise ValueError("ai_runtime must be 'auto', 'ollama', or 'llamacpp'")
+        if self.ai_ears and not self.ai_ears_model.strip():
+            raise ValueError("ai_ears_model cannot be empty")
         self.min_clip = float(self.min_clip)
         self.max_clips = int(self.max_clips)
         self.sample_fps = float(self.sample_fps)

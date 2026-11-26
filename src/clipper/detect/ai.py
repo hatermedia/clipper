@@ -18,7 +18,7 @@ import urllib.request
 import cv2
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import numpy as np
 
@@ -30,6 +30,8 @@ from .merge import merge_windows, pick_peaks
 OLLAMA_URL = os.environ.get("CLIPPER_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 DEFAULT_MODEL = "qwen2.5vl:7b"
 VISION_MODEL_FAMILIES = ("gemma3", "qwen2.5vl", "qwen3-vl")
+_RUNTIME_SERVERS: dict[str, Any] = {}
+_RUNTIME_MAIN: str | None = None
 
 
 def is_supported_vision_model(name: str) -> bool:
@@ -110,6 +112,216 @@ def unload_model(model: str, timeout: float = 8.0) -> bool:
         return True
     except Exception:
         return False
+
+
+def configure_runtime(settings: DetectionSettings) -> str:
+    """Start the bundled llama.cpp servers this scan needs.
+
+    The vision model and the Omni ears model are independent. That lets a
+    strong vision model (Ollama) work with the fast LFM3 ears model, or lets two
+    GGUF models run side by side when there is enough VRAM. Returns
+    ``llamacpp`` when the *vision* model runs through the bundled runtime.
+    """
+
+    global _RUNTIME_SERVERS, _RUNTIME_MAIN
+    try:
+        from .llama_runtime import (
+            model_ready,
+            model_spec,
+            runtime_ready,
+            start_server,
+            stop_server,
+        )
+    except Exception:
+        _RUNTIME_SERVERS = {}
+        _RUNTIME_MAIN = None
+        return "ollama"
+    wants_llama = settings.ai_runtime in {"auto", "llamacpp"}
+    if not wants_llama:
+        stop_server()
+        _RUNTIME_SERVERS = {}
+        _RUNTIME_MAIN = None
+        return "ollama"
+    main_spec = model_spec(settings.ai_model)
+    ears_spec = model_spec(settings.ai_ears_model) if settings.ai_ears else None
+    if ears_spec is not None and not ears_spec.audio:
+        from .llama_runtime import LFM3_OMNI_2B
+
+        ears_spec = LFM3_OMNI_2B
+    if ears_spec is not None and ears_spec.id == (main_spec.id if main_spec else ""):
+        ears_spec = None
+    needed = {
+        spec.id
+        for spec in (main_spec, ears_spec)
+        if spec is not None and spec.engine == "llamacpp"
+    }
+    for stale in list(_RUNTIME_SERVERS):
+        if stale not in needed:
+            stop_server(stale)
+            _RUNTIME_SERVERS.pop(stale, None)
+
+    def run(spec, required: bool = False) -> bool:
+        if (
+            not wants_llama
+            or spec is None
+            or spec.engine != "llamacpp"
+            or not runtime_ready()
+            or not model_ready(spec)
+        ):
+            return False
+        try:
+            _RUNTIME_SERVERS[spec.id] = start_server(spec)
+            return True
+        except Exception:
+            _RUNTIME_SERVERS.pop(spec.id, None)
+            if required and settings.ai_runtime == "llamacpp":
+                raise
+            return False
+
+    main_started = run(main_spec, required=True)
+    run(ears_spec)
+    _RUNTIME_MAIN = main_spec.id if main_started and main_spec else None
+    if settings.ai_runtime == "llamacpp" and not main_started:
+        stop_server()
+        _RUNTIME_SERVERS = {}
+        raise AIError(
+            f"{settings.ai_model!r} is not downloaded for the bundled runtime."
+        )
+    return "llamacpp" if main_started else "ollama"
+
+
+def runtime_name() -> str:
+    return "llamacpp" if _RUNTIME_MAIN is not None else "ollama"
+
+
+def _runtime_key(model: str) -> str:
+    try:
+        from .llama_runtime import model_spec
+
+        spec = model_spec(model)
+        if spec is not None:
+            return spec.id
+    except Exception:
+        pass
+    return model.strip().lower()
+
+
+def runtime_active(model: str) -> bool:
+    return _runtime_key(model) in _RUNTIME_SERVERS
+
+
+def stop_runtime() -> None:
+    global _RUNTIME_SERVERS, _RUNTIME_MAIN
+    if not _RUNTIME_SERVERS:
+        _RUNTIME_MAIN = None
+        return
+    try:
+        from .llama_runtime import stop_server
+
+        stop_server()
+    except Exception:
+        pass
+    _RUNTIME_SERVERS = {}
+    _RUNTIME_MAIN = None
+
+
+def _image_bytes(value: str | bytes) -> bytes:
+    if isinstance(value, bytes):
+        return value
+    return base64.b64decode(value)
+
+
+def chat(
+    model: str,
+    prompt: str,
+    *,
+    images: Sequence[str | bytes] = (),
+    audio: bytes | None = None,
+    timeout: float = 300.0,
+    num_predict: int = 700,
+    num_ctx: int = 4096,
+    temperature: float = 0.1,
+) -> dict[str, Any]:
+    """Ask the active local model and parse its JSON answer.
+
+    The same call works for Ollama vision models and the bundled llama.cpp
+    omni model. Audio is sent through ``input_audio`` on llama.cpp and through
+    the ``images`` list on Ollama, which is where its audio models expect WAV
+    bytes.
+    """
+
+    server = _RUNTIME_SERVERS.get(_runtime_key(model))
+    if server is not None:
+        from .llama_runtime import openai_chat
+
+        try:
+            text = openai_chat(
+                server,
+                prompt,
+                images=[_image_bytes(value) for value in images],
+                audio=audio,
+                max_tokens=num_predict,
+                timeout=timeout,
+                json_mode=True,
+            )
+        except Exception as exc:
+            raise AIError(f"Local omni model failed: {exc}") from exc
+        return _parse_json(text)
+
+    payload_images = [
+        value
+        if isinstance(value, str)
+        else base64.b64encode(value).decode("ascii")
+        for value in images
+    ]
+    if audio is not None:
+        payload_images.append(base64.b64encode(audio).decode("ascii"))
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt,
+                **({"images": payload_images} if payload_images else {}),
+            }
+        ],
+        "stream": False,
+        "format": "json",
+        "options": {
+            "temperature": temperature,
+            "num_predict": num_predict,
+            "num_ctx": num_ctx,
+            "num_gpu": num_gpu_for(model),
+            "repeat_penalty": 1.25,
+            "repeat_last_n": 64,
+        },
+        "keep_alive": "10m",
+    }
+    request = urllib.request.Request(
+        f"{OLLAMA_URL}/api/chat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.load(response)
+    except urllib.error.HTTPError as exc:
+        body = exc.read(800).decode("utf-8", errors="replace")
+        raise AIError(f"Ollama HTTP {exc.code}: {body}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise AIError(f"Ollama returned malformed JSON: {exc}") from exc
+    except Exception as exc:
+        raise AIError(f"Ollama request failed: {exc}") from exc
+    if not isinstance(data, dict):
+        raise AIError("Ollama returned an unexpected response")
+    message = data.get("message")
+    if not isinstance(message, dict):
+        raise AIError("Ollama returned no message object")
+    content = str(message.get("content") or "").strip()
+    if not content:
+        raise AIError("The local model returned an empty response")
+    return _parse_json(content)
 
 
 def _cache_dir() -> Path:

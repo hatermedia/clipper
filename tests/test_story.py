@@ -8,9 +8,16 @@ import pytest
 
 from clipper.config import DetectionSettings
 from clipper.detect import story
+from clipper.detect.ears import AudioChunk, AudioReading
 from clipper.detect.hud import HudLine, HudReading
 from clipper.detect.signals import WindowSignal
-from clipper.detect.story import StoryWindow, TranscriptLine, _segments_from_windows
+from clipper.detect.story import (
+    StoryWindow,
+    TranscriptLine,
+    _apply_audio_reading,
+    _segments_from_windows,
+)
+from clipper.models import ClipWindow
 
 
 def make_window(
@@ -77,8 +84,14 @@ def test_director_reviews_every_window_of_the_full_clip(
     )
     assert clips == []
     assert warnings
-    assert [start for start, _end in reviewed] == [0.0, 15.0, 30.0, 45.0]
-    assert [end for _start, end in reviewed] == [15.0, 30.0, 45.0, 60.0]
+    assert reviewed[0][0] == pytest.approx(0.0)
+    assert reviewed[-1][1] == pytest.approx(60.0)
+    assert len(reviewed) >= 4
+    assert all(end - start >= 1.0 for start, end in reviewed)
+    assert all(
+        reviewed[index + 1][0] < reviewed[index][1]
+        for index in range(len(reviewed) - 1)
+    )
 
 
 def test_social_prompt_ignores_game_hud() -> None:
@@ -379,3 +392,186 @@ def test_transcribe_falls_back_to_named_model_without_bundle(
     assert story.transcribe_audio(tmp_path / "audio.wav") == []
     assert captured["model"] == "base.en"
     assert captured["local_files_only"] is False
+
+def make_reading(
+    start: float,
+    end: float,
+    *,
+    score: float = 0.8,
+    tone: str = "sarcastic",
+    laughter: bool = True,
+    trusted: bool = True,
+    speech: str = "you fucking idiot",
+) -> AudioReading:
+    chunk = AudioChunk(
+        start=start,
+        end=end,
+        speech=speech,
+        tone=tone,
+        laughter=laughter,
+        shouting=False,
+        sound="speech",
+        proof=speech,
+        score=score,
+        trusted=trusted,
+        overlap=1.0,
+    )
+    return AudioReading(
+        chunks=(chunk,),
+        score=score,
+        peak=(start + end) / 2.0,
+        reason=f'{"laughter + " if laughter else ""}"{speech}"',
+        transcript=speech,
+        trusted=trusted,
+        laughter=laughter,
+        tone=tone,
+    )
+
+
+def test_social_clip_tightens_around_the_heard_payoff() -> None:
+    clip = ClipWindow(
+        start=0.0,
+        end=46.0,
+        peak=23.0,
+        score=0.8,
+        reason='AI banter: "yeah bro no"',
+    )
+    reading = make_reading(38.0, 43.0)
+    lines = [
+        TranscriptLine(37.0, 39.0, "Yeah bro, no."),
+        TranscriptLine(39.0, 43.0, "You fucking idiot!"),
+    ]
+    adjusted = _apply_audio_reading(
+        clip, reading, lines, 60.0, "Social", 3.0
+    )
+    assert adjusted.start >= 8.0
+    assert adjusted.end <= 46.0
+    assert adjusted.duration <= 26.01
+    assert adjusted.score > clip.score
+    assert "heard" in adjusted.reason.lower()
+    assert "idiot" in adjusted.reason.lower()
+
+
+def test_gameplay_clip_extends_to_include_the_reaction() -> None:
+    clip = ClipWindow(
+        start=20.0,
+        end=31.0,
+        peak=25.0,
+        score=0.85,
+        reason="AI goal (HUD): GOAL",
+    )
+    reading = make_reading(28.0, 33.0, tone="excited", laughter=False)
+    adjusted = _apply_audio_reading(
+        clip, reading, [], 60.0, "Rocket League", 3.0
+    )
+    assert adjusted.start == clip.start
+    assert adjusted.end > clip.end
+    assert adjusted.end <= 50.0
+    assert adjusted.score > clip.score
+
+
+def test_low_affect_never_deletes_a_hud_verified_clip() -> None:
+    clip = ClipWindow(
+        start=10.0,
+        end=30.0,
+        peak=20.0,
+        score=0.9,
+        reason="AI goal (HUD): LOVELY SCORED",
+    )
+    reading = make_reading(
+        10.0, 15.0, score=0.05, tone="neutral", laughter=False
+    )
+    adjusted = _apply_audio_reading(
+        clip, reading, [], 60.0, "Rocket League", 3.0
+    )
+    assert adjusted.start == clip.start
+    assert adjusted.end == clip.end
+    assert adjusted.score == clip.score
+
+
+def test_hallucinated_reading_does_not_change_a_social_clip() -> None:
+    clip = ClipWindow(
+        start=10.0,
+        end=30.0,
+        peak=20.0,
+        score=0.75,
+        reason='AI banter: "real quote"',
+    )
+    reading = make_reading(
+        10.0, 15.0, score=0.0, trusted=False, speech="fake words"
+    )
+    adjusted = _apply_audio_reading(
+        clip, reading, [], 60.0, "Social", 3.0
+    )
+    assert adjusted == clip
+
+def test_refine_does_not_erase_scan_confidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video")
+    full = tmp_path / "full.jpg"
+    hud = tmp_path / "hud.jpg"
+    full.write_bytes(b"full")
+    hud.write_bytes(b"hud")
+    clip = ClipWindow(
+        start=10.0,
+        end=30.0,
+        peak=20.0,
+        score=0.9,
+        reason='AI banter: "real quote"',
+    )
+    monkeypatch.setattr(story, "_cache_key", lambda *args, **kwargs: tmp_path / "none.json")
+    monkeypatch.setattr(
+        story, "_contact_sheet", lambda *args, **kwargs: (full, hud)
+    )
+    monkeypatch.setattr(
+        story,
+        "_ollama_chat",
+        lambda *args, **kwargs: {
+            "keep": True,
+            "start": 12.0,
+            "end": 28.0,
+            "score": 0.0,
+            "summary": "a generic summary",
+            "evidence": "the quote",
+        },
+    )
+    result = story._refine_clip(
+        video,
+        clip,
+        [],
+        40.0,
+        "model",
+        story.FFmpegBinaries(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe")),
+        "Social",
+        3.0,
+    )
+    assert result is not None
+    assert result.score >= clip.score
+    assert "real quote" in result.reason
+    assert result.start == 12.0
+    assert result.end == 28.0
+
+def test_social_laughter_without_words_still_counts() -> None:
+    clip = ClipWindow(
+        start=0.0,
+        end=40.0,
+        peak=20.0,
+        score=0.7,
+        reason="AI reaction: signal agreement",
+    )
+    reading = make_reading(
+        28.0,
+        33.0,
+        score=0.4,
+        tone="playful",
+        laughter=True,
+        speech="",
+    )
+    adjusted = _apply_audio_reading(
+        clip, reading, [], 60.0, "Social", 3.0
+    )
+    assert adjusted.duration < clip.duration
+    assert adjusted.score > clip.score
+    assert adjusted.end <= 40.0

@@ -112,7 +112,16 @@ from .detect.ai import (
     OLLAMA_URL,
     is_supported_vision_model,
     ollama_status,
+    stop_runtime,
     unload_model,
+)
+from .detect.llama_runtime import (
+    LFM3_OMNI_2B,
+    MODELS,
+    install_model,
+    install_runtime,
+    model_ready,
+    runtime_ready,
 )
 from .ffmpeg import (
     FFmpegError,
@@ -597,6 +606,51 @@ class OllamaPullWorker(QThread):
         finally:
             self._response = None
         self.done.emit(True, f"{self.model} is ready.")
+
+
+class LlamaInstallWorker(QThread):
+    """One-click install for the bundled runtime and the Omni ears model."""
+
+    progress = Signal(int, int)
+    status = Signal(str)
+    done = Signal(bool, str)
+
+    def __init__(self, spec=None) -> None:
+        super().__init__()
+        self.spec = spec or LFM3_OMNI_2B
+        self._cancel = threading.Event()
+
+    def cancel(self) -> None:
+        self._cancel.set()
+        self.requestInterruption()
+
+    def run(self) -> None:
+        try:
+            if not runtime_ready():
+                self.status.emit("Installing the lightweight local AI runtime...")
+                install_runtime(
+                    progress=self._progress,
+                    cancelled=self._cancel.is_set,
+                )
+            if not model_ready(self.spec):
+                self.status.emit(f"Downloading {self.spec.name}...")
+                install_model(
+                    self.spec,
+                    progress=self._progress,
+                    cancelled=self._cancel.is_set,
+                )
+        except Exception as exc:
+            if self._cancel.is_set():
+                self.done.emit(False, "Model download cancelled.")
+            else:
+                self.done.emit(False, f"Model setup failed: {exc}")
+            return
+        self.done.emit(True, f"{self.spec.name} is ready.")
+
+    def _progress(self, done: int, total: int) -> None:
+        if self._cancel.is_set():
+            raise RuntimeError("cancelled")
+        self.progress.emit(done, total)
 
 
 class OllamaInstallWorker(QThread):
@@ -1560,18 +1614,41 @@ class MainWindow(QMainWindow):
         self.ollama_present = ollama_executable() is not None
         installed = {str(name).lower(): str(name) for name in ai_state.get("models", [])}
         self.installed_models = installed
+        self.gpu_vram_mb = nvidia_memory_mb()
         vision = [
             name for name in installed.values()
             if is_supported_vision_model(name)
         ]
         self.ai_models = vision
-        self.vlm_available = bool(vision)
+        self.bundled_models = [
+            spec
+            for spec in MODELS
+            if spec.engine == "llamacpp" and spec.vision
+        ]
+        self.bundled_ready = [
+            spec
+            for spec in self.bundled_models
+            if runtime_ready() and model_ready(spec)
+        ]
+        self.vlm_available = bool(vision or self.bundled_ready)
+        preferred_bundled = self._preferred_bundled_model()
         self.ai_default = (
-            DEFAULT_MODEL
-            if DEFAULT_MODEL.lower() in installed
-            else (vision[0] if vision else "No supported vision model installed")
+            preferred_bundled.id
+            if preferred_bundled is not None
+            else (
+                DEFAULT_MODEL
+                if DEFAULT_MODEL.lower() in installed
+                else (
+                    vision[0]
+                    if vision
+                    else (
+                        self.bundled_models[0].id
+                        if self.bundled_models
+                        else "No supported vision model installed"
+                    )
+                )
+            )
         )
-        self.gpu_vram_mb = nvidia_memory_mb()
         self.low_vram = bool(self.gpu_vram_mb and self.gpu_vram_mb <= 7000)
         if self.low_vram and "gemma3:4b" in installed:
             self.ai_default = "gemma3:4b"
@@ -1582,6 +1659,7 @@ class MainWindow(QMainWindow):
         self.update_download_worker: UpdateDownloadWorker | None = None
         self.pull_worker: OllamaPullWorker | None = None
         self.ai_install_worker: OllamaInstallWorker | None = None
+        self.llama_install_worker: LlamaInstallWorker | None = None
         self._pending_model: str | None = None
         self.ollama_poll_timer = QTimer(self)
         self.ollama_poll_timer.setInterval(500)
@@ -1854,6 +1932,7 @@ class MainWindow(QMainWindow):
                 "Every scan is edited by the local vision model. It transcribes the "
                 "clip with Whisper, watches the full clip in short windows, and keeps "
                 "funny interactions, banter, reactions, goals, and big plays. "
+                "A small Omni model listens for laughter, sarcasm, and tone. "
                 "It runs locally; nothing is uploaded."
             )
         )
@@ -1872,7 +1951,7 @@ class MainWindow(QMainWindow):
         self.ai_model.setMinimumContentsLength(14)
         self.ai_model.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self._populate_ai_model_combo()
-        self.ai_model.setEnabled(self.vlm_available)
+        self.ai_model.setEnabled(self.vlm_available or bool(self.bundled_models))
         if self.low_vram:
             self.ai_model.setToolTip(
                 f"{self.gpu_vram_mb} MB VRAM detected. "
@@ -1883,6 +1962,11 @@ class MainWindow(QMainWindow):
                 "No supported vision model detected. Install gemma3:4b or qwen2.5vl:7b to start."
             )
         ai_controls.addWidget(self.ai_model, 0, 1)
+        self.download_model_btn = QPushButton("Download")
+        self.download_model_btn.setObjectName("Mono")
+        self.download_model_btn.clicked.connect(self._download_selected_model)
+        self.download_model_btn.hide()
+        ai_controls.addWidget(self.download_model_btn, 0, 3)
         ai_controls.addWidget(
             self._help(
                 "The director reviews the whole clip, including audio, transcript, "
@@ -1893,6 +1977,39 @@ class MainWindow(QMainWindow):
             2,
         )
         left.addLayout(ai_controls)
+
+        ears_controls = QGridLayout()
+        ears_controls.setHorizontalSpacing(8)
+        ears_controls.setVerticalSpacing(3)
+        ears_controls.setColumnStretch(1, 1)
+        ears_controls.addWidget(QLabel("Audio ears"), 0, 0)
+        self.ai_ears_combo = QComboBox()
+        self.ai_ears_combo.setSizeAdjustPolicy(
+            QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.ai_ears_combo.setMinimumContentsLength(16)
+        self.ai_ears_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        ears_controls.addWidget(self.ai_ears_combo, 0, 1)
+        self.ai_ears_state = QLabel("")
+        self.ai_ears_state.setObjectName("Muted")
+        ears_controls.addWidget(self.ai_ears_state, 0, 2)
+        self.install_ears_btn = QPushButton("Install")
+        self.install_ears_btn.setObjectName("Mono")
+        self.install_ears_btn.clicked.connect(self._install_ears)
+        self.install_ears_btn.setVisible(not model_ready(LFM3_OMNI_2B))
+        ears_controls.addWidget(self.install_ears_btn, 0, 3)
+        ears_controls.addWidget(
+            self._help(
+                "A small Omni model listens for laughter, sarcasm, anger, and "
+                "excitement in short chunks. It adds evidence to the transcript; "
+                "it never invents a highlight on its own."
+            ),
+            0,
+            4,
+        )
+        left.addLayout(ears_controls)
+        self.ai_ears_combo.currentIndexChanged.connect(self._ears_changed)
+        self._populate_ears_combo()
 
         self.ai_setup = QFrame()
         self.ai_setup.setObjectName("AiSetup")
@@ -2276,10 +2393,39 @@ class MainWindow(QMainWindow):
         vision = sorted(self.ai_models, key=str.lower)
         self.ai_model.blockSignals(True)
         self.ai_model.clear()
-        if vision:
-            for model in vision:
-                self.ai_model.addItem(model, model)
-        else:
+        for model in vision:
+            self.ai_model.addItem(model, model)
+        for spec in self.bundled_models:
+            ready = runtime_ready() and model_ready(spec)
+            size_gb = sum(item.size for item in spec.files) / 1e9
+            suffix = "" if ready else f" · download {size_gb:.1f} GB"
+            self.ai_model.addItem(
+                f"{spec.tier}: {spec.name}{suffix}", spec.id
+            )
+            index = self.ai_model.count() - 1
+            status = "Installed" if ready else f"Needs a {size_gb:.1f} GB download"
+            self.ai_model.setItemData(
+                index,
+                f"{spec.description}\n{status} · about "
+                f"{spec.vram_gb:.1f} GB VRAM.",
+                Qt.ToolTipRole,
+            )
+        for spec in MODELS:
+            if spec.engine != "external":
+                continue
+            self.ai_model.addItem(
+                f"{spec.tier}: {spec.name} · external", spec.id
+            )
+            index = self.ai_model.count() - 1
+            self.ai_model.setItemData(
+                index,
+                spec.description,
+                Qt.ToolTipRole,
+            )
+            item = self.ai_model.model().item(index)
+            if item is not None:
+                item.setEnabled(False)
+        if not vision and not self.bundled_models:
             self.ai_model.addItem("No supported vision model installed", None)
             item = self.ai_model.model().item(0)
             if item is not None:
@@ -2290,8 +2436,163 @@ class MainWindow(QMainWindow):
             self._select_ai_model(vision[0])
 
     def _ai_model_changed(self) -> None:
-        if self._current_ai_model():
+        self._update_ai_state()
+
+    def _preferred_bundled_model(self):
+        ready = list(getattr(self, "bundled_ready", []))
+        if not ready:
+            return None
+        vram = int(getattr(self, "gpu_vram_mb", 0) or 0)
+        if vram > 0:
+            fitting = [
+                spec for spec in ready if vram >= spec.vram_gb * 1024 + 512
+            ]
+            if fitting:
+                return max(fitting, key=lambda spec: spec.vram_gb)
+        return min(ready, key=lambda spec: spec.vram_gb)
+
+    def _current_ears_model(self) -> str:
+        value = self.ai_ears_combo.currentData()
+        return str(value) if value else ""
+
+    def _populate_ears_combo(self, preferred: str | None = None) -> None:
+        selected = (
+            preferred
+            or self._current_ears_model()
+            or str(self.qsettings.value("ai_ears_model", ""))
+        )
+        self.ai_ears_combo.blockSignals(True)
+        self.ai_ears_combo.clear()
+        self.ai_ears_combo.addItem("Off", "")
+        if model_ready(LFM3_OMNI_2B) and runtime_ready():
+            self.ai_ears_combo.addItem(
+                "LFM3-Omni-2B · bundled (fast)", "lfm3-omni-2b"
+            )
+        if "lfm3-omni" in self.installed_models:
+            self.ai_ears_combo.addItem(
+                "LFM3-Omni · Ollama", "lfm3-omni"
+            )
+        self.ai_ears_combo.blockSignals(False)
+        if selected:
+            index = self.ai_ears_combo.findData(selected)
+            if index >= 0:
+                self.ai_ears_combo.setCurrentIndex(index)
+        if (
+            self.ai_ears_combo.currentData() in (None, "")
+            and model_ready(LFM3_OMNI_2B)
+            and runtime_ready()
+        ):
+            self.ai_ears_combo.setCurrentIndex(
+                self.ai_ears_combo.findData("lfm3-omni-2b")
+            )
+        self._update_ears_state()
+
+    def _update_ears_state(self) -> None:
+        model = self._current_ears_model()
+        if model == "lfm3-omni-2b":
+            self.ai_ears_state.setText("ready · bundled runtime")
+        elif model == "lfm3-omni":
+            self.ai_ears_state.setText("ready · Ollama")
+        elif model_ready(LFM3_OMNI_2B):
+            self.ai_ears_state.setText("off")
+        else:
+            self.ai_ears_state.setText("2.0 GB download")
+        self.install_ears_btn.setVisible(
+            not (model_ready(LFM3_OMNI_2B) and runtime_ready())
+        )
+
+    def _ears_changed(self) -> None:
+        self._update_ears_state()
+
+    def _download_selected_model(self) -> None:
+        if (
+            self.llama_install_worker is not None
+            and self.llama_install_worker.isRunning()
+        ):
+            return
+        spec = next(
+            (item for item in MODELS if item.id == self._current_ai_model()),
+            None,
+        )
+        if spec is None:
+            return
+        if runtime_ready() and model_ready(spec):
             self._update_ai_state()
+            return
+        worker = LlamaInstallWorker(spec)
+        worker.progress.connect(self._llama_install_progress)
+        worker.status.connect(self.ai_setup_status.setText)
+        worker.done.connect(
+            lambda ok, message, model_id=spec.id: self._model_install_done(
+                ok, message, model_id
+            )
+        )
+        worker.finished.connect(worker.deleteLater)
+        self.llama_install_worker = worker
+        self.ai_setup_status.setText(f"Preparing {spec.name}...")
+        self.ai_setup_status.show()
+        self.ai_setup_progress.setValue(0)
+        self.ai_setup_progress.show()
+        self.download_model_btn.setEnabled(False)
+        worker.start()
+
+    def _model_install_done(self, ok: bool, message: str, model_id: str) -> None:
+        self.llama_install_worker = None
+        self.download_model_btn.setEnabled(True)
+        self.ai_setup_progress.hide()
+        self.ai_setup_status.setText(message)
+        self.ai_setup_status.show()
+        if not ok:
+            show_message(self, "Model download", message, kind="warning")
+            return
+        self._refresh_ai_models()
+        self._select_ai_model(model_id)
+        self._update_ai_state()
+
+    def _install_ears(self) -> None:
+        if (
+            self.llama_install_worker is not None
+            and self.llama_install_worker.isRunning()
+        ):
+            return
+        worker = LlamaInstallWorker()
+        worker.progress.connect(self._llama_install_progress)
+        worker.status.connect(self.ai_setup_status.setText)
+        worker.done.connect(self._ears_install_done)
+        worker.finished.connect(worker.deleteLater)
+        self.llama_install_worker = worker
+        self.ai_setup_status.setText("Installing the fast local AI runtime...")
+        self.ai_setup_status.show()
+        self.ai_setup_progress.setValue(0)
+        self.ai_setup_progress.show()
+        self.install_ears_btn.setEnabled(False)
+        worker.start()
+
+    def _llama_install_progress(self, done: int, total: int) -> None:
+        self.ai_setup_progress.setRange(0, 1000)
+        if total > 0:
+            percent = max(0, min(1000, int(done * 1000 / total)))
+            self.ai_setup_progress.setValue(percent)
+            self.ai_setup_status.setText(
+                f"Downloading local AI: {done / 1e6:.0f} / {total / 1e6:.0f} MB "
+                f"({done * 100 // total}%)"
+            )
+        else:
+            self.ai_setup_status.setText(
+                f"Downloading local AI: {done / 1e6:.0f} MB"
+            )
+
+    def _ears_install_done(self, ok: bool, message: str) -> None:
+        self.llama_install_worker = None
+        self.install_ears_btn.setEnabled(True)
+        self.ai_setup_progress.hide()
+        self.ai_setup_status.setText(message)
+        self.ai_setup_status.show()
+        if ok:
+            self._refresh_ai_models()
+            self._populate_ears_combo("lfm3-omni-2b")
+        else:
+            show_message(self, "Audio model", message, kind="warning")
 
     def _help(self, text: str) -> QLabel:
         return HelpLabel(text)
@@ -2342,6 +2643,7 @@ class MainWindow(QMainWindow):
         self.qsettings.setValue("recursive", self.recursive.isChecked())
         self.qsettings.setValue("gpu_v2", self.gpu.isChecked())
         self.qsettings.setValue("ai_model", self._current_ai_model())
+        self.qsettings.setValue("ai_ears_model", self._current_ears_model())
         for stale_key in ("ai_v2", "ai_mode", "ai_game"):
             self.qsettings.remove(stale_key)
         self.qsettings.setValue("game_guard", self.game_guard.isChecked())
@@ -2563,8 +2865,21 @@ class MainWindow(QMainWindow):
 
     def _update_ai_state(self) -> None:
         running = bool(getattr(self, "_job_running", False))
-        ready = self.vlm_available and self.ollama_ok
-        self.ai_model.setEnabled(not running and self.vlm_available)
+        model = self._current_ai_model()
+        spec = next((item for item in MODELS if item.id == model), None)
+        if spec is not None:
+            ready = runtime_ready() and model_ready(spec)
+            self.download_model_btn.setVisible(not ready)
+            self.download_model_btn.setEnabled(not running)
+            self.download_model_btn.setText(
+                f"Download {sum(item.size for item in spec.files) / 1e9:.1f} GB"
+            )
+        else:
+            ready = self.vlm_available and self.ollama_ok
+            self.download_model_btn.hide()
+        self.ai_model.setEnabled(
+            not running and (self.vlm_available or bool(self.bundled_models))
+        )
         if ready:
             self.ai_state.setText("ready")
             self.ai_state.setStyleSheet("color: #7ac77a;")
@@ -2588,18 +2903,25 @@ class MainWindow(QMainWindow):
         self.ai_setup.setVisible(not self.vlm_available)
         if self.vlm_available:
             return
+        bundled_hint = (
+            "You can also download a bundled model with the Download button above. "
+            if getattr(self, "bundled_models", None)
+            else ""
+        )
         self.ollama_present = ollama_executable() is not None
         if self.ollama_ok and self.ollama_present:
             self.ai_setup_title.setText("Ollama found · supported model needed")
             self.ai_setup_text.setText(
-                "Download gemma3:4b or qwen2.5vl:7b to enable the local AI director."
+                bundled_hint
+                + "Download gemma3:4b or qwen2.5vl:7b to enable the local AI director."
             )
             self.get_ollama_btn.hide()
             self.pull_ai_btn.show()
         elif self.ollama_present:
             self.ai_setup_title.setText("Ollama is installed")
             self.ai_setup_text.setText(
-                "Start Ollama with Refresh, then download a supported vision "
+                bundled_hint
+                + "Start Ollama with Refresh, then download a supported vision "
                 "model to enable the local AI director."
             )
             self.get_ollama_btn.hide()
@@ -2607,7 +2929,8 @@ class MainWindow(QMainWindow):
         else:
             self.ai_setup_title.setText("Local AI setup required")
             self.ai_setup_text.setText(
-                "Clipper uses the local vision director for every scan. Install "
+                bundled_hint
+                + "Clipper uses the local vision director for every scan. Install "
                 "Ollama, then download a vision model to start."
             )
             self.get_ollama_btn.show()
@@ -2734,6 +3057,32 @@ class MainWindow(QMainWindow):
         self.ai_setup_status.repaint()
         state = ollama_status(timeout=3)
         if not state.get("ok"):
+            self.bundled_models = [
+                spec
+                for spec in MODELS
+                if spec.engine == "llamacpp" and spec.vision
+            ]
+            self.bundled_ready = [
+                spec
+                for spec in self.bundled_models
+                if runtime_ready() and model_ready(spec)
+            ]
+            self.vlm_available = bool(self.bundled_ready)
+            if self.bundled_models:
+                preferred_bundled = self._preferred_bundled_model()
+                preferred = (
+                    preferred_bundled.id
+                    if preferred_bundled is not None
+                    else self.bundled_models[0].id
+                )
+                self._populate_ai_model_combo(preferred)
+                self._populate_ears_combo()
+                self._update_ai_state()
+                self.ai_setup_status.setText(
+                    "Bundled local AI available. Ollama is optional."
+                )
+                self.ai_setup_status.show()
+                return
             if ollama_executable() is not None:
                 self._begin_ollama_start()
             else:
@@ -2754,17 +3103,33 @@ class MainWindow(QMainWindow):
             if is_supported_vision_model(name)
         ]
         self.ai_models = vision
-        self.vlm_available = bool(vision)
-        if vision:
+        self.bundled_models = [
+            spec
+            for spec in MODELS
+            if spec.engine == "llamacpp" and spec.vision
+        ]
+        self.bundled_ready = [
+            spec
+            for spec in self.bundled_models
+            if runtime_ready() and model_ready(spec)
+        ]
+        self.vlm_available = bool(vision or self.bundled_ready)
+        preferred_bundled = self._preferred_bundled_model()
+        if preferred_bundled is not None:
+            preferred = preferred_bundled.id
+        elif vision:
             preferred = (
                 "gemma3:4b"
                 if self.low_vram and "gemma3:4b" in installed
                 else (DEFAULT_MODEL if DEFAULT_MODEL.lower() in installed else vision[0])
             )
+        elif self.bundled_models:
+            preferred = self.bundled_models[0].id
         else:
             preferred = "No supported vision model installed"
         self.ai_default = preferred
         self._populate_ai_model_combo(preferred)
+        self._populate_ears_combo()
         self._update_ai_state()
         if not self.ollama_ok:
             self.ai_setup_status.setText(
@@ -2985,6 +3350,9 @@ class MainWindow(QMainWindow):
             preview=True,
             ai=True,
             ai_model=self._current_ai_model(),
+            ai_runtime="auto",
+            ai_ears=bool(self._current_ears_model()),
+            ai_ears_model=self._current_ears_model() or "lfm3-omni",
             ai_game="auto",
             ai_mode="director",
             game_guard=self._pause_for_game if self.game_guard.isChecked() else None,
@@ -3563,6 +3931,14 @@ class MainWindow(QMainWindow):
             if not self.ai_install_worker.wait(5000):
                 self.ai_install_worker.terminate()
                 self.ai_install_worker.wait(1000)
+        if (
+            self.llama_install_worker is not None
+            and self.llama_install_worker.isRunning()
+        ):
+            self.llama_install_worker.cancel()
+            if not self.llama_install_worker.wait(5000):
+                self.llama_install_worker.terminate()
+                self.llama_install_worker.wait(1000)
         self.ollama_poll_timer.stop()
         for dialog in self.findChildren(ClipPreviewDialog):
             dialog.close()
@@ -3601,6 +3977,7 @@ class MainWindow(QMainWindow):
                 unload_model(model, timeout=3.0)
             except Exception:
                 pass
+        stop_runtime()
         stop_ollama_server()
         terminate_active_processes()
         self._save_settings()
@@ -3745,6 +4122,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--demo-shot", default=None, help="analyze --input, save a window screenshot, exit")
     parser.add_argument("--story-test", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--story-game", default="generic", help=argparse.SUPPRESS)
+    parser.add_argument("--story-model", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--story-runtime", default="auto", help=argparse.SUPPRESS)
     parser.add_argument("--preview-test", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--preview-start", type=float, default=0.0, help=argparse.SUPPRESS)
     parser.add_argument("--preview-end", type=float, default=10.0, help=argparse.SUPPRESS)
@@ -3778,6 +4157,12 @@ def main(argv: list[str] | None = None) -> int:
                         ai=True,
                         ai_mode="director",
                         ai_game=args.story_game,
+                        ai_runtime=args.story_runtime,
+                        **(
+                            {"ai_model": args.story_model}
+                            if args.story_model
+                            else {}
+                        ),
                         max_clips=6,
                     ),
                     wav,

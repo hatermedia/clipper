@@ -15,10 +15,8 @@ import os
 import re
 import tempfile
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -28,12 +26,26 @@ import numpy as np
 from ..config import DetectionSettings
 from ..ffmpeg import FFmpegBinaries, FFmpegError, make_thumbnail
 from ..models import ClipWindow
-from .ai import AIError, OLLAMA_URL, _parse_json, model_available, num_gpu_for, unload_model
+from .ai import (
+    AIError,
+    AI_HUD_CROP,
+    chat,
+    configure_runtime,
+    model_available,
+    runtime_name,
+    stop_runtime,
+    unload_model,
+)
 from .audio import ScoreTrack
+from .ears import AudioReading, listen_clip
 from .hud import HudLine, HudReading, chat_cue, display_text, event_lines, read_hud
+from .llama_runtime import LFM3_OMNI_2B, model_spec
 from .signals import SIGNAL_VERSION, WindowSignal, analyze_signals, tag_transcript, window_signal
 
-PROMPT_VERSION = "director-v7"
+PROMPT_VERSION = "director-v14"
+FRAMES_PER_SHEET = 9
+FRAME_WIDTH = 640
+WINDOW_OVERLAP = 0.66
 ProgressFn = Callable[[float, str], None]
 MAX_SEGMENT_SECONDS = 120.0
 SOCIAL_MAX_SECONDS = 45.0
@@ -41,6 +53,24 @@ ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
 BUNDLED_WHISPER = ASSET_DIR / "models" / "base.en"
 HUD_KIND_ORDER = ("round", "goal", "multikill", "clutch", "save", "demo")
 SOCIAL_KINDS = {"funny", "banter", "reaction", "rage", "hype"}
+BANTER_FRIENDLY_GAMES = (
+    "mimesis",
+    "chained together",
+    "human fall flat",
+    "gang beasts",
+    "lethal company",
+    "among us",
+    "fall guys",
+    "pummel party",
+    "ultimate chicken horse",
+    "overcooked",
+    "moving out",
+    "plateup",
+    "jackbox",
+    "golf with your friends",
+    "vrchat",
+    "garry's mod",
+)
 KIND_ALIASES = {
     "ace": "multikill",
     "doublekill": "multikill",
@@ -256,53 +286,16 @@ def _ollama_chat(
     images: list[str] | None = None,
     timeout: float = 300.0,
     num_predict: int = 700,
+    num_ctx: int = 4096,
 ) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt,
-                **({"images": images} if images else {}),
-            }
-        ],
-        "stream": False,
-        "format": "json",
-        "options": {
-            "temperature": 0.1,
-            "num_predict": num_predict,
-            "num_ctx": 4096,
-            "num_gpu": num_gpu_for(model),
-            "repeat_penalty": 1.25,
-            "repeat_last_n": 64,
-        },
-        "keep_alive": "10m",
-    }
-    request = urllib.request.Request(
-        f"{OLLAMA_URL}/api/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+    return chat(
+        model,
+        prompt,
+        images=images or (),
+        timeout=timeout,
+        num_predict=num_predict,
+        num_ctx=num_ctx,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.load(response)
-    except urllib.error.HTTPError as exc:
-        body = exc.read(800).decode("utf-8", errors="replace")
-        raise AIError(f"Ollama HTTP {exc.code}: {body}") from exc
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise AIError(f"Ollama returned malformed JSON: {exc}") from exc
-    except Exception as exc:
-        raise AIError(f"Ollama request failed: {exc}") from exc
-    if not isinstance(data, dict):
-        raise AIError("Ollama returned an unexpected response")
-    message = data.get("message")
-    if not isinstance(message, dict):
-        raise AIError("Ollama returned no message object")
-    content = str(message.get("content") or "").strip()
-    if not content:
-        raise AIError("The local model returned an empty response")
-    return _parse_json(content)
 
 
 def transcribe_audio(
@@ -395,20 +388,28 @@ def _contact_sheet(
     end: float,
     output: Path,
     bins: FFmpegBinaries,
-) -> Path:
+) -> tuple[Path, Path]:
+    """Build a 3x3 full-frame sheet plus a matching HUD close-up sheet."""
+
     span = max(0.1, end - start)
-    offsets = (0.08, 0.35, 0.65, 0.92)
-    tiles: list[np.ndarray] = []
+    offsets = np.linspace(0.04, 0.96, FRAMES_PER_SHEET)
+    full_tiles: list[np.ndarray] = []
+    hud_tiles: list[np.ndarray] = []
     with tempfile.TemporaryDirectory(prefix="clipper_story_") as raw:
         temp = Path(raw)
         for index, offset in enumerate(offsets):
-            timestamp = min(end - 0.05, start + span * offset)
+            timestamp = min(end - 0.05, start + span * float(offset))
             jpg = temp / f"frame_{index}.jpg"
             image = None
             for candidate in (timestamp, max(start, timestamp - 0.5)):
                 try:
                     make_thumbnail(
-                        video, candidate, jpg, width=480, bins=bins, crop=None
+                        video,
+                        candidate,
+                        jpg,
+                        width=FRAME_WIDTH,
+                        bins=bins,
+                        crop=None,
                     )
                 except (FFmpegError, OSError):
                     continue
@@ -417,23 +418,51 @@ def _contact_sheet(
                     timestamp = candidate
                     break
             if image is None:
-                image = np.zeros((180, 320, 3), dtype=np.uint8)
+                image = np.zeros((360, FRAME_WIDTH, 3), dtype=np.uint8)
+            else:
+                image = cv2.resize(
+                    image,
+                    (FRAME_WIDTH, 360),
+                    interpolation=cv2.INTER_AREA,
+                )
             cv2.putText(
                 image,
                 f"{timestamp:.1f}s",
-                (8, 22),
+                (8, 24),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
+                0.65,
                 (255, 255, 255),
                 1,
                 cv2.LINE_AA,
             )
-            tiles.append(image)
-    top = np.hstack([tiles[0], tiles[1]])
-    bottom = np.hstack([tiles[2], tiles[3]])
-    sheet = np.vstack([top, bottom])
-    cv2.imwrite(str(output), sheet, [cv2.IMWRITE_JPEG_QUALITY, 90])
-    return output
+            full_tiles.append(image)
+            height, width = image.shape[:2]
+            x, y, w, h = AI_HUD_CROP
+            hud = image[
+                int(y * height) : int((y + h) * height),
+                int(x * width) : int((x + w) * width),
+            ]
+            if hud.size == 0:
+                hud = np.zeros((96, FRAME_WIDTH, 3), dtype=np.uint8)
+            else:
+                hud = cv2.resize(
+                    hud,
+                    (FRAME_WIDTH, 96),
+                    interpolation=cv2.INTER_AREA,
+                )
+            hud_tiles.append(hud)
+
+    def grid(tiles: list[np.ndarray]) -> np.ndarray:
+        rows = [
+            np.hstack(tiles[index : index + 3])
+            for index in range(0, FRAMES_PER_SHEET, 3)
+        ]
+        return np.vstack(rows)
+
+    cv2.imwrite(str(output), grid(full_tiles), [cv2.IMWRITE_JPEG_QUALITY, 92])
+    hud_output = output.with_name(output.stem + "_hud" + output.suffix)
+    cv2.imwrite(str(hud_output), grid(hud_tiles), [cv2.IMWRITE_JPEG_QUALITY, 92])
+    return output, hud_output
 
 
 def _window_prompt(window: StoryWindow, game: str) -> str:
@@ -457,9 +486,10 @@ Acoustic/motion evidence for this window:
 Only cite signal tags that literally appear in that evidence line. If it says
 "(no strong acoustic or motion signals)", do not claim LAUGH, JERK, or LOUD.
 Audio energy high/medium/low is not a signal tag.
-The image is four chronological FULL frames, including the HUD, left to right then
-top to bottom. The timestamps are drawn on each frame. Read the kill feed, score,
-and round banner when they are visible.
+Image 1 is nine chronological FULL frames in a 3x3 grid, left to right then top
+to bottom. Image 2 is a close-up HUD crop from those same nine frames, in the
+same order, so kill-feed, score, and round-banner text is readable. The full
+frames have timestamps drawn on them. Read the HUD in both images.
 
 Keep this window ONLY for one of these reasons:
 1. Social: a person is joking, teasing, trolling, raging, laughing, or reacting.
@@ -502,15 +532,21 @@ def _review_window(
             pass
     with tempfile.TemporaryDirectory(prefix="clipper_story_") as raw:
         sheet = Path(raw) / "sheet.jpg"
-        _contact_sheet(video, window.start, window.end, sheet, bins)
+        full_sheet, hud_sheet = _contact_sheet(
+            video, window.start, window.end, sheet, bins
+        )
         import base64
 
-        encoded = base64.b64encode(sheet.read_bytes()).decode("ascii")
+        images = [
+            base64.b64encode(full_sheet.read_bytes()).decode("ascii"),
+            base64.b64encode(hud_sheet.read_bytes()).decode("ascii"),
+        ]
         verdict = _ollama_chat(
             model,
             _window_prompt(window, game),
-            images=[encoded],
-            num_predict=360 if "7b" in model.lower() else 240,
+            images=images,
+            num_predict=420 if "7b" in model.lower() else 300,
+            num_ctx=8192,
         )
     interesting = verdict.get("interesting")
     if isinstance(interesting, str):
@@ -795,6 +831,285 @@ def _segments_from_windows(
     return _merge(clips)
 
 
+def _refine_prompt(
+    clip: ClipWindow,
+    game: str,
+    transcript: str,
+) -> str:
+    social = _is_social_game(game)
+    banter_ok = social or _banter_friendly_game(game)
+    social_note = (
+        "This is social/desktop footage. Ignore game HUD and gameplay logic."
+        if social
+        else (
+            "This is party/co-op footage. Human banter and reactions are valid "
+            "highlights alongside visible game events."
+            if banter_ok
+            else "This is competitive gameplay. Profanity, angry callouts, "
+            "strategy talk, and ordinary voice chat are NOT highlights by "
+            "themselves."
+        )
+    )
+    return f"""You are the final editor for a highlight channel.
+Game: {game or "generic"}.
+{social_note}
+{_game_guidance(game)}
+Candidate clip: {clip.start:.2f}s to {clip.end:.2f}s.
+The scan pass selected this candidate with strong evidence:
+{clip.reason}
+Transcript in the candidate: {transcript or "(none)"}
+
+Image 1 is nine chronological FULL frames in a 3x3 grid, left to right then top
+to bottom. Image 2 is the matching HUD close-up sheet. Timestamps are drawn on
+the full frames.
+
+This is a second pass to confirm and trim, not to demand that every frame be
+exciting. The candidate may contain a few seconds of filler around the real
+event. Treat the scan-pass reason as strong evidence unless the frames clearly
+contradict it. If the reason quotes a HUD event or a human line, keep=true unless
+you can point to a concrete contradiction. If you cannot identify a specific
+contradiction, keep the candidate and trim its edges.
+- For gameplay, the concrete event can happen in any frame, not all of them.
+- For social/party footage, keep the quoted human interaction; trim obvious
+  silence around it. Ordinary visuals do not cancel a real quoted joke,
+  trolling, rage, or reaction.
+- For competitive gameplay, keep a non-HUD interaction only when the quote is
+  clearly a joke, troll, rage, or reaction and the scan reason includes
+  laughter or strong excitement. Profanity or an angry callout alone is filler.
+- Start just before the first meaningful word/action and end just after the
+  payoff. Never cut a sentence in half.
+- Set keep=false only when the candidate is clearly filler, a menu, traversal,
+  or a false claim with no visible/verbal evidence.
+Return JSON only. Start and end must be numbers within the candidate:
+{{"keep": true|false, "start": {clip.start:.2f}, "end": {clip.end:.2f}, "score": 0.0, "summary": "one short sentence", "evidence": "the concrete proof or the contradiction"}}"""
+
+
+def _refine_clip(
+    video: Path,
+    clip: ClipWindow,
+    lines: list[TranscriptLine],
+    duration: float,
+    model: str,
+    bins: FFmpegBinaries,
+    game: str,
+    min_clip: float,
+) -> ClipWindow | None:
+    key = _cache_key(
+        video,
+        f"refine:{clip.start:.2f}-{clip.end:.2f}:{game.lower()}",
+        model,
+    )
+    transcript = _window_transcript(lines, clip.start, clip.end)
+    if key.is_file():
+        try:
+            verdict = json.loads(key.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            verdict = None
+    else:
+        verdict = None
+    if verdict is None:
+        with tempfile.TemporaryDirectory(prefix="clipper_story_") as raw:
+            sheet = Path(raw) / "refine.jpg"
+            full_sheet, hud_sheet = _contact_sheet(
+                video, clip.start, clip.end, sheet, bins
+            )
+            import base64
+
+            verdict = _ollama_chat(
+                model,
+                _refine_prompt(clip, game, transcript),
+                images=[
+                    base64.b64encode(full_sheet.read_bytes()).decode("ascii"),
+                    base64.b64encode(hud_sheet.read_bytes()).decode("ascii"),
+                ],
+                num_predict=320,
+                num_ctx=8192,
+            )
+        try:
+            key.write_text(json.dumps(verdict, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+    keep = verdict.get("keep")
+    if isinstance(keep, str):
+        keep = keep.lower() == "true"
+    summary = str(verdict.get("summary") or "").strip()
+    evidence = str(verdict.get("evidence") or "").strip()
+    if not keep:
+        # The scan pass already verified social candidates with a quoted human
+        # line or signal agreement. Do not let the vision-only refine pass erase
+        # a real conversation just because the visuals look ordinary.
+        social_reason = (
+            _is_social_game(game) or _banter_friendly_game(game)
+        ) and clip.reason.lower().startswith(
+            ("ai banter", "ai funny", "ai rage", "ai reaction", "ai hype")
+        )
+        hud_verified = "(hud)" in clip.reason.lower()
+        if social_reason or hud_verified:
+            return clip
+        # A malformed "false" with no explanation must not delete a candidate
+        # that the scan pass already verified with HUD evidence. Unverified
+        # banter in a competitive game does not get that protection.
+        if not summary and not evidence:
+            return clip if hud_verified else None
+        return None
+    try:
+        start = max(clip.start, min(clip.end, float(verdict.get("start", clip.start))))
+        end = max(clip.start, min(clip.end, float(verdict.get("end", clip.end))))
+    except (TypeError, ValueError):
+        start, end = clip.start, clip.end
+    if end - start < min_clip:
+        center = (clip.start + clip.end) / 2.0
+        start = max(clip.start, center - min_clip / 2.0)
+        end = min(clip.end, start + min_clip)
+    if end <= start:
+        return clip
+    try:
+        raw_score = float(verdict.get("score", clip.score))
+    except (TypeError, ValueError):
+        raw_score = clip.score
+    # The scan pass already proved this candidate. A second pass may add
+    # confidence, but it must not erase it with a placeholder 0.0.
+    score = max(clip.score, min(0.99, raw_score))
+    concrete = (
+        '"' in clip.reason
+        or "heard:" in clip.reason.lower()
+        or "(hud)" in clip.reason.lower()
+    )
+    reason = clip.reason if concrete or not summary else f"AI final: {summary}"
+    return replace(
+        clip,
+        start=max(0.0, start),
+        end=min(duration, end),
+        peak=min(duration - 0.05, max(0.0, (start + end) / 2.0)),
+        score=max(0.05, min(0.99, score)),
+        reason=reason[:180],
+    )
+
+
+def _snap_to_transcript(
+    clip: ClipWindow,
+    lines: list[TranscriptLine],
+    duration: float,
+    min_clip: float,
+) -> ClipWindow:
+    start, end = clip.start, clip.end
+    for line in lines:
+        if line.start < start < line.end and start - line.start <= 2.0:
+            start = max(0.0, line.start - 0.15)
+        if line.start < end < line.end and line.end - end <= 2.0:
+            end = min(duration, line.end + 0.25)
+    if end - start < min_clip:
+        return clip
+    return replace(
+        clip,
+        start=start,
+        end=end,
+        peak=min(duration - 0.05, max(0.0, min(max(clip.peak, start), end))),
+    )
+
+
+def _is_social_game(game: str) -> bool:
+    return game.strip().lower() in {"social", "desktop", "omegle", "ome.tv"}
+
+
+def _banter_friendly_game(game: str) -> bool:
+    key = game.strip().lower()
+    if not key or key in {"auto", "generic"}:
+        return False
+    return any(name in key for name in BANTER_FRIENDLY_GAMES)
+
+
+def _heard_reason(original: str, reading: AudioReading) -> str:
+    heard = reading.reason.strip() or "human reaction"
+    if heard.lower() in original.lower():
+        return original
+    return f"{original} | heard: {heard}"[:180]
+
+
+def _apply_audio_reading(
+    clip: ClipWindow,
+    reading: AudioReading,
+    lines: list[TranscriptLine],
+    duration: float,
+    game: str,
+    min_clip: float,
+) -> ClipWindow:
+    """Use Omni affect evidence to boost, tighten, or extend a candidate.
+
+    The Omni model never invents a new candidate and never deletes a clip that
+    already has HUD or transcript proof. It can only add evidence and adjust
+    the boundaries around the reaction it actually heard.
+    """
+
+    social = _is_social_game(game) or _banter_friendly_game(game)
+    hud_verified = "(hud)" in clip.reason.lower()
+    strong = reading.trusted and (
+        reading.score >= 0.50
+        or (reading.laughter and reading.score >= 0.35)
+    )
+    if social and strong:
+        trusted_chunks = [
+            chunk
+            for chunk in reading.chunks
+            if chunk.trusted and chunk.score >= 0.45
+        ]
+        target = 26.0 if len(trusted_chunks) >= 3 else 20.0
+        target = min(clip.duration, max(min_clip, target))
+        center = reading.peak
+        start = max(clip.start, center - target / 2.0)
+        end = min(clip.end, start + target)
+        if end - start < target:
+            start = max(clip.start, end - target)
+        if end - start >= min_clip:
+            clipped = replace(
+                clip,
+                start=max(0.0, start),
+                end=min(duration, end),
+                peak=min(duration - 0.05, max(0.0, center)),
+                score=min(0.99, clip.score + (0.10 if reading.score >= 0.7 else 0.06)),
+                reason=_heard_reason(clip.reason, reading),
+            )
+            return _snap_to_transcript(clipped, lines, duration, min_clip)
+        return replace(
+            clip,
+            score=min(0.99, clip.score + 0.04),
+            reason=_heard_reason(clip.reason, reading),
+        )
+
+    if (
+        not social
+        and strong
+        and (reading.laughter or hud_verified)
+        and reading.tone in {
+            "angry", "excited", "rage", "mocking", "sarcastic", "playful", ""
+        }
+    ):
+        # A goal or round win is better when the real reaction after it is
+        # included. Never stretch a gameplay clip past 30 seconds.
+        end = min(
+            duration,
+            max(clip.end, reading.peak + 6.0),
+            clip.start + 30.0,
+        )
+        return replace(
+            clip,
+            end=end,
+            peak=min(duration - 0.05, max(clip.peak, reading.peak)),
+            score=min(0.99, clip.score + 0.05),
+            reason=_heard_reason(clip.reason, reading),
+        )
+
+    if (
+        not hud_verified
+        and reading.trusted
+        and reading.score < 0.20
+        and clip.score < 0.90
+    ):
+        # Quiet, ordinary conversation should not outrank a real reaction.
+        return replace(clip, score=max(0.05, clip.score - 0.04))
+    return clip
+
+
 def _merge(clips: list[ClipWindow]) -> list[ClipWindow]:
     clips.sort(key=lambda clip: clip.start)
     merged: list[ClipWindow] = []
@@ -824,11 +1139,33 @@ def direct_clip(
     progress: ProgressFn | None = None,
     jerk: ScoreTrack | None = None,
 ) -> tuple[list[ClipWindow], list[str]]:
-    if not model_available(settings.ai_model):
-        raise AIError(
-            f"Local vision model {settings.ai_model!r} is not available. "
-            f"Run: ollama pull {settings.ai_model}"
-        )
+    runtime = configure_runtime(settings)
+    if runtime != "llamacpp":
+        spec = model_spec(settings.ai_model)
+        if spec is not None:
+            raise AIError(
+                f"{spec.name} is not downloaded for the bundled runtime. "
+                "Open AI Setup to install it."
+            )
+        if not model_available(settings.ai_model):
+            raise AIError(
+                f"Local vision model {settings.ai_model!r} is not available. "
+                f"Run: ollama pull {settings.ai_model}"
+            )
+    ears_model = settings.ai_ears_model
+    ears_spec = model_spec(ears_model)
+    if ears_spec is not None and not ears_spec.audio:
+        ears_model = LFM3_OMNI_2B.id
+    elif runtime_name() == "llamacpp" and ears_spec is None:
+        ears_model = settings.ai_model
+    if (
+        runtime_name() == "ollama"
+        and settings.ai_ears
+        and settings.ai_ears_model != settings.ai_model
+    ):
+        # A previous run may have left the Omni model resident. Free that VRAM
+        # before the visual scan so the vision model does not spill to CPU.
+        unload_model(settings.ai_ears_model)
 
     def wait_for_game(stage: str) -> None:
         guard = settings.game_guard
@@ -838,6 +1175,7 @@ def direct_clip(
         if not game:
             return
         unload_model(settings.ai_model)
+        stop_runtime()
         if progress:
             progress(0.86, f"AI paused · {game} is running")
         while guard():
@@ -846,6 +1184,10 @@ def direct_clip(
                 progress(0.86, f"AI paused · {game} is running")
         if progress:
             progress(0.86, f"AI resumed · {stage}")
+        try:
+            configure_runtime(settings)
+        except AIError:
+            pass
 
     wait_for_game("transcribing")
 
@@ -872,14 +1214,20 @@ def direct_clip(
         warnings.append("AI director: YAMNet unavailable; laughter tags are off.")
 
     size = _window_size(duration)
+    step = max(5.0, size * WINDOW_OVERLAP)
+    starts: list[tuple[float, float]] = []
+    cursor = 0.0
+    while cursor < duration - 0.5:
+        end = min(duration, cursor + size)
+        if end - cursor >= 1.0:
+            starts.append((cursor, end))
+        if end >= duration:
+            break
+        cursor += step
     windows: list[StoryWindow] = []
     failed_windows = 0
-    count = max(1, int(np.ceil(duration / size)))
-    for index in range(count):
-        start = index * size
-        end = min(duration, start + size)
-        if end - start < 1.0:
-            continue
+    count = max(1, len(starts))
+    for index, (start, end) in enumerate(starts):
         window = StoryWindow(
             start=start,
             end=end,
@@ -890,7 +1238,7 @@ def direct_clip(
         )
         if progress:
             progress(
-                0.87 + 0.08 * index / max(1, count),
+                0.87 + 0.07 * index / max(1, count),
                 f"AI director: watching {index + 1}/{count}",
             )
         wait_for_game(f"watching {index + 1}/{count}")
@@ -932,7 +1280,106 @@ def direct_clip(
     )
     if not clips:
         warnings.append("AI director found no story beats in this clip.")
-    clips = [clip for clip in _merge(clips) if clip.duration >= settings.min_clip]
+    clips = _merge(clips)
+    if clips and settings.ai_ears:
+        limit = min(len(clips), 12)
+        heard_clips: list[ClipWindow] = []
+        failed_ears = 0
+        for index, clip in enumerate(clips[:limit]):
+            if progress:
+                progress(
+                    0.94 + 0.015 * index / max(1, limit),
+                    f"AI ears: {index + 1}/{limit}",
+                )
+            try:
+                reading = listen_clip(
+                    video,
+                    wav,
+                    clip.start,
+                    clip.end,
+                    [(line.start, line.end, line.text) for line in lines],
+                    audio=audio,
+                    model=ears_model,
+                    bins=bins,
+                )
+            except (AIError, FFmpegError, OSError):
+                reading = None
+                failed_ears += 1
+            if reading is not None:
+                clip = _apply_audio_reading(
+                    clip,
+                    reading,
+                    lines,
+                    duration,
+                    settings.ai_game,
+                    settings.min_clip,
+                )
+            heard_clips.append(clip)
+        clips = heard_clips + clips[limit:]
+        if (
+            runtime_name() == "ollama"
+            and settings.ai_ears_model != settings.ai_model
+        ):
+            # Give the final visual edit the whole GPU again. Without this the
+            # Omni model and the vision model fight over 10 GB of VRAM and the
+            # final review can time out.
+            unload_model(settings.ai_ears_model)
+        if failed_ears:
+            warnings.append(
+                f"AI ears missed {failed_ears} clip(s); kept the visual evidence."
+            )
+    if clips:
+        refined: list[ClipWindow] = []
+        failed_refines = 0
+        last_refine_error = ""
+        for index, clip in enumerate(clips):
+            if progress:
+                progress(
+                    0.955 + 0.035 * index / max(1, len(clips)),
+                    f"AI director: final edit {index + 1}/{len(clips)}",
+                )
+            wait_for_game(f"final edit {index + 1}/{len(clips)}")
+            try:
+                final = _refine_clip(
+                    video,
+                    clip,
+                    lines,
+                    duration,
+                    settings.ai_model,
+                    bins,
+                    settings.ai_game,
+                    settings.min_clip,
+                )
+            except (AIError, FFmpegError, OSError) as exc:
+                failed_refines += 1
+                last_refine_error = str(exc).strip()[:160]
+                final = clip
+            if final is not None:
+                refined.append(
+                    _snap_to_transcript(
+                        final, lines, duration, settings.min_clip
+                    )
+                )
+        if failed_refines:
+            detail = f" ({last_refine_error})" if last_refine_error else ""
+            warnings.append(
+                f"AI director kept {failed_refines} clip(s) without final review{detail}."
+            )
+        clips = _merge(refined)
+        if not (_is_social_game(settings.ai_game) or _banter_friendly_game(settings.ai_game)):
+            # In a competitive game, profanity or an angry callout is not a
+            # highlight by itself. Keep it only with HUD proof or a trusted
+            # Omni reaction.
+            clips = [
+                clip
+                for clip in clips
+                if "(hud)" in clip.reason.lower()
+                or "heard:" in clip.reason.lower()
+                or not clip.reason.lower().startswith(
+                    ("ai banter", "ai funny", "ai rage", "ai reaction", "ai hype")
+                )
+            ]
+    clips = [clip for clip in clips if clip.duration >= settings.min_clip]
     clips.sort(key=lambda clip: clip.score, reverse=True)
     clips = clips[: settings.max_clips]
     clips.sort(key=lambda clip: clip.start)
