@@ -115,3 +115,15 @@ def test_close_event_stops_previews_workers_and_ffmpeg() -> None:
     assert "terminate_active_processes" in source
     assert "cleanup_download" in source
     assert "self._update_shutdown" in source
+
+def test_gui_exposes_grouped_models_and_intentional_empty_states() -> None:
+    source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert "_add_combo_header" in source
+    assert '"Bundled"' in source
+    assert '"Ollama"' in source
+    assert '"Other Ollama models"' in source
+    assert "No highlights yet" in source
+    assert "No clip selected" in source
+    assert "partially ready" in source
+    assert "Quick start" in source
+    assert "slower: every video pays" in source

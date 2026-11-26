@@ -64,7 +64,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
@@ -171,16 +170,56 @@ QWidget {
 QMainWindow { background: #1a1a1a; }
 QLabel { background: transparent; }
 QFrame#Panel {
-    background: #222222;
-    border: 1px solid #333333;
+    background: #202020;
+    border: 1px solid #303030;
+    border-radius: 10px;
+}
+QFrame#Group {
+    background: #1d1d1d;
+    border: 1px solid #2c2c2c;
     border-radius: 8px;
 }
-QFrame#DropZone {
-    background: #202020;
-    border: 1px dashed #484848;
-    border-radius: 7px;
+QFrame#Footer {
+    background: #1e1e1e;
+    border-top: 1px solid #2e2e2e;
 }
-QFrame#DropZone:hover { border-color: #2f9bff; }
+QLabel#StatusPill {
+    color: #b8b8bd;
+    background: #242424;
+    border: 1px solid #343434;
+    border-radius: 9px;
+    padding: 3px 8px;
+    font-size: 10px;
+}
+QLabel#StatusPill[state="error"] {
+    color: #e07a7a;
+    border-color: #573030;
+    background: #2a2020;
+}
+QLabel#VersionBadge {
+    color: #a8a8ae;
+    background: #262626;
+    border: 1px solid #363636;
+    border-radius: 8px;
+    padding: 1px 6px;
+    font-size: 10px;
+}
+QLabel#Subhead {
+    color: #f2f2f4;
+    font-size: 13px;
+    font-weight: 600;
+}
+QLabel#FieldLabel { color: #c6c6cb; font-size: 12px; }
+QLabel#EmptyState { color: #8f8f96; font-size: 12px; }
+QFrame#DropZone {
+    background: #1d1d1d;
+    border: 1px dashed #474747;
+    border-radius: 8px;
+}
+QFrame#DropZone:hover, QFrame#DropZone[dragActive="true"] {
+    border: 1px solid #2f9bff;
+    background: #1d2630;
+}
 QLabel#Brand {
     font-size: 18px;
     font-weight: 700;
@@ -191,34 +230,37 @@ QLabel#BrandSub {
     font-size: 10px;
 }
 QLabel#Section {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
-    color: #f7f7f7;
+    color: #f4f4f6;
 }
-QLabel#Muted { color: #9e9e9e; font-size: 11px; }
-QLabel#Status { color: #9e9e9e; font-size: 11px; }
-QLabel#Summary { color: #9e9e9e; font-size: 11px; }
+QLabel#Muted { color: #9a9aa2; font-size: 11px; }
+QLabel#Status { color: #a0a0a8; font-size: 11px; }
+QLabel#Summary { color: #a0a0a8; font-size: 11px; }
 QFrame#PreviewPanel {
-    background: #202020;
-    border: 1px solid #333333;
-    border-radius: 7px;
+    background: #171717;
+    border: 1px solid #303030;
+    border-radius: 8px;
 }
 QLabel#Preview {
-    background: #202020;
-    border: 1px solid #333333;
+    background: #171717;
+    border: none;
     border-radius: 7px;
-    color: #777777;
+    color: #8f8f96;
+    padding: 20px;
 }
 QPushButton {
     background: #2b2b2b;
     border: 1px solid #3b3b3b;
     border-radius: 7px;
     padding: 7px 12px;
-    color: #eeeeee;
+    min-height: 20px;
+    color: #eeeeF1;
     font-weight: 500;
 }
 QPushButton:hover { background: #333333; border-color: #555555; }
 QPushButton:pressed { background: #262626; }
+QPushButton:focus { border-color: #2f9bff; }
 QPushButton:disabled { color: #666666; background: #232323; border-color: #303030; }
 QPushButton#Primary {
     background: #2f9bff;
@@ -229,7 +271,11 @@ QPushButton#Primary {
 }
 QPushButton#Primary:hover { background: #55adff; }
 QPushButton#Primary:pressed { background: #1f83dd; }
-QPushButton#Primary:disabled { background: #2a3a48; color: #77838c; }
+QPushButton#Primary:disabled {
+    background: #22303c;
+    color: #6f7d88;
+    border: 1px solid #2f3f4c;
+}
 QPushButton#Accent {
     background: #2f9bff;
     color: #0b0b0b;
@@ -252,6 +298,7 @@ QPushButton#Preset:checked {
     font-weight: 600;
 }
 QPushButton#Mono { font-size: 11px; padding: 5px 9px; }
+QPushButton#Mono:checked { background: #2a3a48; border-color: #2f6f9e; color: #dceaff; }
 QWidget#TitleBar {
     background: #1a1a1a;
     border-bottom: 1px solid #2a2a2a;
@@ -282,18 +329,18 @@ QPushButton#IconButton {
     padding: 0;
 }
 QPushButton#IconButton:hover { background: #333333; color: #ffffff; }
-QLabel#ToggleLabel { font-size: 13px; color: #f2f2f2; }
-QLabel#ToggleState { font-size: 11px; color: #d0d0d0; min-width: 18px; }
+QLabel#ToggleLabel { font-size: 12px; color: #f2f2f2; }
+QLabel#ToggleState { font-size: 11px; color: #b8b8be; min-width: 22px; }
 QLabel#Help {
     color: #a8a8a8;
-    border: 1px solid #4a4a4a;
-    border-radius: 7px;
-    min-width: 14px;
-    max-width: 14px;
-    min-height: 14px;
-    max-height: 14px;
-    font-size: 9px;
-    background: #2b2b2b;
+    border: 1px solid #454545;
+    border-radius: 9px;
+    min-width: 18px;
+    max-width: 18px;
+    min-height: 18px;
+    max-height: 18px;
+    font-size: 10px;
+    background: #262626;
 }
 QLabel#Help:hover { color: #ffffff; border-color: #2f9bff; background: #333333; }
 QFrame#UpdateBar {
@@ -312,69 +359,84 @@ QLabel#AiSetupTitle { color: #ffffff; font-weight: 600; font-size: 12px; }
 QFrame#UpdateBar QLabel { color: #d8d8d8; font-size: 12px; }
 QFrame#UpdateBar QPushButton { padding: 5px 10px; }
 QLineEdit, QComboBox, QSpinBox {
-    background: #2b2b2b;
-    border: 1px solid #3b3b3b;
+    background: #292929;
+    border: 1px solid #3a3a3a;
     border-radius: 6px;
-    padding: 6px 8px;
-    color: #f2f2f2;
+    padding: 6px 9px;
+    min-height: 20px;
+    color: #f2f2f4;
     selection-background-color: #2f9bff;
     selection-color: #0b0b0b;
 }
+QLineEdit:hover, QComboBox:hover, QSpinBox:hover { border-color: #4a4a4a; }
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: #2f9bff; }
+QComboBox::drop-down { border: 0; width: 24px; }
 QComboBox QAbstractItemView {
-    background: #2b2b2b;
-    border: 1px solid #4a4a4a;
+    background: #292929;
+    border: 1px solid #454545;
+    border-radius: 6px;
     selection-background-color: #2f9bff;
     selection-color: #0b0b0b;
     outline: 0;
+    padding: 4px;
+}
+QComboBox QAbstractItemView::item {
+    min-height: 24px;
+    padding: 4px 8px;
+}
+QComboBox QAbstractItemView::item:disabled {
+    color: #8f8f98;
+    font-weight: 600;
 }
 QGroupBox {
-    background: #222222;
-    border: 1px solid #333333;
+    background: #1e1e1e;
+    border: 1px solid #303030;
     border-radius: 8px;
-    margin-top: 14px;
-    padding: 16px 12px 10px 12px;
+    margin-top: 16px;
+    padding: 18px 12px 12px 12px;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     left: 14px;
     padding: 0 4px;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 600;
-    color: #f7f7f7;
+    color: #eeeeF1;
 }
-QSlider::groove:horizontal { height: 4px; background: #3a3a3a; border-radius: 2px; }
+QSlider::groove:horizontal { height: 4px; background: #383838; border-radius: 2px; }
 QSlider::handle:horizontal {
-    width: 14px; margin: -6px 0; border-radius: 7px;
-    background: #f2f2f2;
+    width: 16px; margin: -6px 0; border-radius: 8px;
+    background: #f4f4f6;
 }
 QSlider::handle:horizontal:hover { background: #ffffff; }
 QSlider::sub-page:horizontal { background: #2f9bff; border-radius: 2px; }
 QProgressBar {
-    background: #2b2b2b;
-    border: none;
-    border-radius: 3px;
+    background: #292929;
+    border: 1px solid #353535;
+    border-radius: 5px;
     text-align: center;
-    color: #b8b8b8;
-    height: 12px;
-    font-size: 9px;
+    color: #c8c8ce;
+    height: 16px;
+    font-size: 10px;
 }
-QProgressBar::chunk { background: #2f9bff; border-radius: 3px; }
+QProgressBar::chunk { background: #2f9bff; border-radius: 4px; }
 QTreeWidget {
-    background: #202020;
-    border: 1px solid #333333;
-    border-radius: 7px;
-    alternate-background-color: #232323;
+    background: #1d1d1d;
+    border: 1px solid #303030;
+    border-radius: 8px;
+    alternate-background-color: #202020;
     outline: 0;
 }
-QTreeWidget::item { padding: 5px 4px; border: none; }
-QTreeWidget::item:selected { background: #2f2f2f; color: #ffffff; }
+QTreeWidget::item { padding: 7px 6px; border: none; }
+QTreeWidget::item:hover { background: #252525; }
+QTreeWidget::item:selected { background: #26394d; color: #ffffff; }
+QTreeWidget::indicator { width: 15px; height: 15px; }
 QHeaderView::section {
     background: #242424;
-    color: #9e9e9e;
+    color: #a4a4ac;
     border: 0;
     border-bottom: 1px solid #333333;
-    padding: 7px 8px;
+    padding: 8px;
     font-size: 10px;
     font-weight: 600;
 }
@@ -386,9 +448,9 @@ QListWidget {
     outline: 0;
 }
 QScrollArea { border: none; background: transparent; }
-QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }
-QScrollBar::handle:vertical { background: #3c3c3c; border-radius: 4px; min-height: 24px; }
-QScrollBar::handle:vertical:hover { background: #4a4a4a; }
+QScrollBar:vertical { background: transparent; width: 10px; margin: 2px; }
+QScrollBar::handle:vertical { background: #474747; border-radius: 4px; min-height: 28px; }
+QScrollBar::handle:vertical:hover { background: #5a5a5a; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar:horizontal { background: transparent; height: 8px; margin: 2px; }
 QScrollBar::handle:horizontal { background: #3c3c3c; border-radius: 4px; min-width: 24px; }
@@ -741,7 +803,9 @@ class InlineClipPreview(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("PreviewPanel")
-        self.setFixedHeight(320)
+        self.setMinimumHeight(180)
+        self.setMaximumHeight(300)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._video_path = ""
         self._start_ms = 0
         self._end_ms = 0
@@ -758,14 +822,16 @@ class InlineClipPreview(QFrame):
         layout.setSpacing(0)
 
         self.stack = QStackedWidget()
-        self.poster = ClickablePreview("Select a clip to preview")
+        self.poster = ClickablePreview()
         self.poster.setObjectName("Preview")
+        self.poster.setTextFormat(Qt.RichText)
         self.poster.setAlignment(Qt.AlignCenter)
         self.poster.setCursor(Qt.PointingHandCursor)
-        self.poster.setToolTip("Click Play to watch this clip")
+        self.poster.setToolTip("Select a highlight, then click Play")
         self.poster.clicked.connect(self.toggle_play)
+        self.poster.setText(self._empty_html())
         self.video = QVideoWidget()
-        self.video.setMinimumHeight(220)
+        self.video.setMinimumHeight(140)
         self.stack.addWidget(self.poster)
         self.stack.addWidget(self.video)
         layout.addWidget(self.stack, 1)
@@ -774,30 +840,36 @@ class InlineClipPreview(QFrame):
         controls.setContentsMargins(8, 5, 8, 7)
         controls.setSpacing(6)
         self.play_btn = QPushButton("Play")
-        self.play_btn.setFixedWidth(70)
+        self.play_btn.setFixedWidth(64)
+        self.play_btn.setToolTip("Play or pause the selected clip")
         self.play_btn.setEnabled(False)
         self.play_btn.clicked.connect(self.toggle_play)
         controls.addWidget(self.play_btn)
         back_btn = QPushButton("-5s")
-        back_btn.setFixedWidth(52)
+        back_btn.setFixedWidth(46)
+        back_btn.setToolTip("Jump back five seconds")
         back_btn.clicked.connect(lambda: self.seek_relative(-5000))
         controls.addWidget(back_btn)
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(0, 1)
         self.slider.setEnabled(False)
+        self.slider.setToolTip("Seek within the selected clip")
         self.slider.sliderPressed.connect(self._slider_pressed)
         self.slider.sliderReleased.connect(self._slider_released)
         self.slider.sliderMoved.connect(self._slider_moved)
         controls.addWidget(self.slider, 1)
         ahead_btn = QPushButton("+5s")
-        ahead_btn.setFixedWidth(52)
+        ahead_btn.setFixedWidth(46)
+        ahead_btn.setToolTip("Jump forward five seconds")
         ahead_btn.clicked.connect(lambda: self.seek_relative(5000))
         controls.addWidget(ahead_btn)
         self.time_label = QLabel("0:00 / 0:00")
         self.time_label.setObjectName("PreviewTime")
-        self.time_label.setMinimumWidth(88)
+        self.time_label.setMinimumWidth(84)
+        self.time_label.setAlignment(Qt.AlignCenter)
         controls.addWidget(self.time_label)
         self.open_btn = QPushButton("Open")
+        self.open_btn.setFixedWidth(60)
         self.open_btn.setToolTip("Open the source video in the default player")
         self.open_btn.setEnabled(False)
         self.open_btn.clicked.connect(
@@ -821,6 +893,16 @@ class InlineClipPreview(QFrame):
         self.player.playbackStateChanged.connect(self._state_changed)
         self.player.mediaStatusChanged.connect(self._media_status)
         self.player.errorOccurred.connect(self._player_error)
+
+    @staticmethod
+    def _empty_html() -> str:
+        return (
+            "<div style='text-align:center;'>"
+            "<div style='font-size:14px; font-weight:600; color:#c8c8ce;'>"
+            "No clip selected</div>"
+            "<div style='font-size:11px; color:#8f8f96; margin-top:5px;'>"
+            "Choose a highlight above to preview it.</div></div>"
+        )
 
     def load(
         self,
@@ -846,7 +928,13 @@ class InlineClipPreview(QFrame):
         self.stack.setCurrentWidget(self.poster)
         if self._poster_source.isNull():
             self.poster.clear()
-            self.poster.setText("Press Play to preview this clip")
+            self.poster.setText(
+                "<div style='text-align:center;'>"
+                "<div style='font-size:14px; font-weight:600; color:#c8c8ce;'>"
+                "Ready to preview</div>"
+                "<div style='font-size:11px; color:#8f8f96; margin-top:5px;'>"
+                "Click Play to watch this clip.</div></div>"
+            )
         else:
             self.poster.setText("")
             self._scale_poster()
@@ -873,7 +961,7 @@ class InlineClipPreview(QFrame):
         self.player.setSource(QUrl())
         self.stack.setCurrentWidget(self.poster)
         self.poster.clear()
-        self.poster.setText("Select a clip to preview")
+        self.poster.setText(self._empty_html())
         self.error_label.hide()
         self.error_label.setText("")
         self.slider.setRange(0, 1)
@@ -1025,11 +1113,24 @@ class DropZone(QFrame):
             return
         super().mousePressEvent(event)
 
+    def _set_drag_active(self, active: bool) -> None:
+        if self.property("dragActive") == active:
+            return
+        self.setProperty("dragActive", active)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
     def dragEnterEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
+            self._set_drag_active(True)
             event.acceptProposedAction()
 
+    def dragLeaveEvent(self, event) -> None:  # noqa: N802
+        self._set_drag_active(False)
+        super().dragLeaveEvent(event)
+
     def dropEvent(self, event) -> None:  # noqa: N802
+        self._set_drag_active(False)
         for url in event.mimeData().urls():
             if url.isLocalFile():
                 self.pathDropped.emit(url.toLocalFile())
@@ -1068,7 +1169,7 @@ class HelpLabel(QLabel):
         super().__init__("?", parent)
         self.setObjectName("Help")
         self.setAlignment(Qt.AlignCenter)
-        self.setFixedSize(16, 16)
+        self.setFixedSize(18, 18)
         self.setCursor(Qt.WhatsThisCursor)
         self._tooltip_text = text
         self._show_timer = QTimer(self)
@@ -1591,7 +1692,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"Clipper {__version__}")
         self.setWindowFlag(Qt.FramelessWindowHint, True)
         self.resize(1280, 840)
-        self.setMinimumSize(1040, 720)
+        self.setMinimumSize(1120, 720)
         if VIDEO_ICON.is_file():
             self.setWindowIcon(QIcon(str(VIDEO_ICON)))
 
@@ -1712,11 +1813,13 @@ class MainWindow(QMainWindow):
         titlebar.setObjectName("TitleBar")
         header = QHBoxLayout(titlebar)
         header.setContentsMargins(18, 0, 0, 0)
-        header.setSpacing(10)
+        header.setSpacing(8)
         self._header_layout = header
         logo = QLabel()
         if VIDEO_ICON.is_file():
-            pix = QPixmap(str(VIDEO_ICON)).scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(str(VIDEO_ICON)).scaled(
+                36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
             logo.setPixmap(pix)
         header.addWidget(logo)
         brand_box = QVBoxLayout()
@@ -1726,7 +1829,7 @@ class MainWindow(QMainWindow):
         brand = QLabel("CLIPPER")
         brand.setObjectName("Brand")
         version_label = QLabel(f"v{__version__}")
-        version_label.setObjectName("BrandSub")
+        version_label.setObjectName("VersionBadge")
         brand_line.addWidget(brand)
         brand_line.addWidget(version_label)
         brand_line.addStretch(1)
@@ -1734,23 +1837,26 @@ class MainWindow(QMainWindow):
         header.addLayout(brand_box)
         header.addStretch(1)
         self.gpu_label = QLabel("nvenc / checking")
-        self.gpu_label.setObjectName("Status")
+        self.gpu_label.setObjectName("StatusPill")
         self.ffmpeg_label = QLabel("ffmpeg / checking")
-        self.ffmpeg_label.setObjectName("Status")
+        self.ffmpeg_label.setObjectName("StatusPill")
         header.addWidget(self.ffmpeg_label)
         header.addWidget(self.gpu_label)
         updates = QPushButton("Updates")
         updates.setObjectName("Mono")
+        updates.setFixedHeight(28)
         updates.setToolTip("Check GitHub for a newer Clipper release")
         updates.clicked.connect(lambda: self.check_updates(manual=True))
         header.addWidget(updates)
         github = QPushButton("GitHub ↗")
         github.setObjectName("Mono")
+        github.setFixedHeight(28)
+        github.setToolTip("Open the Clipper GitHub repository")
         github.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://github.com/hatermedia/clipper"))
         )
         header.addWidget(github)
-        header.addSpacing(6)
+        header.addSpacing(4)
 
         controls = QHBoxLayout()
         controls.setContentsMargins(0, 0, 0, 0)
@@ -1786,8 +1892,8 @@ class MainWindow(QMainWindow):
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(18, 0, 18, 16)
-        content_layout.setSpacing(12)
+        content_layout.setContentsMargins(18, 12, 18, 16)
+        content_layout.setSpacing(10)
         outer.addWidget(content, 1)
 
         self.update_bar = QFrame()
@@ -1814,8 +1920,8 @@ class MainWindow(QMainWindow):
         # ---------------- left controls ----------------
         left_panel = QFrame()
         left_panel.setObjectName("Panel")
-        left_panel.setMinimumWidth(420)
-        left_panel.setMaximumWidth(460)
+        left_panel.setMinimumWidth(510)
+        left_panel.setMaximumWidth(550)
         left_shell = QVBoxLayout(left_panel)
         left_shell.setContentsMargins(0, 0, 0, 0)
         left_shell.setSpacing(0)
@@ -1827,8 +1933,8 @@ class MainWindow(QMainWindow):
         left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         controls = QWidget()
         left = QVBoxLayout(controls)
-        left.setContentsMargins(16, 14, 16, 8)
-        left.setSpacing(7)
+        left.setContentsMargins(14, 16, 14, 8)
+        left.setSpacing(8)
 
         left.addWidget(self._section("Footage"))
         path_row = QHBoxLayout()
@@ -1836,7 +1942,9 @@ class MainWindow(QMainWindow):
         self.input_edit.setPlaceholderText("No folder or video selected")
         self.input_edit.setToolTip("Folder or video file to scan.")
         self.input_edit.editingFinished.connect(lambda: self.set_input(self.input_edit.text(), scan=False))
+        path_row.setSpacing(8)
         browse = QPushButton("Browse…")
+        browse.setFixedWidth(92)
         browse.setToolTip("Choose a folder of gameplay videos.")
         browse.clicked.connect(self.choose_input)
         path_row.addWidget(self.input_edit, 1)
@@ -1844,16 +1952,20 @@ class MainWindow(QMainWindow):
         left.addLayout(path_row)
 
         self.drop = DropZone()
-        self.drop.setFixedHeight(88)
+        self.drop.setFixedHeight(92)
         self.drop.pathDropped.connect(lambda p: self.set_input(p, scan=True))
         self.drop.clicked.connect(self.choose_video)
         left.addWidget(self.drop)
 
         row = QHBoxLayout()
+        row.setSpacing(8)
         self.recursive = ToggleRow("Include subfolders")
+        self.recursive.setToolTip("Include videos inside subfolders.")
         row.addWidget(self.recursive)
         row.addStretch(1)
         self.scan_btn = QPushButton("Scan")
+        self.scan_btn.setMinimumWidth(84)
+        self.scan_btn.setToolTip("Find supported videos in the selected folder.")
         self.scan_btn.clicked.connect(self.scan)
         row.addWidget(self.scan_btn)
         left.addLayout(row)
@@ -1864,16 +1976,18 @@ class MainWindow(QMainWindow):
         self.file_list.setVisible(False)
         left.addWidget(self.file_list)
 
-        left.addSpacing(6)
+        left.addSpacing(8)
         detection_header = QHBoxLayout()
         detection_header.addWidget(self._section("Detection"))
         detection_header.addStretch(1)
-        self.advanced_toggle = QPushButton("Advanced  ▾")
+        self.advanced_toggle = QPushButton("Advanced")
         self.advanced_toggle.setObjectName("Mono")
-        self.advanced_toggle.setFixedWidth(112)
+        self.advanced_toggle.setFixedWidth(104)
+        self.advanced_toggle.setIcon(QIcon(CHEVRON_DOWN_ICON))
+        self.advanced_toggle.setIconSize(QSize(12, 12))
         self.advanced_toggle.setCheckable(True)
         self.advanced_toggle.setToolTip(
-            "Max clips, sample rate, proxy size, CPU cap, pre/post-roll, and low-power mode."
+            "Max clips, sample rate, proxy size, CPU cap, and pre/post-roll."
         )
         self.advanced_toggle.toggled.connect(self._toggle_advanced)
         detection_header.addWidget(self.advanced_toggle)
@@ -1883,6 +1997,8 @@ class MainWindow(QMainWindow):
         sensitivity_row.addStretch(1)
         self.sensitivity_value = QLabel("50%")
         self.sensitivity_value.setObjectName("Status")
+        self.sensitivity_value.setMinimumWidth(36)
+        self.sensitivity_value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         sensitivity_row.addWidget(self.sensitivity_value)
         sensitivity_row.addWidget(
             self._help(
@@ -1898,6 +2014,7 @@ class MainWindow(QMainWindow):
         left.addWidget(self.sensitivity)
 
         presets = QHBoxLayout()
+        presets.setSpacing(6)
         self.preset_group = QButtonGroup(self)
         self.preset_group.setExclusive(True)
         self.preset_buttons: list[tuple[QPushButton, int]] = []
@@ -1909,6 +2026,8 @@ class MainWindow(QMainWindow):
             button = QPushButton(label)
             button.setCheckable(True)
             button.setObjectName("Preset")
+            button.setMinimumHeight(30)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             button.setToolTip(tip)
             button.clicked.connect(lambda _=False, v=value: self.sensitivity.setValue(v))
             self.preset_group.addButton(button)
@@ -1917,35 +2036,42 @@ class MainWindow(QMainWindow):
         left.addLayout(presets)
         self._sensitivity_changed(self.sensitivity.value())
 
+        ai_group = QFrame()
+        ai_group.setObjectName("Group")
+        ai_group_layout = QVBoxLayout(ai_group)
+        ai_group_layout.setContentsMargins(8, 8, 8, 8)
+        ai_group_layout.setSpacing(8)
+
         ai_row = QHBoxLayout()
         ai_title = QLabel("Local AI director")
-        ai_title.setObjectName("ToggleLabel")
+        ai_title.setObjectName("Subhead")
         self.ai_state = QLabel("checking")
         self.ai_state.setObjectName("ToggleState")
+        self.ai_state.setMinimumWidth(88)
+        ai_title.setToolTip(
+            "Every scan is edited by the local vision model. It transcribes the "
+            "clip with Whisper, watches the full clip in short windows, and keeps "
+            "funny interactions, banter, reactions, goals, and big plays. "
+            "A small Omni model listens for laughter, sarcasm, and tone. "
+            "It runs locally; nothing is uploaded."
+        )
         ai_row.addWidget(ai_title)
         ai_row.addWidget(self.ai_state)
-        ai_row.addWidget(
-            self._help(
-                "Every scan is edited by the local vision model. It transcribes the "
-                "clip with Whisper, watches the full clip in short windows, and keeps "
-                "funny interactions, banter, reactions, goals, and big plays. "
-                "A small Omni model listens for laughter, sarcasm, and tone. "
-                "It runs locally; nothing is uploaded."
-            )
-        )
         ai_row.addStretch(1)
-        left.addLayout(ai_row)
+        ai_group_layout.addLayout(ai_row)
 
         ai_controls = QGridLayout()
         ai_controls.setHorizontalSpacing(8)
-        ai_controls.setVerticalSpacing(3)
+        ai_controls.setVerticalSpacing(6)
         ai_controls.setColumnStretch(1, 1)
-        ai_controls.addWidget(QLabel("AI model"), 0, 0)
+        ai_label = QLabel("AI model")
+        ai_label.setObjectName("FieldLabel")
+        ai_controls.addWidget(ai_label, 0, 0)
         self.ai_model = QComboBox()
         self.ai_model.setSizeAdjustPolicy(
             QComboBox.AdjustToMinimumContentsLengthWithIcon
         )
-        self.ai_model.setMinimumContentsLength(14)
+        self.ai_model.setMinimumContentsLength(8)
         self.ai_model.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self._populate_ai_model_combo()
         self.ai_model.setEnabled(self.vlm_available or bool(self.bundled_models))
@@ -1963,6 +2089,7 @@ class MainWindow(QMainWindow):
         ai_controls.addWidget(self.ai_model, 0, 1)
         self.download_model_btn = QPushButton("Download")
         self.download_model_btn.setObjectName("Mono")
+        self.download_model_btn.setFixedWidth(76)
         self.download_model_btn.clicked.connect(self._download_selected_model)
         self.download_model_btn.hide()
         ai_controls.addWidget(self.download_model_btn, 0, 3)
@@ -1974,27 +2101,34 @@ class MainWindow(QMainWindow):
                 "separate and add laughter, sarcasm, and tone."
             ),
             0,
-            2,
+            4,
         )
-        left.addLayout(ai_controls)
+        ai_group_layout.addLayout(ai_controls)
 
         ears_controls = QGridLayout()
-        ears_controls.setHorizontalSpacing(8)
-        ears_controls.setVerticalSpacing(3)
+        ears_controls.setHorizontalSpacing(6)
+        ears_controls.setVerticalSpacing(6)
         ears_controls.setColumnStretch(1, 1)
-        ears_controls.addWidget(QLabel("Audio ears"), 0, 0)
+        ears_label = QLabel("Audio ears")
+        ears_label.setObjectName("FieldLabel")
+        ears_controls.addWidget(ears_label, 0, 0)
         self.ai_ears_combo = QComboBox()
         self.ai_ears_combo.setSizeAdjustPolicy(
             QComboBox.AdjustToMinimumContentsLengthWithIcon
         )
-        self.ai_ears_combo.setMinimumContentsLength(16)
+        self.ai_ears_combo.setMinimumContentsLength(8)
         self.ai_ears_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.ai_ears_combo.setToolTip(
+            "Optional Omni model that hears laughter, sarcasm, and tone."
+        )
         ears_controls.addWidget(self.ai_ears_combo, 0, 1)
         self.ai_ears_state = QLabel("")
         self.ai_ears_state.setObjectName("Muted")
+        self.ai_ears_state.setMinimumWidth(54)
         ears_controls.addWidget(self.ai_ears_state, 0, 2)
         self.install_ears_btn = QPushButton("Install")
         self.install_ears_btn.setObjectName("Mono")
+        self.install_ears_btn.setFixedWidth(76)
         self.install_ears_btn.clicked.connect(self._install_ears)
         self.install_ears_btn.setVisible(not model_ready(LFM3_OMNI_2B))
         ears_controls.addWidget(self.install_ears_btn, 0, 3)
@@ -2013,22 +2147,21 @@ class MainWindow(QMainWindow):
             "use different models. The vision model is unloaded while the "
             "audio ears run, then reloaded for the final edit. Significantly "
             "slower: every video pays for the model reloads. If both roles use "
-            "the same model, no swap is needed."
+            "the same model, no swap is needed. It also lowers analysis "
+            "threads and proxy resolution."
         )
-        ears_controls.addWidget(self.low_power, 1, 0, 1, 2)
-        ears_controls.addWidget(
-            self._help(
-                "Frees RAM and VRAM by swapping the vision and audio models "
-                "between passes, and lowers analysis threads and proxy "
-                "resolution. This is significantly slower because different "
-                "models are unloaded and reloaded for every video."
-            ),
-            1,
-            2,
-            1,
-            3,
+        self.game_guard = ToggleRow("Pause AI while gaming")
+        self.game_guard.setChecked(True)
+        self.game_guard.setToolTip(
+            "Pause AI and free VRAM/RAM while a game is running. The process "
+            "list is checked locally; analysis resumes when the game exits."
         )
-        left.addLayout(ears_controls)
+        power_row = QHBoxLayout()
+        power_row.setSpacing(8)
+        power_row.addWidget(self.low_power, 1)
+        power_row.addWidget(self.game_guard, 1)
+        ears_controls.addLayout(power_row, 1, 0, 1, 4)
+        ai_group_layout.addLayout(ears_controls)
         self.ai_ears_combo.currentIndexChanged.connect(self._ears_changed)
         self._populate_ears_combo()
 
@@ -2080,25 +2213,9 @@ class MainWindow(QMainWindow):
         self.ai_setup_progress.setFixedHeight(5)
         self.ai_setup_progress.hide()
         setup_layout.addWidget(self.ai_setup_progress)
-        left.addWidget(self.ai_setup)
+        ai_group_layout.addWidget(self.ai_setup)
+        left.addWidget(ai_group)
         self._update_ai_setup()
-
-        game_row = QHBoxLayout()
-        self.game_guard = ToggleRow("Pause AI while gaming", show_state=False)
-        self.game_guard.setChecked(True)
-        self.game_guard.setToolTip(
-            "Pause AI and free VRAM/RAM while a game is running."
-        )
-        game_row.addWidget(self.game_guard)
-        game_row.addWidget(
-            self._help(
-                "Uses the local process list.\n"
-                "Pauses analysis and unloads the vision and audio models while "
-                "a game runs."
-            )
-        )
-        game_row.addStretch(1)
-        left.addLayout(game_row)
 
         gpu_row = QHBoxLayout()
         self.gpu = ToggleRow("Use NVIDIA GPU (NVENC)")
@@ -2220,32 +2337,64 @@ class MainWindow(QMainWindow):
         )
         self.advanced.setVisible(False)
         left.addWidget(self.advanced)
+
         left.addStretch(1)
+        quick_title = QLabel("Quick start")
+        quick_title.setObjectName("Subhead")
+        left.addWidget(quick_title)
+        quick = QLabel(
+            "1  Drop a video or choose a folder.\n"
+            "2  Scan to build the clip list.\n"
+            "3  Preview a clip, then export the checked clips."
+        )
+        quick.setObjectName("Muted")
+        quick.setWordWrap(True)
+        left.addWidget(quick)
+        local_note = QLabel(
+            "Everything runs locally. Footage and models stay on this PC."
+        )
+        local_note.setObjectName("Muted")
+        local_note.setWordWrap(True)
+        left.addWidget(local_note)
 
         left_scroll.setWidget(controls)
         left_shell.addWidget(left_scroll, 1)
 
         footer = QFrame()
+        footer.setObjectName("Footer")
         footer_layout = QVBoxLayout(footer)
-        footer_layout.setContentsMargins(16, 8, 16, 16)
-        footer_layout.setSpacing(7)
+        footer_layout.setContentsMargins(16, 10, 16, 14)
+        footer_layout.setSpacing(8)
         self.analyze_btn = QPushButton("Detect highlights")
         self.analyze_btn.setObjectName("Primary")
+        self.analyze_btn.setMinimumHeight(38)
+        self.analyze_btn.setToolTip(
+            "Run the local AI director on the selected footage."
+        )
         self.analyze_btn.clicked.connect(self.analyze)
         footer_layout.addWidget(self.analyze_btn)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
+        self.progress.setTextVisible(True)
+        self.progress.setFormat("%p%")
+        self.progress.setMinimumHeight(16)
         footer_layout.addWidget(self.progress)
+        status_row = QHBoxLayout()
+        status_row.setSpacing(8)
         self.status = QLabel("ready")
         self.status.setObjectName("Status")
         self.status.setWordWrap(True)
-        footer_layout.addWidget(self.status)
+        status_row.addWidget(self.status, 1)
         self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setObjectName("Mono")
+        self.cancel_btn.setFixedWidth(76)
+        self.cancel_btn.setToolTip("Cancel the current scan or export.")
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.clicked.connect(self.cancel_current)
-        footer_layout.addWidget(self.cancel_btn)
+        status_row.addWidget(self.cancel_btn)
+        footer_layout.addLayout(status_row)
         left_shell.addWidget(footer)
 
         splitter.addWidget(left_panel)
@@ -2262,15 +2411,17 @@ class MainWindow(QMainWindow):
         results_header.addStretch(1)
         self.select_all_btn = QPushButton("Select all")
         self.select_all_btn.setObjectName("Mono")
+        self.select_all_btn.setToolTip("Check every detected clip for export.")
         self.select_all_btn.clicked.connect(lambda: self._set_all_checked(True))
         self.select_all_btn.hide()
         results_header.addWidget(self.select_all_btn)
         self.select_none_btn = QPushButton("None")
         self.select_none_btn.setObjectName("Mono")
+        self.select_none_btn.setToolTip("Uncheck every clip.")
         self.select_none_btn.clicked.connect(lambda: self._set_all_checked(False))
         self.select_none_btn.hide()
         results_header.addWidget(self.select_none_btn)
-        self.summary_label = QLabel("Nothing analyzed yet")
+        self.summary_label = QLabel("Ready to scan")
         self.summary_label.setObjectName("Summary")
         results_header.addWidget(self.summary_label)
         right.addLayout(results_header)
@@ -2291,28 +2442,68 @@ class MainWindow(QMainWindow):
         self.tree.setRootIsDecorated(False)
         self.tree.setIndentation(0)
         self.tree.setUniformRowHeights(True)
+        self.tree.setAnimated(False)
+        self.tree.setWordWrap(False)
+        self.tree.setTextElideMode(Qt.ElideRight)
+        self.tree.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tree.header().setSectionsMovable(False)
+        self.tree.header().setMinimumHeight(32)
+        self.tree.header().setMinimumSectionSize(36)
         self.tree.header().setSectionResizeMode(0, QHeaderView.Fixed)
-        self.tree.setColumnWidth(0, 92)
+        self.tree.setColumnWidth(0, 48)
         self.tree.header().setSectionResizeMode(1, QHeaderView.Interactive)
-        self.tree.setColumnWidth(1, 190)
+        self.tree.setColumnWidth(1, 160)
         self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(6, QHeaderView.Stretch)
+        header.setTextAlignment(2, Qt.AlignCenter)
+        header.setTextAlignment(3, Qt.AlignCenter)
+        header.setTextAlignment(4, Qt.AlignCenter)
         self.tree.currentItemChanged.connect(self._show_preview)
         self.tree.itemDoubleClicked.connect(self._tree_double_clicked)
         self.tree.itemChanged.connect(self._clip_check_changed)
-        right.addWidget(self.tree, 1)
+
+        table_wrap = QWidget()
+        table_grid = QGridLayout(table_wrap)
+        table_grid.setContentsMargins(0, 0, 0, 0)
+        table_grid.setSpacing(0)
+        table_grid.addWidget(self.tree, 0, 0)
+        self.empty_highlights = QLabel(
+            "<div style='text-align:center;'>"
+            "<div style='font-size:14px; font-weight:600; color:#c8c8ce;'>"
+            "No highlights yet</div>"
+            "<div style='font-size:11px; color:#8f8f96; margin-top:5px;'>"
+            "Run a scan to see clips here.<br>"
+            "Each result shows the source, timing, score, and why it was kept."
+            "</div></div>"
+        )
+        self.empty_highlights.setObjectName("EmptyState")
+        self.empty_highlights.setTextFormat(Qt.RichText)
+        self.empty_highlights.setAlignment(Qt.AlignCenter)
+        self.empty_highlights.setWordWrap(True)
+        self.empty_highlights.setAttribute(Qt.WA_TransparentForMouseEvents)
+        table_grid.addWidget(self.empty_highlights, 0, 0, Qt.AlignCenter)
+        right.addWidget(table_wrap, 1)
 
         self.preview_player = InlineClipPreview()
         right.addWidget(self.preview_player)
 
-        export_group = QGroupBox("Export")
-        export_layout = QGridLayout(export_group)
+        export_group = QFrame()
+        export_group.setObjectName("Group")
+        export_box = QVBoxLayout(export_group)
+        export_box.setContentsMargins(10, 8, 10, 8)
+        export_box.setSpacing(6)
+        export_title = QLabel("Export")
+        export_title.setObjectName("Subhead")
+        export_box.addWidget(export_title)
+        export_layout = QGridLayout()
         export_layout.setHorizontalSpacing(8)
-        export_layout.setVerticalSpacing(7)
+        export_layout.setVerticalSpacing(6)
+        export_layout.setColumnStretch(1, 1)
+        export_box.addLayout(export_layout)
         output_label = QHBoxLayout()
         output_label.setContentsMargins(0, 0, 0, 0)
         output_label.setSpacing(4)
@@ -2327,29 +2518,35 @@ class MainWindow(QMainWindow):
         self.output_edit.setToolTip("Folder where exported highlight files are written.")
         export_layout.addWidget(self.output_edit, 0, 1)
         out_browse = QPushButton("Browse…")
+        out_browse.setFixedWidth(92)
         out_browse.clicked.connect(self.choose_output)
         export_layout.addWidget(out_browse, 0, 2)
-        export_note = QLabel("Lossless cuts — original video and audio streams are copied.")
+        export_note = QLabel(
+            "Lossless cuts — original video and audio streams are copied."
+        )
         export_note.setObjectName("Muted")
         export_note.setWordWrap(True)
         export_note.setToolTip(
             "Clipper exports with stream copy, so the original video and audio are untouched."
         )
-        export_layout.addWidget(export_note, 1, 0, 1, 2)
+        export_layout.addWidget(export_note, 1, 0, 1, 3)
         export_actions = QHBoxLayout()
         export_actions.setSpacing(6)
+        export_actions.addStretch(1)
         self.export_all_btn = QPushButton("Export all")
+        self.export_all_btn.setMinimumWidth(92)
         self.export_all_btn.setToolTip("Export every detected clip.")
         self.export_all_btn.clicked.connect(lambda: self.export(selected_only=False))
         self.export_all_btn.setEnabled(False)
         export_actions.addWidget(self.export_all_btn)
         self.export_btn = QPushButton("Export selected")
         self.export_btn.setObjectName("Primary")
+        self.export_btn.setMinimumWidth(116)
         self.export_btn.setToolTip("Export only the checked clips.")
         self.export_btn.clicked.connect(lambda: self.export(selected_only=True))
         self.export_btn.setEnabled(False)
         export_actions.addWidget(self.export_btn)
-        export_layout.addLayout(export_actions, 1, 2)
+        export_layout.addLayout(export_actions, 2, 0, 1, 3)
         right.addWidget(export_group)
 
         export_footer = QHBoxLayout()
@@ -2361,13 +2558,14 @@ class MainWindow(QMainWindow):
         self.export_status.setWordWrap(True)
         export_footer.addWidget(self.export_status, 1)
         self.open_folder = QPushButton("Open folder")
+        self.open_folder.setToolTip("Open the folder containing exported clips.")
         self.open_folder.setEnabled(False)
         self.open_folder.clicked.connect(self.open_output)
         export_footer.addWidget(self.open_folder)
         right.addLayout(export_footer)
 
         splitter.addWidget(right_panel)
-        splitter.setSizes([430, 826])
+        splitter.setSizes([510, 770])
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
 
@@ -2375,6 +2573,11 @@ class MainWindow(QMainWindow):
         label = QLabel(text)
         label.setObjectName("Section")
         return label
+
+    def _update_highlights_empty(self) -> None:
+        self.empty_highlights.setVisible(
+            self.tree.topLevelItemCount() == 0
+        )
 
     def _select_ai_model(self, model: str | None) -> None:
         if not model:
@@ -2389,52 +2592,111 @@ class MainWindow(QMainWindow):
         value = self.ai_model.currentData()
         return str(value) if value else ""
 
+    def _add_combo_header(self, combo: QComboBox, text: str) -> None:
+        combo.addItem(text)
+        index = combo.count() - 1
+        item = combo.model().item(index)
+        if item is not None:
+            item.setFlags(Qt.NoItemFlags)
+            font = item.font()
+            font.setBold(True)
+            item.setFont(font)
+            item.setForeground(QColor("#8f8f98"))
+        combo.setItemData(index, None, Qt.UserRole)
+
+    def _first_combo_model(self, combo: QComboBox) -> int:
+        for index in range(combo.count()):
+            if combo.itemData(index) not in (None, ""):
+                return index
+        return -1
+
+    def _custom_ollama_models(self, vision: list[str]) -> list[str]:
+        known = {name.lower() for name in vision}
+        known.update(
+            {
+                "lfm3-omni",
+                "lfm3-omni:latest",
+                "lfm3-omni-2b",
+                "gemma4:12b",
+            }
+        )
+        custom = []
+        for name in self.installed_models.values():
+            key = name.lower()
+            if key in known or key.startswith("qwen2.5vl:3b"):
+                continue
+            custom.append(name)
+        return sorted(custom, key=str.lower)
+
     def _populate_ai_model_combo(self, preferred: str | None = None) -> None:
         selected = self._current_ai_model() or preferred or self.ai_default
         vision = sorted(self.ai_models, key=str.lower)
+        custom = self._custom_ollama_models(vision)
         self.ai_model.blockSignals(True)
         self.ai_model.clear()
-        for model in vision:
-            self.ai_model.addItem(model, model)
-        for spec in self.bundled_models:
-            ready = runtime_ready() and model_ready(spec)
-            size_gb = sum(item.size for item in spec.files) / 1e9
-            suffix = "" if ready else f" · download {size_gb:.1f} GB"
-            self.ai_model.addItem(
-                f"{spec.tier}: {spec.name}{suffix}", spec.id
-            )
-            index = self.ai_model.count() - 1
-            status = "Installed" if ready else f"Needs a {size_gb:.1f} GB download"
-            self.ai_model.setItemData(
-                index,
-                f"{spec.description}\n{status} · about "
-                f"{spec.vram_gb:.1f} GB VRAM.",
-                Qt.ToolTipRole,
-            )
-        for spec in MODELS:
-            if spec.engine != "external":
-                continue
-            self.ai_model.addItem(
-                f"{spec.tier}: {spec.name} · external", spec.id
-            )
-            index = self.ai_model.count() - 1
-            self.ai_model.setItemData(
-                index,
-                spec.description,
-                Qt.ToolTipRole,
-            )
-            item = self.ai_model.model().item(index)
-            if item is not None:
-                item.setEnabled(False)
-        if not vision and not self.bundled_models:
+        if self.bundled_models:
+            self._add_combo_header(self.ai_model, "Bundled")
+            for spec in self.bundled_models:
+                ready = runtime_ready() and model_ready(spec)
+                size_gb = sum(item.size for item in spec.files) / 1e9
+                suffix = "" if ready else f" · download {size_gb:.1f} GB"
+                self.ai_model.addItem(
+                    f"{spec.tier}: {spec.name}{suffix}", spec.id
+                )
+                index = self.ai_model.count() - 1
+                status = (
+                    "Installed"
+                    if ready
+                    else f"Needs a {size_gb:.1f} GB download"
+                )
+                self.ai_model.setItemData(
+                    index,
+                    f"{spec.description}\n{status} · about "
+                    f"{spec.vram_gb:.1f} GB VRAM.",
+                    Qt.ToolTipRole,
+                )
+        if vision:
+            self._add_combo_header(self.ai_model, "Ollama")
+            for model in vision:
+                self.ai_model.addItem(model, model)
+        if custom:
+            self._add_combo_header(self.ai_model, "Other Ollama models")
+            for model in custom:
+                self.ai_model.addItem(model, model)
+                index = self.ai_model.count() - 1
+                self.ai_model.setItemData(
+                    index,
+                    "Unverified local model. It may not support vision or "
+                    "the Director's JSON format.",
+                    Qt.ToolTipRole,
+                )
+        external = [spec for spec in MODELS if spec.engine == "external"]
+        if external:
+            self._add_combo_header(self.ai_model, "External")
+            for spec in external:
+                self.ai_model.addItem(
+                    f"{spec.tier}: {spec.name}", spec.id
+                )
+                index = self.ai_model.count() - 1
+                self.ai_model.setItemData(
+                    index, spec.description, Qt.ToolTipRole
+                )
+                item = self.ai_model.model().item(index)
+                if item is not None:
+                    item.setEnabled(False)
+        if self.ai_model.count() == 0:
             self.ai_model.addItem("No supported vision model installed", None)
             item = self.ai_model.model().item(0)
             if item is not None:
                 item.setEnabled(False)
         self.ai_model.blockSignals(False)
         self._select_ai_model(selected)
-        if not self._current_ai_model() and vision:
-            self._select_ai_model(vision[0])
+        if not self._current_ai_model():
+            index = self._first_combo_model(self.ai_model)
+            if index >= 0:
+                self.ai_model.blockSignals(True)
+                self.ai_model.setCurrentIndex(index)
+                self.ai_model.blockSignals(False)
 
     def _ai_model_changed(self) -> None:
         self._update_ai_state()
@@ -2491,10 +2753,12 @@ class MainWindow(QMainWindow):
         self.ai_ears_combo.clear()
         self.ai_ears_combo.addItem("Off", "")
         if model_ready(LFM3_OMNI_2B) and runtime_ready():
+            self._add_combo_header(self.ai_ears_combo, "Bundled")
             self.ai_ears_combo.addItem(
-                "LFM3-Omni-2B · bundled (fast)", "lfm3-omni-2b"
+                "LFM3-Omni-2B · bundled", "lfm3-omni-2b"
             )
         if "lfm3-omni" in self.installed_models:
+            self._add_combo_header(self.ai_ears_combo, "Ollama")
             self.ai_ears_combo.addItem(
                 "LFM3-Omni · Ollama", "lfm3-omni"
             )
@@ -2658,10 +2922,9 @@ class MainWindow(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         self._clamp_to_screen()
-        if self.low_power.isChecked():
-            self.threads.setCurrentIndex(1)
-            self.threads.setEnabled(False)
+        self._low_power_changed(self.low_power.isChecked())
         self._update_status()
+        QTimer.singleShot(0, self.input_edit.setFocus)
 
     def _save_settings(self) -> None:
         self.qsettings.setValue("sensitivity", self.sensitivity.value())
@@ -2882,6 +3145,7 @@ class MainWindow(QMainWindow):
     def _update_status(self) -> None:
         if self.ffmpeg_ok:
             self.ffmpeg_label.setText("ffmpeg / ready")
+            self.ffmpeg_label.setStyleSheet("")
             self.ffmpeg_label.setToolTip(self.ffmpeg_text)
         else:
             self.ffmpeg_label.setText("ffmpeg / missing")
@@ -2941,8 +3205,9 @@ class MainWindow(QMainWindow):
     def _update_ai_setup(self) -> None:
         if not hasattr(self, "ai_setup"):
             return
-        self.ai_setup.setVisible(not self.vlm_available)
-        if self.vlm_available:
+        ready_now = self.vlm_available or self._vision_ready()
+        self.ai_setup.setVisible(not ready_now)
+        if ready_now:
             return
         bundled_hint = (
             "You can also download a bundled model with the Download button above. "
@@ -3278,13 +3543,17 @@ class MainWindow(QMainWindow):
     def _toggle_advanced(self, checked: bool) -> None:
         scroll = self.left_scroll.verticalScrollBar().value()
         self.advanced.setVisible(checked)
-        self.advanced_toggle.setText("Advanced  ▴" if checked else "Advanced  ▾")
+        self.advanced_toggle.setIcon(
+            QIcon(CHEVRON_UP_ICON if checked else CHEVRON_DOWN_ICON)
+        )
         QTimer.singleShot(
             0, lambda: self.left_scroll.verticalScrollBar().setValue(scroll)
         )
 
     def _low_power_changed(self, checked: bool) -> None:
         self.threads.setEnabled(not checked)
+        self.sample_fps.setEnabled(not checked)
+        self.proxy_width.setEnabled(not checked)
         if checked:
             self.threads.setCurrentIndex(1)
             self.sample_fps.setCurrentIndex(0)
@@ -3335,6 +3604,7 @@ class MainWindow(QMainWindow):
             self.output_edit.setText(str(base / "trimmed"))
         self.summary = None
         self.tree.clear()
+        self._update_highlights_empty()
         self.preview_player.clear()
         self.export_btn.setEnabled(False)
         self.open_folder.setEnabled(False)
@@ -3445,6 +3715,7 @@ class MainWindow(QMainWindow):
             return
         self.summary = None
         self.tree.clear()
+        self._update_highlights_empty()
         self.preview_player.clear()
         self.export_btn.setEnabled(False)
         self.open_folder.setEnabled(False)
@@ -3530,6 +3801,7 @@ class MainWindow(QMainWindow):
         self.summary_label.setText(
             self._summary_text(summary.total_clips, len(summary.files))
         )
+        self._update_highlights_empty()
         self._update_selection_label()
         for index in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(index)
@@ -3563,6 +3835,10 @@ class MainWindow(QMainWindow):
                 )
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                 item.setCheckState(0, Qt.Checked)
+                item.setTextAlignment(0, Qt.AlignCenter)
+                item.setTextAlignment(2, Qt.AlignCenter)
+                item.setTextAlignment(3, Qt.AlignCenter)
+                item.setTextAlignment(4, Qt.AlignCenter)
                 item.setTextAlignment(5, Qt.AlignCenter)
                 item.setData(0, ROLE_VIDEO, analysis.path)
                 item.setData(0, ROLE_START, float(clip.start))
@@ -3582,6 +3858,7 @@ class MainWindow(QMainWindow):
         self.tree.blockSignals(False)
         self.select_all_btn.show()
         self.select_none_btn.show()
+        self._update_highlights_empty()
         self._update_selection_label()
         if select_first and self.tree.currentItem() is None and first_clip is not None:
             self.tree.setCurrentItem(first_clip)
