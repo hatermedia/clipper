@@ -530,6 +530,10 @@ def start_server(
         str(model),
         "-c",
         str(spec.context),
+        # One slot. The server default is four, which multiplies the KV cache
+        # and can push a 9B model into system RAM on a 10 GB card.
+        "-np",
+        "1",
         "-ngl",
         "99",
         "--jinja",
