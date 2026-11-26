@@ -373,6 +373,7 @@ def test_pending_update_round_trip(tmp_path, monkeypatch) -> None:
     assert update.load_pending_update() is None
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows installer path behavior")
 def test_launch_installer_rejects_non_update_folder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
