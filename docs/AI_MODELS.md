@@ -22,7 +22,6 @@ and for models that need Ollama's audio engine.
 | Lite | LFM3-Omni-2B | 2.0 GB | ~4 GB | native | Tested; fast, good ears, weaker final visual judgment |
 | Standard | MiniCPM-o 4.5 (vision) | 5.7 GB | ~8.5 GB | via LFM3 ears | Tested on 10 GB; good HUD reading and clips |
 | Google | Gemma 4 12B (vision) | 7.6 GB | ~10.5 GB | via LFM3 ears | Tested on 10 GB; strongest, slowest |
-| Alternative | Video-SALMONN 2 Pro | external | 16 GB+ | native | Not bundled: PyTorch/vLLM only, 32B needs ~22 GB |
 
 The **Standard** and **Google** tiers combine their vision model with the Lite
 LFM3 ears model. MiniCPM-o and Gemma 4 audio encoders are not exposed by
@@ -66,7 +65,5 @@ llama.cpp release `b12776`.
   load its audio projector.
 - Gemma 4 12B native audio works through Ollama's OpenAI endpoint, not
   llama.cpp; the current tier uses LFM3 ears instead.
-- Video-SALMONN 2 Pro needs a PyTorch/vLLM environment. A future external
-  backend can point Clipper at a local OpenAI-compatible server.
 - Qwen2.5-VL 7B GGUF produced good clips but was much slower than Ollama on
   the test machine, so it is not part of the bundled picker yet.

@@ -183,27 +183,6 @@ QFrame#Footer {
     background: #1e1e1e;
     border-top: 1px solid #2e2e2e;
 }
-QLabel#StatusPill {
-    color: #b8b8bd;
-    background: #242424;
-    border: 1px solid #343434;
-    border-radius: 9px;
-    padding: 3px 8px;
-    font-size: 10px;
-}
-QLabel#StatusPill[state="error"] {
-    color: #e07a7a;
-    border-color: #573030;
-    background: #2a2020;
-}
-QLabel#VersionBadge {
-    color: #a8a8ae;
-    background: #262626;
-    border: 1px solid #363636;
-    border-radius: 8px;
-    padding: 1px 6px;
-    font-size: 10px;
-}
 QLabel#Subhead {
     color: #f2f2f4;
     font-size: 13px;
@@ -299,6 +278,11 @@ QPushButton#Preset:checked {
 }
 QPushButton#Mono { font-size: 11px; padding: 5px 9px; }
 QPushButton#Mono:checked { background: #2a3a48; border-color: #2f6f9e; color: #dceaff; }
+QPushButton#HeaderButton {
+    font-size: 11px;
+    padding: 4px 10px;
+    min-height: 20px;
+}
 QWidget#TitleBar {
     background: #1a1a1a;
     border-bottom: 1px solid #2a2a2a;
@@ -1811,6 +1795,7 @@ class MainWindow(QMainWindow):
 
         titlebar = QWidget()
         titlebar.setObjectName("TitleBar")
+        titlebar.setFixedHeight(56)
         header = QHBoxLayout(titlebar)
         header.setContentsMargins(18, 0, 0, 0)
         header.setSpacing(8)
@@ -1818,7 +1803,7 @@ class MainWindow(QMainWindow):
         logo = QLabel()
         if VIDEO_ICON.is_file():
             pix = QPixmap(str(VIDEO_ICON)).scaled(
-                36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation
             )
             logo.setPixmap(pix)
         header.addWidget(logo)
@@ -1829,28 +1814,22 @@ class MainWindow(QMainWindow):
         brand = QLabel("CLIPPER")
         brand.setObjectName("Brand")
         version_label = QLabel(f"v{__version__}")
-        version_label.setObjectName("VersionBadge")
+        version_label.setObjectName("BrandSub")
         brand_line.addWidget(brand)
         brand_line.addWidget(version_label)
         brand_line.addStretch(1)
         brand_box.addLayout(brand_line)
         header.addLayout(brand_box)
         header.addStretch(1)
-        self.gpu_label = QLabel("nvenc / checking")
-        self.gpu_label.setObjectName("StatusPill")
-        self.ffmpeg_label = QLabel("ffmpeg / checking")
-        self.ffmpeg_label.setObjectName("StatusPill")
-        header.addWidget(self.ffmpeg_label)
-        header.addWidget(self.gpu_label)
         updates = QPushButton("Updates")
-        updates.setObjectName("Mono")
-        updates.setFixedHeight(28)
+        updates.setObjectName("HeaderButton")
+        updates.setFixedHeight(30)
         updates.setToolTip("Check GitHub for a newer Clipper release")
         updates.clicked.connect(lambda: self.check_updates(manual=True))
         header.addWidget(updates)
         github = QPushButton("GitHub ↗")
-        github.setObjectName("Mono")
-        github.setFixedHeight(28)
+        github.setObjectName("HeaderButton")
+        github.setFixedHeight(30)
         github.setToolTip("Open the Clipper GitHub repository")
         github.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://github.com/hatermedia/clipper"))
@@ -1863,7 +1842,7 @@ class MainWindow(QMainWindow):
         controls.setSpacing(0)
         minimize = QPushButton()
         minimize.setObjectName("WindowButton")
-        minimize.setFixedSize(46, 48)
+        minimize.setFixedSize(46, 56)
         minimize.setIcon(_window_icon("min"))
         minimize.setIconSize(QSize(16, 16))
         minimize.setFocusPolicy(Qt.NoFocus)
@@ -1872,7 +1851,7 @@ class MainWindow(QMainWindow):
 
         self.max_btn = QPushButton()
         self.max_btn.setObjectName("WindowButton")
-        self.max_btn.setFixedSize(46, 48)
+        self.max_btn.setFixedSize(46, 56)
         self.max_btn.setIcon(_window_icon("max"))
         self.max_btn.setIconSize(QSize(16, 16))
         self.max_btn.setFocusPolicy(Qt.NoFocus)
@@ -1881,7 +1860,7 @@ class MainWindow(QMainWindow):
 
         close = QPushButton()
         close.setObjectName("WindowClose")
-        close.setFixedSize(46, 48)
+        close.setFixedSize(46, 56)
         close.setIcon(_window_icon("close"))
         close.setIconSize(QSize(16, 16))
         close.setFocusPolicy(Qt.NoFocus)
@@ -2103,15 +2082,10 @@ class MainWindow(QMainWindow):
             0,
             4,
         )
-        ai_group_layout.addLayout(ai_controls)
 
-        ears_controls = QGridLayout()
-        ears_controls.setHorizontalSpacing(6)
-        ears_controls.setVerticalSpacing(6)
-        ears_controls.setColumnStretch(1, 1)
         ears_label = QLabel("Audio ears")
         ears_label.setObjectName("FieldLabel")
-        ears_controls.addWidget(ears_label, 0, 0)
+        ai_controls.addWidget(ears_label, 1, 0)
         self.ai_ears_combo = QComboBox()
         self.ai_ears_combo.setSizeAdjustPolicy(
             QComboBox.AdjustToMinimumContentsLengthWithIcon
@@ -2121,24 +2095,24 @@ class MainWindow(QMainWindow):
         self.ai_ears_combo.setToolTip(
             "Optional Omni model that hears laughter, sarcasm, and tone."
         )
-        ears_controls.addWidget(self.ai_ears_combo, 0, 1)
+        ai_controls.addWidget(self.ai_ears_combo, 1, 1)
         self.ai_ears_state = QLabel("")
         self.ai_ears_state.setObjectName("Muted")
         self.ai_ears_state.setMinimumWidth(54)
-        ears_controls.addWidget(self.ai_ears_state, 0, 2)
+        ai_controls.addWidget(self.ai_ears_state, 1, 2)
         self.install_ears_btn = QPushButton("Install")
         self.install_ears_btn.setObjectName("Mono")
         self.install_ears_btn.setFixedWidth(76)
         self.install_ears_btn.clicked.connect(self._install_ears)
         self.install_ears_btn.setVisible(not model_ready(LFM3_OMNI_2B))
-        ears_controls.addWidget(self.install_ears_btn, 0, 3)
-        ears_controls.addWidget(
+        ai_controls.addWidget(self.install_ears_btn, 1, 3)
+        ai_controls.addWidget(
             self._help(
                 "A small Omni model listens for laughter, sarcasm, anger, and "
                 "excitement in short chunks. It adds evidence to the transcript; "
                 "it never invents a highlight on its own."
             ),
-            0,
+            1,
             4,
         )
         self.low_power = ToggleRow("Low-power mode")
@@ -2160,8 +2134,8 @@ class MainWindow(QMainWindow):
         power_row.setSpacing(8)
         power_row.addWidget(self.low_power, 1)
         power_row.addWidget(self.game_guard, 1)
-        ears_controls.addLayout(power_row, 1, 0, 1, 4)
-        ai_group_layout.addLayout(ears_controls)
+        ai_controls.addLayout(power_row, 2, 0, 1, 5)
+        ai_group_layout.addLayout(ai_controls)
         self.ai_ears_combo.currentIndexChanged.connect(self._ears_changed)
         self._populate_ears_combo()
 
@@ -2504,18 +2478,11 @@ class MainWindow(QMainWindow):
         export_layout.setVerticalSpacing(6)
         export_layout.setColumnStretch(1, 1)
         export_box.addLayout(export_layout)
-        output_label = QHBoxLayout()
-        output_label.setContentsMargins(0, 0, 0, 0)
-        output_label.setSpacing(4)
-        output_label.addWidget(QLabel("Output"))
-        output_label.addWidget(
-            self._help("Folder where exported highlight files are written.")
-        )
-        output_label.addStretch(1)
-        export_layout.addLayout(output_label, 0, 0)
+        output_label = QLabel("Folder")
+        output_label.setObjectName("FieldLabel")
+        export_layout.addWidget(output_label, 0, 0)
         self.output_edit = QLineEdit()
         self.output_edit.setPlaceholderText("Choose an output folder")
-        self.output_edit.setToolTip("Folder where exported highlight files are written.")
         export_layout.addWidget(self.output_edit, 0, 1)
         out_browse = QPushButton("Browse…")
         out_browse.setFixedWidth(92)
@@ -2670,20 +2637,6 @@ class MainWindow(QMainWindow):
                     "the Director's JSON format.",
                     Qt.ToolTipRole,
                 )
-        external = [spec for spec in MODELS if spec.engine == "external"]
-        if external:
-            self._add_combo_header(self.ai_model, "External")
-            for spec in external:
-                self.ai_model.addItem(
-                    f"{spec.tier}: {spec.name}", spec.id
-                )
-                index = self.ai_model.count() - 1
-                self.ai_model.setItemData(
-                    index, spec.description, Qt.ToolTipRole
-                )
-                item = self.ai_model.model().item(index)
-                if item is not None:
-                    item.setEnabled(False)
         if self.ai_model.count() == 0:
             self.ai_model.addItem("No supported vision model installed", None)
             item = self.ai_model.model().item(0)
@@ -2718,6 +2671,16 @@ class MainWindow(QMainWindow):
         value = self.ai_ears_combo.currentData()
         return str(value) if value else ""
 
+    def _ollama_has(self, model: str) -> bool:
+        wanted = model.strip().lower()
+        if not wanted:
+            return False
+        for name in self.installed_models.values():
+            key = name.lower()
+            if key == wanted or key.split(":", 1)[0] == wanted:
+                return True
+        return False
+
     def _vision_ready(self) -> bool:
         model = self._current_ai_model()
         if not model:
@@ -2725,7 +2688,7 @@ class MainWindow(QMainWindow):
         spec = next((item for item in MODELS if item.id == model), None)
         if spec is not None:
             return runtime_ready() and model_ready(spec)
-        return self.ollama_ok and model.lower() in self.installed_models
+        return self.ollama_ok and self._ollama_has(model)
 
     def _ears_ready(self) -> bool:
         model = self._current_ears_model()
@@ -2741,7 +2704,7 @@ class MainWindow(QMainWindow):
         )
         if spec is not None:
             return runtime_ready() and model_ready(spec)
-        return self.ollama_ok and model.lower() in self.installed_models
+        return self.ollama_ok and self._ollama_has(model)
 
     def _populate_ears_combo(self, preferred: str | None = None) -> None:
         selected = (
@@ -2757,7 +2720,7 @@ class MainWindow(QMainWindow):
             self.ai_ears_combo.addItem(
                 "LFM3-Omni-2B · bundled", "lfm3-omni-2b"
             )
-        if "lfm3-omni" in self.installed_models:
+        if self._ollama_has("lfm3-omni"):
             self._add_combo_header(self.ai_ears_combo, "Ollama")
             self.ai_ears_combo.addItem(
                 "LFM3-Omni · Ollama", "lfm3-omni"
@@ -3143,14 +3106,10 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(1200, self.close)
 
     def _update_status(self) -> None:
-        if self.ffmpeg_ok:
-            self.ffmpeg_label.setText("ffmpeg / ready")
-            self.ffmpeg_label.setStyleSheet("")
-            self.ffmpeg_label.setToolTip(self.ffmpeg_text)
-        else:
-            self.ffmpeg_label.setText("ffmpeg / missing")
-            self.ffmpeg_label.setStyleSheet("color: #e05a5a;")
-            self.ffmpeg_label.setToolTip("Install FFmpeg or use the portable build.")
+        if not self.ffmpeg_ok:
+            self.analyze_btn.setToolTip(
+                "FFmpeg is missing. Install it or use the portable build."
+            )
         self._gpu_changed(self.gpu.isChecked())
         self._update_ai_state()
 
@@ -3519,18 +3478,14 @@ class MainWindow(QMainWindow):
 
     def _gpu_changed(self, checked: bool) -> None:
         if not self.nvenc:
-            self.gpu_label.setText("nvenc / unavailable")
-            self.gpu_label.setStyleSheet("color: #68686f;")
             self.gpu_state.setText("N/A")
+            self.gpu.setToolTip("NVENC is unavailable on this system.")
             return
-        if checked:
-            self.gpu_label.setText("nvenc / on")
-            self.gpu_label.setStyleSheet("color: #2f9bff;")
-            self.gpu_state.setText("On")
-        else:
-            self.gpu_label.setText("nvenc / off")
-            self.gpu_label.setStyleSheet("color: #a1a1a6;")
-            self.gpu_state.setText("Off")
+        self.gpu_state.setText("On" if checked else "Off")
+        self.gpu.setToolTip(
+            "Hardware decode + NVENC for the analysis proxy and re-encode. "
+            "OpenCV motion scoring and audio analysis stay on the CPU."
+        )
 
     def _sensitivity_changed(self, value: int) -> None:
         self.sensitivity_value.setText(f"{value}%")

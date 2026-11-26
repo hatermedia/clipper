@@ -203,27 +203,10 @@ GEMMA_4_12B = ModelSpec(
     experimental=True,
 )
 
-VIDEO_SALMONN_2_PRO = ModelSpec(
-    id="video-salmonn-2-pro",
-    name="Video-SALMONN 2 Pro",
-    tier="Alternative",
-    description=(
-        "Research audio-visual model. Requires a PyTorch/vLLM environment and "
-        "is not part of the bundled runtime yet."
-    ),
-    params="8B / 32B",
-    vram_gb=16.0,
-    files=(),
-    engine="external",
-    license="Apache-2.0",
-    experimental=True,
-)
-
 MODELS: tuple[ModelSpec, ...] = (
     LFM3_OMNI_2B,
     MINICPM_O_4_5,
     GEMMA_4_12B,
-    VIDEO_SALMONN_2_PRO,
 )
 MODEL_BY_ID = {spec.id: spec for spec in MODELS}
 MODEL_ALIASES = {
