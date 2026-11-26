@@ -6,6 +6,28 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-26
+
+### Changed
+
+- **Faster installer extraction.** Switched from solid LZMA to per-file LZMA so
+  the bundled Whisper model no longer waits behind the whole payload.
+- **In-place upgrades.** Removed the install-directory page and added an
+  uninstall-registry fallback, so a newer installer overwrites the existing
+  install instead of creating a second copy.
+- **More game-aware direction.** Added NVIDIA-library game aliases and Director
+  guidance for Arc Raiders, Chained Together, Destiny 2, Forza Horizon 5,
+  Garry's Mod, PEAK, Satisfactory, Muck, FiveM, and Warframe.
+- **Social/Desktop clips.** Desktop and Omegle-style footage is detected as
+  Social, with guidance that ignores game HUD and prioritises jokes, trolling,
+  reactions, and banter.
+- **Silent Ollama setup.** No tray/onboarding/IDE window; Clipper starts a
+  headless server it can stop. Install model now offers a supported-model
+  choice, and progress streams through Ollama's API.
+- **Memory cleanup.** Closing Clipper unloads the model and stops its Ollama
+  server; cancelling a job unloads the model too.
+- Fixed the Advanced toggle width/scroll jump.
+
 ## [0.8.1] - 2026-11-26
 
 ### Fixed

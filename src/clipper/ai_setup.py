@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -359,15 +360,57 @@ def ollama_executable() -> Path | None:
     return None
 
 
+def _kill_image(name: str) -> None:
+    """Best-effort kill of a Windows image without opening a console."""
+
+    if os.name != "nt":
+        return
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _mark_ollama_onboarding_complete() -> None:
+    """Keep the Ollama desktop onboarding/chat UI out of the user's way."""
+
+    try:
+        folder = Path.home() / ".ollama"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "onboarding-v1.completed").touch()
+    except OSError:
+        pass
+
+
 def install_ollama(installer: Path, timeout: float = 900.0) -> Path:
-    """Run the official installer silently, then return the executable."""
+    """Run the official installer silently, then return the executable.
+
+    Ollama's Inno Setup installer launches its tray app even in very silent
+    mode. A watcher kills that app while the installer runs, and the caller
+    starts the headless ``ollama serve`` process instead.
+    """
 
     if os.name != "nt":
         raise AISetupError("The Ollama prerequisite installer is Windows-only.")
     if not installer.is_file() or installer.name.lower() != OLLAMA_ASSET_NAME.lower():
         raise AISetupError("The Ollama installer file is missing or misnamed.")
+    _mark_ollama_onboarding_complete()
+    stop = threading.Event()
+
+    def watch_gui() -> None:
+        while not stop.wait(0.4):
+            _kill_image("ollama app.exe")
+
+    watcher = threading.Thread(target=watch_gui, daemon=True)
+    watcher.start()
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             [
                 str(installer),
                 "/VERYSILENT",
@@ -375,19 +418,24 @@ def install_ollama(installer: Path, timeout: float = 900.0) -> Path:
                 "/NORESTART",
                 "/SP-",
             ],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=timeout,
             creationflags=CREATE_NO_WINDOW,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise AISetupError("The Ollama installer timed out.") from exc
+        try:
+            code = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            process.kill()
+            raise AISetupError("The Ollama installer timed out.") from exc
     except OSError as exc:
         raise AISetupError(f"Could not start the Ollama installer: {exc}") from exc
-    if completed.returncode not in (0, 3010):
-        raise AISetupError(
-            f"The Ollama installer exited with code {completed.returncode}."
-        )
+    finally:
+        stop.set()
+        watcher.join(timeout=2.0)
+        _kill_image("ollama app.exe")
+    if code not in (0, 3010):
+        raise AISetupError(f"The Ollama installer exited with code {code}.")
     deadline = time.monotonic() + 60.0
     while time.monotonic() < deadline:
         executable = ollama_executable()
@@ -397,8 +445,27 @@ def install_ollama(installer: Path, timeout: float = 900.0) -> Path:
     raise AISetupError("Ollama installed, but its executable was not found.")
 
 
-def start_ollama_server(wait: float = 20.0) -> bool:
-    """Start the local Ollama server if it is not already answering."""
+def stop_ollama_server() -> None:
+    """Stop only the headless server Clipper started, if any."""
+
+    global _SERVER_PROCESS
+    process = _SERVER_PROCESS
+    _SERVER_PROCESS = None
+    if process is None or process.poll() is not None:
+        return
+    try:
+        process.terminate()
+        process.wait(timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        try:
+            process.kill()
+            process.wait(timeout=2)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
+def launch_ollama_server() -> bool:
+    """Launch a headless Ollama process without waiting for HTTP readiness."""
 
     global _SERVER_PROCESS
     if bool(ollama_status(timeout=1.0).get("ok")):
@@ -406,18 +473,34 @@ def start_ollama_server(wait: float = 20.0) -> bool:
     executable = ollama_executable()
     if executable is None:
         return False
-    if _SERVER_PROCESS is None or _SERVER_PROCESS.poll() is not None:
-        try:
-            _SERVER_PROCESS = subprocess.Popen(
-                [str(executable), "serve"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
-        except OSError:
-            return False
+    if _SERVER_PROCESS is not None and _SERVER_PROCESS.poll() is None:
+        return True
+    try:
+        _SERVER_PROCESS = subprocess.Popen(
+            [str(executable), "serve"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+    except OSError:
+        return False
+    return True
+
+
+def start_ollama_server(
+    wait: float = 20.0,
+    cancelled: CancelFn | None = None,
+) -> bool:
+    """Start the local Ollama server if it is not already answering."""
+
+    global _SERVER_PROCESS
+    if not launch_ollama_server():
+        return False
     deadline = time.monotonic() + max(1.0, wait)
     while time.monotonic() < deadline:
+        if cancelled and cancelled():
+            return False
         if bool(ollama_status(timeout=1.0).get("ok")):
             return True
         process = _SERVER_PROCESS
@@ -445,12 +528,19 @@ def install_prerequisite(
     installer = download_installer(release, progress=progress, cancelled=cancelled)
     if cancelled and cancelled():
         raise AISetupCancelled("Ollama setup cancelled. Retry to resume the download.")
-    notify("Verifying and installing Ollama...")
+    notify("Verifying installer and installing Ollama silently...")
     executable = install_ollama(installer)
     if cancelled and cancelled():
         raise AISetupCancelled("Ollama was installed. Reopen Clipper to finish setup.")
-    notify("Starting Ollama...")
-    running = start_ollama_server(wait=20.0)
+    # The installer may leave its tray app and server running. Kill those so
+    # the user never sees the sign-in/onboarding UI, then start our own hidden
+    # server which we can stop cleanly when Clipper exits.
+    _mark_ollama_onboarding_complete()
+    for _ in range(5):
+        _kill_image("ollama app.exe")
+        _kill_image("ollama.exe")
+        time.sleep(0.2)
+    time.sleep(1.0)
     try:
         installer.unlink(missing_ok=True)
         folder = installer.parent
@@ -458,11 +548,5 @@ def install_prerequisite(
             folder.rmdir()
     except OSError:
         pass
-    if running:
-        notify("Ollama is ready. Download a model to enable AI Director.")
-    else:
-        notify(
-            "Ollama installed, but its server is not running yet. "
-            "Click Refresh in the AI panel to start it."
-        )
+    notify("Ollama installed. Starting the local server...")
     return executable

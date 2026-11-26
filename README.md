@@ -1,16 +1,17 @@
 # Clipper
 
-Clipper is a native Windows app that scans a folder of gameplay, finds the loud
-reactions and sudden motion, merges nearby moments, and cuts ready-to-post clips
-with FFmpeg. Everything runs locally. No accounts, no uploads, no browser.
+Clipper is a native Windows app that scans a folder of gameplay, uses a local
+vision director with transcript, HUD, and audio signals to find the story beats,
+and cuts ready-to-post clips with FFmpeg. Everything runs locally. No accounts,
+no uploads, no browser.
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.8.1](https://github.com/hatermedia/clipper/releases/tag/v0.8.1)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.8.2](https://github.com/hatermedia/clipper/releases/tag/v0.8.2)
 
 ## Install
 
-**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.1.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.1/ClipperSetup-0.8.1.exe) (~365 MB)
+**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.2.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.2/ClipperSetup-0.8.2.exe) (~365 MB)
 
 - Per-user install, no admin prompt
 - Installs to `%LOCALAPPDATA%\Programs\Clipper`
@@ -19,11 +20,17 @@ with FFmpeg. Everything runs locally. No accounts, no uploads, no browser.
 - Uninstall removes the app and settings, not your footage or caches
 
 The installer includes FFmpeg, Whisper `base.en`, RapidOCR, YAMNet, and the
-runtime they need. A multi-gigabyte vision model is **not** bundled. The AI
-Director can install Ollama from inside the app, and then download a model only
-when you ask for it.
+runtime they need. That is about 1 GB extracted, including the 145 MB Whisper
+model, so the first install can take a minute even on a fast connection. The
+newer per-file installer no longer waits behind one solid compression block.
 
-Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.8.1/clipper-0.8.1-windows-x64-native.zip)
+A multi-gigabyte vision model is **not** bundled. The AI Director can install
+Ollama from inside the app, and then download a model only when you ask for it.
+
+Running a newer installer over an older install reuses the same per-user folder
+and overwrites it in place. It does not create a second Clipper installation.
+
+Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.8.2/clipper-0.8.2-windows-x64-native.zip)
 and run `Clipper.exe`.
 
 ## What it does
@@ -64,7 +71,8 @@ The AI model is required, but it is not bundled. To set it up:
 3. On 6 GB cards use `gemma3:4b` (tested). On 8 GB+ use `qwen2.5vl:7b`.
 
 Game presets are inferred from each file's folder or name; there is no game
-dropdown to maintain. The model picker lists only the supported local vision
+dropdown to maintain. `Desktop` and Omegle-style captures use **Social** mode,
+which ignores game HUD and prioritises jokes, trolling, reactions, and banter. The model picker lists only the supported local vision
 families: `gemma3`, `qwen2.5vl`, and `qwen3-vl`. If AI is not ready, Detect
 highlights stays disabled until setup finishes.
 

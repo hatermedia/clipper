@@ -78,6 +78,9 @@ def test_legacy_ai_mode_and_game_picker_are_removed() -> None:
     assert "ai_mode=\"director\"" in source
     assert "Local AI director" in source
     assert "is_supported_vision_model" in source
+    assert "QInputDialog.getItem" in source
+    assert "launch_ollama_server" in source
+    assert "self.left_scroll" in source
     assert "Other local models" not in source
     assert "Custom model" not in source
 

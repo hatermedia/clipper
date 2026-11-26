@@ -185,14 +185,18 @@ def test_install_prerequisite_removes_the_downloaded_installer(tmp_path, monkeyp
         ai_setup, "download_installer", lambda *_args, **_kwargs: installer
     )
     monkeypatch.setattr(ai_setup, "install_ollama", lambda _installer: Path("ollama.exe"))
-    monkeypatch.setattr(ai_setup, "start_ollama_server", lambda wait=20.0: True)
+    monkeypatch.setattr(ai_setup, "_kill_image", lambda _name: None)
+    monkeypatch.setattr(
+        ai_setup, "_mark_ollama_onboarding_complete", lambda: None
+    )
+    monkeypatch.setattr(ai_setup.time, "sleep", lambda _seconds: None)
     messages: list[str] = []
 
     result = ai_setup.install_prerequisite(status=messages.append)
 
     assert result == Path("ollama.exe")
     assert not installer.exists()
-    assert any("ready" in message.lower() for message in messages)
+    assert any("starting" in message.lower() for message in messages)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows installer behavior")
@@ -201,17 +205,27 @@ def test_install_ollama_uses_silent_per_user_flags(tmp_path, monkeypatch) -> Non
     installer.write_bytes(b"setup")
     calls: list[list[str]] = []
 
-    class Completed:
+    class Process:
         returncode = 0
 
-    def fake_run(args, **_kwargs):
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            return None
+
+    def fake_popen(args, **_kwargs):
         calls.append(list(args))
-        return Completed()
+        return Process()
 
     executable = tmp_path / "Programs" / "Ollama" / "ollama.exe"
     executable.parent.mkdir(parents=True)
     executable.write_bytes(b"")
-    monkeypatch.setattr(ai_setup.subprocess, "run", fake_run)
+    monkeypatch.setattr(ai_setup.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(ai_setup, "_kill_image", lambda _name: None)
+    monkeypatch.setattr(
+        ai_setup, "_mark_ollama_onboarding_complete", lambda: None
+    )
     monkeypatch.setattr(ai_setup, "ollama_executable", lambda: executable)
     monkeypatch.setattr(ai_setup.time, "sleep", lambda _seconds: None)
 

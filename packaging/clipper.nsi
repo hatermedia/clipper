@@ -20,7 +20,10 @@ OutFile "release\ClipperSetup-${VERSION}.exe"
 InstallDir "$LOCALAPPDATA\Programs\Clipper"
 InstallDirRegKey HKCU "Software\Clipper" "InstallDir"
 RequestExecutionLevel user
-SetCompressor /SOLID lzma
+; Non-solid LZMA keeps upgrade installs responsive: each file can be extracted
+; without first decompressing the whole 1 GB payload. Solid compression made
+; the bundled Whisper model.bin look like it was hanging during install.
+SetCompressor lzma
 SetCompressorDictSize 64
 SetOverwrite on
 
@@ -40,11 +43,25 @@ VIAddVersionKey "LegalCopyright" "MIT licensed"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Clipper.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch Clipper"
 
-!insertmacro MUI_PAGE_DIRECTORY
+; No directory page: upgrades always reuse the existing install location.
+; Allowing a second path is how two Clipper versions end up side by side.
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
+
+Function .onInit
+  ; Prefer the primary key, then the Windows uninstall entry. This catches
+  ; installs written by older builds that may not have the primary key.
+  ReadRegStr $0 HKCU "Software\Clipper" "InstallDir"
+  StrCmp $0 "" 0 check_existing
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Clipper" "InstallLocation"
+check_existing:
+  StrCmp $0 "" done
+  IfFileExists "$0\Clipper.exe" 0 done
+  StrCpy $INSTDIR $0
+done:
+FunctionEnd
 
 !macro CloseClipperImpl PREFIX
   IfFileExists "$INSTDIR\close_clipper.ps1" ${PREFIX}_has_script

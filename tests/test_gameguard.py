@@ -177,4 +177,32 @@ def test_path_auto_detects_game() -> None:
         gameguard.detect_game_from_path(r"D:\Videos\NVIDIA\Mimesis\clip.mp4")
         == "Mimesis"
     )
+    assert (
+        gameguard.detect_game_from_path(r"D:\Videos\NVIDIA\Arc Raiders\clip.mp4")
+        == "Arc Raiders"
+    )
+    assert (
+        gameguard.detect_game_from_path(r"D:\Videos\NVIDIA\Chained Together\clip.mp4")
+        == "Chained Together"
+    )
+    assert (
+        gameguard.detect_game_from_path(r"D:\Videos\NVIDIA\PEAK\clip.mp4")
+        == "PEAK"
+    )
+    assert (
+        gameguard.detect_game_from_path(r"D:\Videos\NVIDIA\Garrysmod\clip.mp4")
+        == "Garry's Mod"
+    )
+    assert (
+        gameguard.detect_game_from_path(
+            r"D:\Videos\NVIDIA\Cfx.re C Users ADMIN AppData Local FiveM FiveM.exe\clip.mp4"
+        )
+        == "FiveM"
+    )
+    assert (
+        gameguard.detect_game_from_path(
+            r"C:\Users\ADMIN\Videos\NVIDIA\Desktop\Desktop clip.mp4"
+        )
+        == "Social"
+    )
     assert gameguard.detect_game_from_path(r"D:\Videos\misc\clip.mp4") is None

@@ -81,6 +81,13 @@ def test_director_reviews_every_window_of_the_full_clip(
     assert [end for _start, end in reviewed] == [15.0, 30.0, 45.0, 60.0]
 
 
+def test_social_prompt_ignores_game_hud() -> None:
+    prompt = story._window_prompt(make_window(0, 15, "filler", 0.0), "Social")
+    assert "social/desktop" in prompt.lower()
+    assert "ignore the gameplay category" in prompt.lower()
+    assert "jokes, trolling" in prompt.lower()
+
+
 def test_long_funny_exchange_is_kept() -> None:
     windows = [
         make_window(0, 15, "filler", 0.1),

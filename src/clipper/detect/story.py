@@ -26,14 +26,14 @@ import cv2
 import numpy as np
 
 from ..config import DetectionSettings
-from ..ffmpeg import FFmpegBinaries, make_thumbnail
+from ..ffmpeg import FFmpegBinaries, FFmpegError, make_thumbnail
 from ..models import ClipWindow
 from .ai import AIError, OLLAMA_URL, _parse_json, model_available, num_gpu_for, unload_model
 from .audio import ScoreTrack
 from .hud import HudLine, HudReading, chat_cue, display_text, event_lines, read_hud
 from .signals import SIGNAL_VERSION, WindowSignal, analyze_signals, tag_transcript, window_signal
 
-PROMPT_VERSION = "director-v6"
+PROMPT_VERSION = "director-v7"
 ProgressFn = Callable[[float, str], None]
 MAX_SEGMENT_SECONDS = 120.0
 SOCIAL_MAX_SECONDS = 45.0
@@ -137,6 +137,63 @@ GAME_GUIDANCE = {
         "This is Counter-Strike 2. Strong highlights: multikills, aces, clutches, "
         "bomb plants/defuses, round wins, and clear firefights. Buy phase and "
         "ordinary rotations are filler."
+    ),
+    "arc raiders": (
+        "This is Arc Raiders. Strong highlights: extraction fights, downed and "
+        "revived teammates, loot discoveries, tense escapes, and genuine reactions. "
+        "Ordinary looting and traversal are filler."
+    ),
+    "chained together": (
+        "This is Chained Together, a co-op climbing game. Strong highlights: falls, "
+        "near-misses, chain saves, rage, laughter, and friend banter. Ordinary "
+        "climbing is filler unless someone is clearly reacting."
+    ),
+    "destiny 2": (
+        "This is Destiny 2. Strong highlights: raid and dungeon clears, boss damage "
+        "phases, Crucible multikills, clutch revives, exotic drops, and genuine "
+        "fireteam reactions. Routine patrol and inventory time are filler."
+    ),
+    "forza horizon 5": (
+        "This is Forza Horizon 5. Strong highlights: race wins, drift chains, big "
+        "jumps, near-misses, skill chains, and visible crashes. Ordinary driving "
+        "and menu time are filler."
+    ),
+    "garry's mod": (
+        "This is Garry's Mod. Strong highlights: sandbox chaos, prop hunts, funny "
+        "physics, trolling, betrayal, and friend banter. Quiet building and menu "
+        "time are filler."
+    ),
+    "peak": (
+        "This is PEAK, a co-op climbing game. Strong highlights: falls, rescues, "
+        "scary moments, exhaustion, rage, laughter, and team banter. Ordinary "
+        "climbing is filler unless someone reacts."
+    ),
+    "satisfactory": (
+        "This is Satisfactory. Strong highlights: factory milestones, big builds, "
+        "train or conveyor chaos, unexpected deaths, and genuine reactions. "
+        "Ordinary mining and menu time are filler."
+    ),
+    "muck": (
+        "This is Muck, a survival co-op game. Strong highlights: deaths, boss "
+        "fights, loot finds, betrayal, panic, and friend banter. Ordinary "
+        "resource gathering is filler."
+    ),
+    "fivem": (
+        "This is FiveM/GTA roleplay. Strong highlights: funny interactions, police "
+        "chases, betrayals, crashes, and character banter. Driving without a "
+        "reaction and menu time are filler."
+    ),
+    "warframe": (
+        "This is Warframe. Strong highlights: mission clears, boss kills, rare "
+        "drops, clutch revives, and genuine reactions. Ordinary traversal and "
+        "inventory time are filler."
+    ),
+    "social": (
+        "This is desktop/social footage (chat, Omegle, trolling, browsing), not a "
+        "game. Ignore game HUD, score, kill feed, and gameplay logic. Strong "
+        "highlights: jokes, trolling, reactions, banter, awkward or funny "
+        "exchanges, and visible human responses. Silence, menus, typing, and "
+        "ordinary browsing are filler."
     ),
 }
 
@@ -347,8 +404,18 @@ def _contact_sheet(
         for index, offset in enumerate(offsets):
             timestamp = min(end - 0.05, start + span * offset)
             jpg = temp / f"frame_{index}.jpg"
-            make_thumbnail(video, timestamp, jpg, width=480, bins=bins, crop=None)
-            image = cv2.imread(str(jpg))
+            image = None
+            for candidate in (timestamp, max(start, timestamp - 0.5)):
+                try:
+                    make_thumbnail(
+                        video, candidate, jpg, width=480, bins=bins, crop=None
+                    )
+                except (FFmpegError, OSError):
+                    continue
+                image = cv2.imread(str(jpg))
+                if image is not None:
+                    timestamp = candidate
+                    break
             if image is None:
                 image = np.zeros((180, 320, 3), dtype=np.uint8)
             cv2.putText(
@@ -370,8 +437,17 @@ def _contact_sheet(
 
 
 def _window_prompt(window: StoryWindow, game: str) -> str:
+    social = game.strip().lower() in {"social", "desktop", "omegle", "ome.tv"}
+    social_note = (
+        "This is social/desktop footage, not a game. There may be no HUD or game "
+        "events. Prioritise human jokes, trolling, reactions, and banter; ignore "
+        "the gameplay category below."
+        if social
+        else ""
+    )
     return f"""You are the strict highlight editor for a gaming channel.
 Game: {game or "generic"}.
+{social_note}
 {_game_guidance(game)}
 Window: {window.start:.1f}s to {window.end:.1f}s.
 Audio energy: {window.audio_label}.
@@ -822,7 +898,7 @@ def direct_clip(
             window.visual = _review_window(
                 video, window, settings.ai_model, bins, settings.ai_game
             )
-        except AIError:
+        except (AIError, FFmpegError, OSError):
             failed_windows += 1
             window.visual = {
                 "interesting": False,

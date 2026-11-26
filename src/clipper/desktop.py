@@ -8,12 +8,15 @@ browser or a permanently open command prompt.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
+import urllib.request
 from dataclasses import replace
 from pathlib import Path
 
@@ -64,6 +67,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -90,8 +94,9 @@ from .ai_setup import (
     AISetupCancelled,
     AISetupError,
     install_prerequisite,
+    launch_ollama_server,
     ollama_executable,
-    start_ollama_server,
+    stop_ollama_server,
 )
 from .config import (
     Cancelled,
@@ -104,6 +109,7 @@ from .config import (
 )
 from .detect.ai import (
     DEFAULT_MODEL,
+    OLLAMA_URL,
     is_supported_vision_model,
     ollama_status,
     unload_model,
@@ -528,53 +534,65 @@ class OllamaPullWorker(QThread):
     def __init__(self, model: str) -> None:
         super().__init__()
         self.model = model
-        self._process: subprocess.Popen[str] | None = None
+        self._cancel = threading.Event()
+        self._response: object | None = None
 
     def cancel(self) -> None:
-        process = self._process
-        if process is not None and process.poll() is None:
+        self._cancel.set()
+        response = self._response
+        if response is not None:
             try:
-                process.terminate()
-            except OSError:
+                response.close()
+            except Exception:
                 pass
 
     def run(self) -> None:
-        exe = ollama_executable()
-        if exe is None:
-            self.done.emit(False, "Ollama is not installed or not on PATH.")
-            return
+        payload = json.dumps(
+            {"model": self.model, "stream": True}
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            f"{OLLAMA_URL}/api/pull",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         try:
-            process = subprocess.Popen(
-                [str(exe), "pull", self.model],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=0x08000000 if os.name == "nt" else 0,
-            )
-        except OSError as exc:
-            self.done.emit(False, str(exc))
+            self._response = urllib.request.urlopen(request, timeout=1800)
+            with self._response as response:
+                for raw in response:
+                    if self._cancel.is_set():
+                        self.done.emit(False, "Model download cancelled.")
+                        return
+                    line = raw.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    status = str(event.get("status") or "pulling").strip()
+                    try:
+                        total = int(event.get("total") or 0)
+                        completed = int(event.get("completed") or 0)
+                    except (TypeError, ValueError):
+                        total = completed = 0
+                    if total > 0:
+                        percent = max(0, min(100, completed * 100 // total))
+                        self.line.emit(
+                            f"{status} {percent}% "
+                            f"({completed / 1e6:.0f}/{total / 1e6:.0f} MB)"
+                        )
+                    else:
+                        self.line.emit(status)
+        except Exception as exc:
+            if self._cancel.is_set():
+                self.done.emit(False, "Model download cancelled.")
+            else:
+                self.done.emit(False, f"Model download failed: {exc}")
             return
-        self._process = process
-        if process.stdout is not None:
-            for raw in process.stdout:
-                line = raw.strip()
-                if line:
-                    self.line.emit(line)
-        code = process.wait()
-        self._process = None
-        if code == 0:
-            self.done.emit(True, f"{self.model} is ready.")
-        else:
-            self.done.emit(False, f"ollama pull exited with code {code}.")
-
-
-class OllamaStartWorker(QThread):
-    done = Signal(bool)
-
-    def run(self) -> None:
-        self.done.emit(start_ollama_server(wait=5.0))
+        finally:
+            self._response = None
+        self.done.emit(True, f"{self.model} is ready.")
 
 
 class OllamaInstallWorker(QThread):
@@ -1560,7 +1578,11 @@ class MainWindow(QMainWindow):
         self.update_download_worker: UpdateDownloadWorker | None = None
         self.pull_worker: OllamaPullWorker | None = None
         self.ai_install_worker: OllamaInstallWorker | None = None
-        self.ollama_start_worker: OllamaStartWorker | None = None
+        self._pending_model: str | None = None
+        self.ollama_poll_timer = QTimer(self)
+        self.ollama_poll_timer.setInterval(500)
+        self.ollama_poll_timer.timeout.connect(self._poll_ollama_start)
+        self.ollama_poll_deadline = 0.0
         self._manual_update_check = False
         self._job_running = False
 
@@ -1587,7 +1609,7 @@ class MainWindow(QMainWindow):
             self.set_input(initial_input, scan=False)
         self._update_status()
         if self.ollama_present and not self.ollama_ok:
-            self._start_ollama_background()
+            self._begin_ollama_start()
         QTimer.singleShot(2500, lambda: self.check_updates(manual=False))
         self.game_timer = QTimer(self)
         self.game_timer.timeout.connect(self._poll_game)
@@ -1718,6 +1740,7 @@ class MainWindow(QMainWindow):
         left_shell.setSpacing(0)
 
         left_scroll = QScrollArea()
+        self.left_scroll = left_scroll
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QFrame.NoFrame)
         left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -1766,6 +1789,7 @@ class MainWindow(QMainWindow):
         detection_header.addStretch(1)
         self.advanced_toggle = QPushButton("Advanced  ▾")
         self.advanced_toggle.setObjectName("Mono")
+        self.advanced_toggle.setFixedWidth(112)
         self.advanced_toggle.setCheckable(True)
         self.advanced_toggle.setToolTip(
             "Max clips, sample rate, proxy size, CPU cap, pre/post-roll, and low-power mode."
@@ -2548,7 +2572,10 @@ class MainWindow(QMainWindow):
         self.cancel_ai_btn.setVisible(busy)
         self.cancel_ai_btn.setEnabled(True)
         self.ai_setup_progress.setVisible(busy)
-        if not busy:
+        if busy:
+            self.ai_setup_progress.setRange(0, 1000)
+        else:
+            self.ai_setup_progress.setRange(0, 1000)
             self.ai_setup_progress.setValue(0)
 
     def _install_ollama(self) -> None:
@@ -2573,6 +2600,7 @@ class MainWindow(QMainWindow):
             self.ai_setup_status.setText("Cancelling Ollama download...")
 
     def _ollama_install_progress(self, done: int, total: int) -> None:
+        self.ai_setup_progress.setRange(0, 1000)
         if total > 0:
             percent = max(0, min(1000, int(done * 1000 / total)))
             self.ai_setup_progress.setValue(percent)
@@ -2586,15 +2614,24 @@ class MainWindow(QMainWindow):
     def _ollama_install_status(self, message: str) -> None:
         self.ai_setup_status.setText(message)
         self.ai_setup_status.show()
+        lowered = message.lower()
+        if "installing" in lowered or "starting the local" in lowered:
+            self.ai_setup_progress.setRange(0, 0)  # indeterminate busy state
+            self.cancel_ai_btn.setEnabled(False)
+        elif "downloading" in lowered:
+            self.ai_setup_progress.setRange(0, 1000)
+            self.cancel_ai_btn.setEnabled(True)
 
     def _ollama_install_done(self, ok: bool, message: str) -> None:
-        self.ai_install_worker = None
         self._set_ai_setup_busy(False)
+        self.ai_setup_progress.setRange(0, 1000)
         self.ollama_present = ollama_executable() is not None
         if ok:
-            self._refresh_ai_models()
-            self.ai_setup_status.setText(message)
+            self.ai_setup_status.setText(
+                "Ollama installed. Starting the local server..."
+            )
             self.ai_setup_status.show()
+            self._begin_ollama_start()
             return
         self.ai_setup_status.setText(message)
         self.ai_setup_status.show()
@@ -2602,31 +2639,62 @@ class MainWindow(QMainWindow):
         if "cancelled" not in message.lower():
             show_message(self, "Ollama setup failed", message, kind="warning")
 
-    def _start_ollama_background(self) -> None:
-        if (
-            self.ollama_start_worker is not None
-            and self.ollama_start_worker.isRunning()
-        ):
+    def _begin_ollama_start(self) -> None:
+        if self.ollama_poll_timer.isActive():
             return
-        worker = OllamaStartWorker()
-        worker.done.connect(self._ollama_started)
-        self.ollama_start_worker = worker
-        worker.start()
-
-    def _ollama_started(self, ok: bool) -> None:
-        self.ollama_start_worker = None
-        if ok:
-            self._refresh_ai_models()
-        else:
+        self.ollama_poll_deadline = time.monotonic() + 30.0
+        self.ai_setup_status.setText("Starting Ollama...")
+        self.ai_setup_status.show()
+        self.ai_setup_status.repaint()
+        if not launch_ollama_server():
+            self._pending_model = None
+            self.ollama_ok = False
             self._update_ai_state()
+            self.ai_setup_status.setText(
+                "Ollama did not start. Click Refresh or reinstall it."
+            )
+            self.ai_setup_status.show()
+            return
+        self.ollama_poll_timer.start()
+
+    def _poll_ollama_start(self) -> None:
+        state = ollama_status(timeout=1.0)
+        if state.get("ok"):
+            self.ollama_poll_timer.stop()
+            self.ollama_ok = True
+            self.ollama_present = True
+            pending = self._pending_model
+            self._pending_model = None
+            if pending:
+                self._start_model_pull(pending)
+            else:
+                self._refresh_ai_models()
+            return
+        if time.monotonic() >= self.ollama_poll_deadline:
+            self.ollama_poll_timer.stop()
+            self._pending_model = None
+            self.ollama_ok = False
+            self._update_ai_state()
+            self.ai_setup_status.setText(
+                "Ollama is not responding. Click Refresh or reinstall it."
+            )
+            self.ai_setup_status.show()
 
     def _refresh_ai_models(self) -> None:
+        self.ai_setup_status.setText("Checking Ollama...")
+        self.ai_setup_status.show()
+        self.ai_setup_status.repaint()
         state = ollama_status(timeout=3)
-        if not state.get("ok") and ollama_executable() is not None:
-            self.ai_setup_status.setText("Starting Ollama...")
-            self.ai_setup_status.show()
-            start_ollama_server(wait=5.0)
-            state = ollama_status(timeout=3)
+        if not state.get("ok"):
+            if ollama_executable() is not None:
+                self._begin_ollama_start()
+            else:
+                self.ai_setup_status.setText(
+                    "Ollama is not installed. Click Install Ollama."
+                )
+                self.ai_setup_status.show()
+                self._update_ai_state()
+            return
         self.ollama_ok = bool(state.get("ok"))
         self.ollama_present = ollama_executable() is not None
         installed = {
@@ -2650,48 +2718,61 @@ class MainWindow(QMainWindow):
         self.ai_default = preferred
         self._populate_ai_model_combo(preferred)
         self._update_ai_state()
+        if not self.ollama_ok:
+            self.ai_setup_status.setText(
+                "Ollama is not responding. Click Install Ollama or start it."
+            )
+        elif not self.vlm_available:
+            self.ai_setup_status.setText(
+                "Ollama is running, but no supported vision model is installed. "
+                "Click Install model."
+            )
+        self.ai_setup_status.show()
 
     def _pull_ai_model(self) -> None:
         if self.pull_worker is not None and self.pull_worker.isRunning():
             return
-        if not self.ollama_ok:
-            if not self.ollama_present:
-                self._update_ai_setup()
-                show_message(
-                    self,
-                    "Ollama is not installed",
-                    "Click Install Ollama first. Clipper downloads and verifies it for you.",
-                    kind="warning",
-                )
-                return
-            self.ai_setup_status.setText("Starting Ollama...")
-            self.ai_setup_status.show()
-            self.ollama_ok = start_ollama_server(wait=5.0)
-            if not self.ollama_ok:
-                self._update_ai_setup()
-                show_message(
-                    self,
-                    "Ollama did not start",
-                    "Click Refresh to try starting the local Ollama server again.",
-                    kind="warning",
-                )
-                return
-        model = "gemma3:4b" if self.low_vram else DEFAULT_MODEL
-        size_hint = "about 3.3 GB" if model == "gemma3:4b" else "about 6 GB"
-        if not ask_confirm(
-            self,
-            "Install local AI model",
-            f"Download {model} now?",
-            confirm="Download",
-            detail=(
-                f"This is {size_hint} and is downloaded locally through Ollama, "
-                "not Clipper. It is required for AI highlighting."
-            ),
-        ):
+        if not self.ollama_present:
+            self._update_ai_setup()
+            show_message(
+                self,
+                "Ollama is not installed",
+                "Click Install Ollama first. Clipper downloads and verifies it for you.",
+                kind="warning",
+            )
             return
+        choices = [
+            ("gemma3:4b", "3.3 GB - tested on 6 GB cards"),
+            ("qwen2.5vl:7b", "6 GB - best story judgment on 8 GB+"),
+            ("qwen3-vl:4b", "4 GB - alternate supported vision model"),
+        ]
+        labels = [f"{name}  |  {detail}" for name, detail in choices]
+        default = 0 if self.low_vram else 1
+        choice, accepted = QInputDialog.getItem(
+            self,
+            "Install vision model",
+            "Choose a supported local vision model:",
+            labels,
+            default,
+            False,
+        )
+        if not accepted:
+            return
+        model = choices[labels.index(choice)][0]
+        if not self.ollama_ok:
+            self._pending_model = model
+            self.ai_setup_status.setText(
+                f"Starting Ollama, then downloading {model}..."
+            )
+            self.ai_setup_status.show()
+            self._begin_ollama_start()
+            return
+        self._start_model_pull(model)
+
+    def _start_model_pull(self, model: str) -> None:
         self.pull_ai_btn.setEnabled(False)
-        self.pull_ai_btn.setText("Starting…")
-        self.ai_setup_status.setText(f"Downloading {model}…")
+        self.pull_ai_btn.setText("Starting...")
+        self.ai_setup_status.setText(f"Starting download for {model}...")
         self.ai_setup_status.show()
         worker = OllamaPullWorker(model)
         worker.line.connect(self._pull_ai_line)
@@ -2703,7 +2784,6 @@ class MainWindow(QMainWindow):
         self.ai_setup_status.setText(line[:180])
 
     def _pull_ai_done(self, ok: bool, message: str) -> None:
-        self.pull_worker = None
         self.pull_ai_btn.setEnabled(True)
         self.pull_ai_btn.setText("Install model")
         self.ai_setup_status.setText(message)
@@ -2742,8 +2822,12 @@ class MainWindow(QMainWindow):
             self.preset_group.setExclusive(True)
 
     def _toggle_advanced(self, checked: bool) -> None:
+        scroll = self.left_scroll.verticalScrollBar().value()
         self.advanced.setVisible(checked)
         self.advanced_toggle.setText("Advanced  ▴" if checked else "Advanced  ▾")
+        QTimer.singleShot(
+            0, lambda: self.left_scroll.verticalScrollBar().setValue(scroll)
+        )
 
     def _low_power_changed(self, checked: bool) -> None:
         self.threads.setEnabled(not checked)
@@ -3199,6 +3283,16 @@ class MainWindow(QMainWindow):
             self.worker.cancel()
         if self.export_worker and self.export_worker.isRunning():
             self.export_worker.cancel()
+        model = self._current_ai_model()
+        if model:
+            QTimer.singleShot(
+                1500,
+                lambda: threading.Thread(
+                    target=unload_model,
+                    args=(model,),
+                    daemon=True,
+                ).start(),
+            )
         self.status.setText("Cancelling…")
 
     def _set_running(self, running: bool) -> None:
@@ -3421,11 +3515,7 @@ class MainWindow(QMainWindow):
             if not self.ai_install_worker.wait(5000):
                 self.ai_install_worker.terminate()
                 self.ai_install_worker.wait(1000)
-        if (
-            self.ollama_start_worker is not None
-            and self.ollama_start_worker.isRunning()
-        ):
-            self.ollama_start_worker.wait(6000)
+        self.ollama_poll_timer.stop()
         for dialog in self.findChildren(ClipPreviewDialog):
             dialog.close()
         running = bool(
@@ -3457,6 +3547,13 @@ class MainWindow(QMainWindow):
                     worker.wait(500)
         if self.update_installer is not None and not self._update_shutdown:
             cleanup_download(self.update_installer)
+        model = self._current_ai_model()
+        if model:
+            try:
+                unload_model(model, timeout=3.0)
+            except Exception:
+                pass
+        stop_ollama_server()
         terminate_active_processes()
         self._save_settings()
         event.accept()

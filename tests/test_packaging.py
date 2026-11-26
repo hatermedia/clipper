@@ -20,6 +20,18 @@ def test_installer_never_wipes_the_install_directory() -> None:
     assert 'ReadRegStr $0 HKCU "Software\\Clipper" "InstallDir"' in nsi
 
 
+def test_installer_upgrades_in_place_and_extracts_fast() -> None:
+    nsi = _read(PACKAGING / "clipper.nsi")
+    assert "SetCompressor /SOLID lzma" not in nsi
+    assert "SetCompressor lzma" in nsi
+    assert "!insertmacro MUI_PAGE_DIRECTORY" not in nsi
+    assert "InstallDirRegKey HKCU \"Software\\Clipper\" \"InstallDir\"" in nsi
+    assert "CurrentVersion\\Uninstall\\Clipper\" \"InstallLocation\"" in nsi
+    assert "Function .onInit" in nsi
+    assert "StrCpy $INSTDIR $0" in nsi
+    assert "SetOverwrite on" in nsi
+
+
 def test_installer_closes_running_app_and_removes_settings() -> None:
     nsi = _read(PACKAGING / "clipper.nsi")
     close_script = _read(PACKAGING / "close_clipper.ps1")
