@@ -35,23 +35,23 @@ and run `Clipper.exe`.
 
 ## What it does
 
-- **Smart padding and merging** — every detected peak gets 8 seconds before and
+- **Smart padding and merging** - every detected peak gets 8 seconds before and
   5 seconds after. Windows merge when they overlap or are less than a second
   apart, keeping the stronger peak. A fight stays one clip instead of six
   fragments.
-- **Flat highlight list** — every clip is one row with its source video, time
+- **Flat highlight list** - every clip is one row with its source video, time
   range, score, and grounded reason. No nested video groups.
-- **Inline preview player** — selecting a row shows its peak frame and stays
+- **Inline preview player** - selecting a row shows its peak frame and stays
   paused. Play, pause, seek, and -5s/+5s controls are in the preview panel. A
   single click never starts playback; double-click is a shortcut to play.
-- **Local AI only** — every scan is reviewed by the local vision director.
+- **Local AI only** - every scan is reviewed by the local vision director.
   There is no heuristic-only highlighting mode.
-- **Game Guard** — pauses AI and frees VRAM while a game is running, then
+- **Game Guard** - pauses AI and frees VRAM while a game is running, then
   resumes automatically. It uses a large title map, Unreal Engine process
   detection, and major game-library paths.
-- **Lossless cuts** — stream copy keeps the original video and audio and exports
+- **Lossless cuts** - stream copy keeps the original video and audio and exports
   almost instantly.
-- **GPU + CPU controls** — real NVENC test, balanced thread cap, and a low-power
+- **GPU + CPU controls** - real NVENC test, balanced thread cap, and a low-power
   preset.
 
 ## First run and local AI

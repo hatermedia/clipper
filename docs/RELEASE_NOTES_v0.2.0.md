@@ -8,18 +8,18 @@ The native desktop release.
 
 ## Highlights
 
-- **Native Windows app** — `Clipper.exe`, a windowed PySide6/Qt application with
+- **Native Windows app** - `Clipper.exe`, a windowed PySide6/Qt application with
   a native folder picker and drag-and-drop. No browser tab, no console window,
   no background command prompt.
-- **GPU + CPU controls** — NVENC for the analysis proxy and optional re-encode,
+- **GPU + CPU controls** - NVENC for the analysis proxy and optional re-encode,
   a balanced half-core default, Low (2 threads), Max, and a low-power mode
   (2 threads, 256px/2fps proxy, below-normal process priority).
-- **In-app workflow** — sensitivity and padding, advanced tuning, progress,
+- **In-app workflow** - sensitivity and padding, advanced tuning, progress,
   cancel, result rows with peak-frame previews, re-encode/CRF, export, and
   “Open output folder”.
-- **CLI hardware flags** — `--threads`, `--proxy-width`, `--gpu`, `--low-power`,
+- **CLI hardware flags** - `--threads`, `--proxy-width`, `--gpu`, `--low-power`,
   and `--encoder auto`.
-- **Optional web UI** — `clipper ui` remains available for browser/remote use.
+- **Optional web UI** - `clipper ui` remains available for browser/remote use.
   The native app uses the same engine.
 
 ## Install

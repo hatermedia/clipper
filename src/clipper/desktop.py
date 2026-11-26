@@ -2518,7 +2518,7 @@ class MainWindow(QMainWindow):
         out_browse.clicked.connect(self.choose_output)
         export_layout.addWidget(out_browse, 0, 2)
         export_note = QLabel(
-            "Lossless cuts — original video and audio streams are copied."
+            "Lossless cuts - original video and audio streams are copied."
         )
         export_note.setObjectName("Muted")
         export_note.setWordWrap(True)
@@ -3168,7 +3168,7 @@ class MainWindow(QMainWindow):
             return
         self.update_installer = installer
         self.update_label.setText(
-            f"Clipper {release.version} is downloaded — installing on launch…"
+            f"Clipper {release.version} is downloaded - installing on launch…"
         )
         self.update_action.setText("Install now")
         self.update_action.setEnabled(True)

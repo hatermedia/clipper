@@ -1,4 +1,4 @@
-# Clipper — Go-to-Market & Monetization Brief
+# Clipper - Go-to-Market & Monetization Brief
 
 *23 Nov 2026. Repo state: 0 stars, 0 forks, 5 commits, v0.1.0; `clipper-gg` is not on PyPI. Targets are planning numbers, not forecasts.*
 
@@ -26,7 +26,7 @@ The constraint is distribution and install friction, not features. A gamer will 
 
 **The gap:** nobody owns “40GB folder → 10 horizontal clips” for non-streamers. Cloud tools assume a connected platform, capture tools assume you clip live, editors assume you already know the timestamps. The $4.99–$39/mo subscription umbrella and $15k agencies leave room for a $29 one-time utility; Auto-Editor proves that model.
 
-**Weaknesses:** heuristic detection misses semantic moments; no vertical crop or captions—features every consumer competitor markets. Sell the narrow job, not parity.
+**Weaknesses:** heuristic detection misses semantic moments; no vertical crop or captions-features every consumer competitor markets. Sell the narrow job, not parity.
 
 **Name:** “Clipper” is generic and bad for search. Always pair it with “gameplay highlight trimmer” or “Clipper GG.”
 
@@ -47,7 +47,7 @@ The constraint is distribution and install friction, not features. A gamer will 
 
 **By scalability:** hosted > Pro > B2B > content > affiliate > presets > service > sponsorship. **By speed:** service > Pro > presets > sponsorship > affiliate > B2B > hosted > content.
 
-**MIT caveat:** anyone can fork the code. Paid value must be the signed installer with bundled FFmpeg, presets, auto-update, and support—not artificial code locks. The moat is distribution and trust.
+**MIT caveat:** anyone can fork the code. Paid value must be the signed installer with bundled FFmpeg, presets, auto-update, and support-not artificial code locks. The moat is distribution and trust.
 
 **Cloud is a trap for now:** uploads contradict the promise, egress/storage/support cost real money, and incumbents charge $15–39/mo. Build only if 20+ users prepay.
 
@@ -84,11 +84,11 @@ Reddit rules pages were not directly fetchable here. The r/pcgaming 10% rule and
 
 ## 5. The first-dollar offer
 
-**Clipper Highlight Pack — $49 ($29 for the first five).** Send up to 2 hours of gameplay; get 10 lossless clips, timestamps, and preview thumbnails in 48 hours. One revision. Horizontal only.
+**Clipper Highlight Pack - $49 ($29 for the first five).** Send up to 2 hours of gameplay; get 10 lossless clips, timestamps, and preview thumbnails in 48 hours. One revision. Horizontal only.
 
 It uses Clipper as the production tool, needs zero feature work, has fixed scope, and Fiverr supplies buyer intent a 0-star repo lacks. It also produces testimonials and before/after assets.
 
-**Unit economics:** $49 direct via Gumroad nets $43.60; ~35 minutes of labor ($20 at $35/hr) + ~$1 transfer leaves ~$22 contribution. Fiverr nets $39.20 → ~$18. Ten orders/month is ~$180–220—not a business, but proof. Fiverr holds funds ~14 days; Gumroad pays on a schedule.
+**Unit economics:** $49 direct via Gumroad nets $43.60; ~35 minutes of labor ($20 at $35/hr) + ~$1 transfer leaves ~$22 contribution. Fiverr nets $39.20 → ~$18. Ten orders/month is ~$180–220-not a business, but proof. Fiverr holds funds ~14 days; Gumroad pays on a schedule.
 
 **Exact copy:**
 
@@ -98,13 +98,13 @@ It uses Clipper as the production tool, needs zero feature work, has fixed scope
 >
 > **Sub:** Send a folder link. I run a local FFmpeg pipeline, cut the loud and fast moments losslessly, and deliver 10 named clips plus timestamps. $49 flat. No subscription, no watermark.
 >
-> **Packages:** Basic $19 — 3 clips, 45 min of footage. Standard $49 — 10 clips, 2 hours. Premium $99 — 25 clips, 6 hours.
+> **Packages:** Basic $19 - 3 clips, 45 min of footage. Standard $49 - 10 clips, 2 hours. Premium $99 - 25 clips, 6 hours.
 >
 > **Requirements:** game; resolution/fps; total runtime; folder link; deadline; moments to include or avoid; confirmation you own the footage.
 >
-> **FAQ:** “What counts as a highlight?” Loud reactions + sudden motion; I review every cut. “What if it misses?” One free revision; send timestamps. “Do you keep my footage?” No—deleted 7 days after delivery. “Vertical/captions?” Not yet. “Refunds?” Full refund if I deliver no usable clips.
+> **FAQ:** “What counts as a highlight?” Loud reactions + sudden motion; I review every cut. “What if it misses?” One free revision; send timestamps. “Do you keep my footage?” No-deleted 7 days after delivery. “Vertical/captions?” Not yet. “Refunds?” Full refund if I deliver no usable clips.
 
-**Assets needed:** (1) Fiverr gig with 3 images—before/after folder, contact sheet of 10 clips, price card; (2) 60–90s screen recording of dry-run → export; (3) Gumroad product page and checkout; (4) Tally intake form; (5) delivery template with clip naming (`Game_YYYYMMDD_clip01.mp4`) and `clips.csv`; (6) deletion/revision policy; (7) testimonial request.
+**Assets needed:** (1) Fiverr gig with 3 images-before/after folder, contact sheet of 10 clips, price card; (2) 60–90s screen recording of dry-run → export; (3) Gumroad product page and checkout; (4) Tally intake form; (5) delivery template with clip naming (`Game_YYYYMMDD_clip01.mp4`) and `clips.csv`; (6) deletion/revision policy; (7) testimonial request.
 
 **Launch sequence:** publish Fiverr + Gumroad → 10 personalized DMs offering a free 3-clip sample → 2 Discord `#self-promo` posts → waitlist email. No mass DMs.
 

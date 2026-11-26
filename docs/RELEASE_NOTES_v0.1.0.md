@@ -1,6 +1,6 @@
 # Clipper v0.1.0
 
-First public build of Clipper — a local-first gaming highlight trimmer.
+First public build of Clipper - a local-first gaming highlight trimmer.
 
 Clipper scans a folder of gameplay footage, scores audio spikes and visual
 motion, merges overlapping moments, and cuts clips with FFmpeg. No uploads, no

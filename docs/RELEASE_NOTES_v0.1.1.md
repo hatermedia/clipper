@@ -8,19 +8,19 @@ Windows portable build, public landing page, and a lower-friction download path.
 
 ## Highlights
 
-- **Windows x64 portable zip** — bundles Python 3.13, FFmpeg, FFprobe, the local
+- **Windows x64 portable zip** - bundles Python 3.13, FFmpeg, FFprobe, the local
   web UI, and CLI launchers. Unzip, double-click `Clipper UI.cmd`, pick a folder.
   No Python or FFmpeg install required.
-- **Frozen-build FFmpeg discovery** — the executable looks in its own folder,
+- **Frozen-build FFmpeg discovery** - the executable looks in its own folder,
   `bin/`, and `ffmpeg/bin/` before falling back to `PATH`.
-- **Public site** — [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/)
+- **Public site** - [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/)
   with a 20-second real UI demo, install paths, guides, and an optional
   done-for-you clip service.
-- **Historical demo assets** — `docs/media/demo.mp4` (19.5s, 630 KB) and `demo.gif` (3.7 MB),
+- **Historical demo assets** - `docs/media/demo.mp4` (19.5s, 630 KB) and `demo.gif` (3.7 MB),
   recorded from the actual UI doing scan → detect → export.
-- **Historical guides** — batch ShadowPlay trimming, automatic highlight detection, and an
+- **Historical guides** - batch ShadowPlay trimming, automatic highlight detection, and an
   honest open-source comparison.
-- **Service pilot** — a separate, optional done-for-you clip pack. The software
+- **Service pilot** - a separate, optional done-for-you clip pack. The software
   stays free and MIT licensed. The pilot has since been retired.
 
 ## Install

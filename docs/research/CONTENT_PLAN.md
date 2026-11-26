@@ -7,70 +7,70 @@ Publish on GitHub Pages at `/guides/<slug>.html`; syndicate with canonical URLs.
 ## 1. Ten search-led pages
 
 **1. ShadowPlay batch trim**
-- **Keyword / intent:** `batch trim shadowplay clips` — how-to.
+- **Keyword / intent:** `batch trim shadowplay clips` - how-to.
 - **Title:** Batch Trim ShadowPlay Clips Without Uploading
 - **Meta:** Batch-trim ShadowPlay clips with local audio + motion detection, preview cuts, and lossless FFmpeg export. MIT.
 - **Outline:** Capture vs. trim; install Python/FFmpeg; dry-run timestamps; stream-copy export; sensitivity.
 - **Internal CTA:** Dry-run your folder; report a miss with game + timestamp.
 
 **2. Automatic highlight finding**
-- **Keyword / intent:** `find highlights in gameplay footage automatically` — informational.
+- **Keyword / intent:** `find highlights in gameplay footage automatically` - informational.
 - **Title:** Find Gameplay Highlights Automatically (No AI Model)
 - **Meta:** Find loud reactions and sudden motion in gameplay footage, preview the moments, and cut clips locally.
 - **Outline:** Why scrubbing fails; audio RMS vs. 4s median; 320px/4fps motion proxy; fusion + adaptive peaks; failure cases.
 - **Internal CTA:** Try the demo; compare dry-run cuts to your timestamps.
 
 **3. Lossless cuts**
-- **Keyword / intent:** `trim gameplay video without re-encoding` — how-to.
+- **Keyword / intent:** `trim gameplay video without re-encoding` - how-to.
 - **Title:** Trim Gameplay Clips Without Re-Encoding
 - **Meta:** How FFmpeg stream copy cuts gameplay without re-encoding, why keyframes shift the start, and when to re-encode.
 - **Outline:** `-c copy`; keyframe boundary; command; default trade-off; `--reencode`; HDR note.
 - **Internal CTA:** Export one clip both ways and compare.
 
 **4. Capture vs. detection**
-- **Keyword / intent:** `shadowplay vs obs replay buffer` — comparison.
+- **Keyword / intent:** `shadowplay vs obs replay buffer` - comparison.
 - **Title:** ShadowPlay vs OBS Replay Buffer vs Clipper
 - **Meta:** ShadowPlay, OBS Replay Buffer, and Clipper solve different parts of clipping. An honest comparison.
 - **Outline:** Capture vs. detection; ShadowPlay is NVIDIA-only; OBS is manual but universal; Clipper post-processes files; no winner.
 - **Internal CTA:** Have footage? Use Clipper. Still recording? Use OBS or ShadowPlay.
 
 **5. Opus alternative**
-- **Keyword / intent:** `free local opus clip alternative for gaming` — commercial.
+- **Keyword / intent:** `free local opus clip alternative for gaming` - commercial.
 - **Title:** A Free, Local Opus Clip Alternative for Gameplay
 - **Meta:** Compare talking-video AI clipping with local audio + motion detection for gameplay. No uploads, no credits.
 - **Outline:** Opus targets speech and often uploads; gameplay needs loud + motion, not transcripts; no captions/vertical crop.
 - **Internal CTA:** Use Clipper for selects; finish in your editor.
 
 **6. ShadowPlay folder**
-- **Keyword / intent:** `where does shadowplay save highlights` — informational.
+- **Keyword / intent:** `where does shadowplay save highlights` - informational.
 - **Title:** Where ShadowPlay Saves Highlights
 - **Meta:** Find where NVIDIA ShadowPlay saves highlights, then batch-scan that folder and trim the good moments locally.
 - **Outline:** Find the capture folder in NVIDIA settings (path varies); common `Videos/Captures`; `--recursive`; export.
 - **Internal CTA:** Dry-run the folder before moving files.
 
 **7. Twitch VOD**
-- **Keyword / intent:** `trim twitch vod locally` — how-to.
+- **Keyword / intent:** `trim twitch vod locally` - how-to.
 - **Title:** Trim Twitch VOD Highlights Locally
 - **Meta:** Trim highlights from your own Twitch VOD on your machine. Scan it, preview cuts, and export with FFmpeg.
 - **Outline:** Only your own VOD or permission; TwitchDownloader/yt-dlp; no built-in downloader; scan; preview; export.
 - **Internal CTA:** Dry-run your VOD; report a missed timestamp.
 
 **8. Steam Deck**
-- **Keyword / intent:** `trim steam deck gameplay recording` — how-to.
+- **Keyword / intent:** `trim steam deck gameplay recording` - how-to.
 - **Title:** How to Trim Steam Deck Gameplay Recordings
 - **Meta:** Turn Steam Deck recordings into short clips in Desktop Mode or on a PC. Local Python + FFmpeg.
 - **Outline:** Export from Steam Game Recording; copy to PC or Desktop Mode; check `python3` + FFmpeg; venv + CLI; UI may be heavy.
 - **Internal CTA:** Report Deck-specific install issues.
 
 **9. Large folder triage**
-- **Keyword / intent:** `organize large gameplay clip folder` — problem-aware.
+- **Keyword / intent:** `organize large gameplay clip folder` - problem-aware.
 - **Title:** How to Triage 100GB of Gameplay Clips
 - **Meta:** Triage a huge gameplay folder with dry-run reports, preview frames, scores, and batch export instead of watching everything.
 - **Outline:** Inventory by folder/date/size; dry run writes JSON + previews; keep/delete by score; keep originals; not a library manager.
 - **Internal CTA:** Export only top candidates.
 
 **10. Open-source detector**
-- **Keyword / intent:** `open source gameplay highlight detector` — commercial.
+- **Keyword / intent:** `open source gameplay highlight detector` - commercial.
 - **Title:** Open-Source Gameplay Highlight Detection
 - **Meta:** Clipper is an MIT, local-first gameplay highlight detector. Audio + motion, FFmpeg export, no model download.
 - **Outline:** What it detects/does not; supported containers; install; shooter vs. racing tuning; roadmap: presets, vertical, VOD import.
@@ -83,7 +83,7 @@ Each channel needs an account; create early, participate first. Spend 15 min/day
 | Day | Channel / login | Hook | Format | CTA |
 |---|---|---|---|---|
 | 1 | Hacker News (account; no vote asks) | "I built a local tool that finds the loud parts of gameplay." | Show HN + author comment | Dry run; report misses |
-| 2 | r/opensource (account; rules/flair) | "MIT local clipper — here is what it does not do." | Text + screenshot | Critique detection |
+| 2 | r/opensource (account; rules/flair) | "MIT local clipper - here is what it does not do." | Text + screenshot | Critique detection |
 | 4 | X (account) | "40GB folder → 4 clips, one command." | 30s recording + thread | Repo link |
 | 6 | dev.to (account) | "How I detect highlights without an ML model." | 900-word technical post | Canonical repo link |
 | 8 | YouTube (channel, login) | "46s demo, scanned and cut." | 60–90s demo; label synthetic | Install link |
@@ -99,11 +99,11 @@ Day 30: review; don't compensate with extra posts.
 
 ## 3. Short-form hooks (first 3 seconds)
 
-1. **"40GB of clips. I'm not watching any of it."** — folder size → one dry run.
-2. **"This is what a gunfight looks like to a waveform."** — spike synced to the detected clip.
-3. **"No upload. No account. No model. Just FFmpeg."** — airplane mode on, then run.
-4. **"ShadowPlay saved the moment. It didn't cut it."** — folder → preview thumbnails.
-5. **"Three hours of VOD. About forty seconds worth clipping."** — timeline zooms to peaks.
+1. **"40GB of clips. I'm not watching any of it."** - folder size → one dry run.
+2. **"This is what a gunfight looks like to a waveform."** - spike synced to the detected clip.
+3. **"No upload. No account. No model. Just FFmpeg."** - airplane mode on, then run.
+4. **"ShadowPlay saved the moment. It didn't cut it."** - folder → preview thumbnails.
+5. **"Three hours of VOD. About forty seconds worth clipping."** - timeline zooms to peaks.
 
 Use synthetic or rights-cleared footage, and label synthetic footage. Do not imply a real match if it is generated.
 
