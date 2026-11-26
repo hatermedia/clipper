@@ -41,6 +41,15 @@ For each candidate clip the ears pass:
 
 The ears pass never invents a candidate and never deletes a HUD-verified clip.
 
+## Low-power mode
+
+Low-power mode keeps only one model resident at a time when the selected vision
+model and the audio ears are different. It unloads the vision model before the
+ears pass, then reloads it for the final edit, and releases both models when the
+video finishes. This is significantly slower because every video pays the model
+load cost again. If both roles use the same model, no swap is needed. The mode
+also lowers analysis threads and proxy resolution.
+
 ## Model sources
 
 - LFM3-Omni-2B: Ollama registry blobs, LFM Open License v1.0.

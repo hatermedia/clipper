@@ -114,13 +114,19 @@ def unload_model(model: str, timeout: float = 8.0) -> bool:
         return False
 
 
-def configure_runtime(settings: DetectionSettings) -> str:
+def configure_runtime(
+    settings: DetectionSettings,
+    *,
+    main: bool = True,
+    ears: bool = True,
+) -> str:
     """Start the bundled llama.cpp servers this scan needs.
 
     The vision model and the Omni ears model are independent. That lets a
     strong vision model (Ollama) work with the fast LFM3 ears model, or lets two
-    GGUF models run side by side when there is enough VRAM. Returns
-    ``llamacpp`` when the *vision* model runs through the bundled runtime.
+    GGUF models run side by side when there is enough VRAM. Low-power mode uses
+    the ``main`` and ``ears`` switches to keep only one of them resident.
+    Returns ``llamacpp`` when the *vision* model runs through the runtime.
     """
 
     global _RUNTIME_SERVERS, _RUNTIME_MAIN
@@ -142,8 +148,10 @@ def configure_runtime(settings: DetectionSettings) -> str:
         _RUNTIME_SERVERS = {}
         _RUNTIME_MAIN = None
         return "ollama"
-    main_spec = model_spec(settings.ai_model)
-    ears_spec = model_spec(settings.ai_ears_model) if settings.ai_ears else None
+    main_spec = model_spec(settings.ai_model) if main else None
+    ears_spec = (
+        model_spec(settings.ai_ears_model) if settings.ai_ears and ears else None
+    )
     if ears_spec is not None and not ears_spec.audio:
         from .llama_runtime import LFM3_OMNI_2B
 
@@ -178,10 +186,10 @@ def configure_runtime(settings: DetectionSettings) -> str:
                 raise
             return False
 
-    main_started = run(main_spec, required=True)
+    main_started = run(main_spec, required=main)
     run(ears_spec)
     _RUNTIME_MAIN = main_spec.id if main_started and main_spec else None
-    if settings.ai_runtime == "llamacpp" and not main_started:
+    if main and settings.ai_runtime == "llamacpp" and not main_started:
         stop_server()
         _RUNTIME_SERVERS = {}
         raise AIError(

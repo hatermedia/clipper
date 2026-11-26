@@ -42,7 +42,7 @@ from .hud import HudLine, HudReading, chat_cue, display_text, event_lines, read_
 from .llama_runtime import LFM3_OMNI_2B, model_spec
 from .signals import SIGNAL_VERSION, WindowSignal, analyze_signals, tag_transcript, window_signal
 
-PROMPT_VERSION = "director-v14"
+PROMPT_VERSION = "director-v15"
 FRAMES_PER_SHEET = 9
 FRAME_WIDTH = 640
 WINDOW_OVERLAP = 0.66
@@ -1012,6 +1012,14 @@ def _is_social_game(game: str) -> bool:
     return game.strip().lower() in {"social", "desktop", "omegle", "ome.tv"}
 
 
+def _same_model(left: str, right: str) -> bool:
+    left_spec = model_spec(left)
+    right_spec = model_spec(right)
+    left_key = left_spec.id if left_spec is not None else left.strip().lower()
+    right_key = right_spec.id if right_spec is not None else right.strip().lower()
+    return left_key == right_key
+
+
 def _banter_friendly_game(game: str) -> bool:
     key = game.strip().lower()
     if not key or key in {"auto", "generic"}:
@@ -1139,7 +1147,20 @@ def direct_clip(
     progress: ProgressFn | None = None,
     jerk: ScoreTrack | None = None,
 ) -> tuple[list[ClipWindow], list[str]]:
-    runtime = configure_runtime(settings)
+    main_spec = model_spec(settings.ai_model)
+    ears_candidate = model_spec(settings.ai_ears_model)
+    if ears_candidate is not None and not ears_candidate.audio:
+        ears_is_main = False
+    elif ears_candidate is None and main_spec is not None:
+        ears_is_main = True
+    else:
+        ears_is_main = _same_model(
+            settings.ai_model, settings.ai_ears_model
+        )
+    low_power_swap = (
+        settings.low_power and settings.ai_ears and not ears_is_main
+    )
+    runtime = configure_runtime(settings, ears=not low_power_swap)
     if runtime != "llamacpp":
         spec = model_spec(settings.ai_model)
         if spec is not None:
@@ -1185,7 +1206,7 @@ def direct_clip(
         if progress:
             progress(0.86, f"AI resumed · {stage}")
         try:
-            configure_runtime(settings)
+            configure_runtime(settings, ears=not low_power_swap)
         except AIError:
             pass
 
@@ -1281,7 +1302,21 @@ def direct_clip(
     if not clips:
         warnings.append("AI director found no story beats in this clip.")
     clips = _merge(clips)
-    if clips and settings.ai_ears:
+    if (
+        clips
+        and settings.ai_ears
+        and wav is not None
+        and wav.is_file()
+    ):
+        if low_power_swap:
+            if progress:
+                progress(0.935, "Low-power: loading audio ears")
+            stop_runtime()
+            unload_model(settings.ai_model)
+            try:
+                configure_runtime(settings, main=False, ears=True)
+            except AIError as exc:
+                warnings.append(f"AI ears unavailable: {exc}")
         limit = min(len(clips), 12)
         heard_clips: list[ClipWindow] = []
         failed_ears = 0
@@ -1316,7 +1351,16 @@ def direct_clip(
                 )
             heard_clips.append(clip)
         clips = heard_clips + clips[limit:]
-        if (
+        if low_power_swap:
+            if progress:
+                progress(0.952, "Low-power: reloading vision model")
+            stop_runtime()
+            unload_model(ears_model)
+            try:
+                configure_runtime(settings, main=True, ears=False)
+            except AIError as exc:
+                warnings.append(f"Vision model reload failed: {exc}")
+        elif (
             runtime_name() == "ollama"
             and settings.ai_ears_model != settings.ai_model
         ):
@@ -1383,6 +1427,12 @@ def direct_clip(
     clips.sort(key=lambda clip: clip.score, reverse=True)
     clips = clips[: settings.max_clips]
     clips.sort(key=lambda clip: clip.start)
+    if settings.low_power:
+        # Low-power mode is explicit about releasing the models when the scan
+        # ends. The next video pays the reload cost again.
+        stop_runtime()
+        unload_model(settings.ai_model)
+        unload_model(ears_model)
     if progress:
         progress(0.99, f"AI director: {len(clips)} segment(s)")
     return clips, warnings

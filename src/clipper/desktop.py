@@ -1730,10 +1730,7 @@ class MainWindow(QMainWindow):
         brand_line.addWidget(brand)
         brand_line.addWidget(version_label)
         brand_line.addStretch(1)
-        sub = QLabel("local highlight engine")
-        sub.setObjectName("BrandSub")
         brand_box.addLayout(brand_line)
-        brand_box.addWidget(sub)
         header.addLayout(brand_box)
         header.addStretch(1)
         self.gpu_label = QLabel("nvenc / checking")
@@ -1952,14 +1949,16 @@ class MainWindow(QMainWindow):
         self.ai_model.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self._populate_ai_model_combo()
         self.ai_model.setEnabled(self.vlm_available or bool(self.bundled_models))
-        if self.low_vram:
+        if self.gpu_vram_mb:
             self.ai_model.setToolTip(
-                f"{self.gpu_vram_mb} MB VRAM detected. "
-                "gemma3:4b is tested on 6 GB cards; qwen2.5vl:7b is best on 8 GB+."
+                f"{self.gpu_vram_mb} MB VRAM detected. Bundled tiers: "
+                "Lite ~4 GB, Standard ~8.5 GB, Google ~10.5 GB. "
+                "Ollama vision models are listed alongside them."
             )
         elif not self.vlm_available:
             self.ai_model.setToolTip(
-                "No supported vision model detected. Install gemma3:4b or qwen2.5vl:7b to start."
+                "No supported vision model detected. Download a bundled model "
+                "or install gemma3:4b / qwen2.5vl:7b."
             )
         ai_controls.addWidget(self.ai_model, 0, 1)
         self.download_model_btn = QPushButton("Download")
@@ -1969,9 +1968,10 @@ class MainWindow(QMainWindow):
         ai_controls.addWidget(self.download_model_btn, 0, 3)
         ai_controls.addWidget(
             self._help(
-                "The director reviews the whole clip, including audio, transcript, "
-                "HUD, and sampled frames. gemma3:4b is tested on 6 GB cards; "
-                "qwen2.5vl:7b is the better choice on 8 GB+."
+                "The selected model watches the whole clip and reads the HUD. "
+                "Standard is recommended on 10 GB; Google needs 12 GB+ for "
+                "headroom; Lite is fastest but less accurate. Audio ears are "
+                "separate and add laughter, sarcasm, and tone."
             ),
             0,
             2,
@@ -2006,6 +2006,27 @@ class MainWindow(QMainWindow):
             ),
             0,
             4,
+        )
+        self.low_power = ToggleRow("Low-power mode")
+        self.low_power.setToolTip(
+            "Keeps only one AI model loaded at a time when vision and audio "
+            "use different models. The vision model is unloaded while the "
+            "audio ears run, then reloaded for the final edit. Significantly "
+            "slower: every video pays for the model reloads. If both roles use "
+            "the same model, no swap is needed."
+        )
+        ears_controls.addWidget(self.low_power, 1, 0, 1, 2)
+        ears_controls.addWidget(
+            self._help(
+                "Frees RAM and VRAM by swapping the vision and audio models "
+                "between passes, and lowers analysis threads and proxy "
+                "resolution. This is significantly slower because different "
+                "models are unloaded and reloaded for every video."
+            ),
+            1,
+            2,
+            1,
+            3,
         )
         left.addLayout(ears_controls)
         self.ai_ears_combo.currentIndexChanged.connect(self._ears_changed)
@@ -2066,21 +2087,18 @@ class MainWindow(QMainWindow):
         self.game_guard = ToggleRow("Pause AI while gaming", show_state=False)
         self.game_guard.setChecked(True)
         self.game_guard.setToolTip(
-            "Pause AI and free VRAM while a game is running."
+            "Pause AI and free VRAM/RAM while a game is running."
         )
         game_row.addWidget(self.game_guard)
         game_row.addWidget(
             self._help(
                 "Uses the local process list.\n"
-                "Pauses analysis and unloads the vision model while a game runs."
+                "Pauses analysis and unloads the vision and audio models while "
+                "a game runs."
             )
         )
         game_row.addStretch(1)
         left.addLayout(game_row)
-        auto_game_note = QLabel("Game presets are inferred from the folder or file name.")
-        auto_game_note.setObjectName("Muted")
-        auto_game_note.setWordWrap(True)
-        left.addWidget(auto_game_note)
 
         gpu_row = QHBoxLayout()
         self.gpu = ToggleRow("Use NVIDIA GPU (NVENC)")
@@ -2196,23 +2214,6 @@ class MainWindow(QMainWindow):
         advanced_layout.addWidget(self.pre, 5, 0)
         advanced_layout.addWidget(self.post, 5, 1)
         advanced_layout.addLayout(self.gpu_row, 6, 0, 1, 2)
-        self.low_power = ToggleRow("Low-power mode")
-        self.low_power.setToolTip(
-            "Performance preset: 2 threads, 256px/2fps analysis proxy, below-normal "
-            "process priority. The local AI director still runs."
-        )
-        low_row = QHBoxLayout()
-        low_row.setContentsMargins(0, 0, 0, 0)
-        low_row.setSpacing(4)
-        low_row.addWidget(self.low_power)
-        low_row.addWidget(
-            self._help(
-                "Reduces CPU and proxy cost. It does not disable the local AI "
-                "director; it only trades speed for lower resource use."
-            )
-        )
-        low_row.addStretch(1)
-        advanced_layout.addLayout(low_row, 7, 0, 1, 2)
         advanced_layout.addWidget(
             QLabel("GPU helps decode/encode; motion scoring remains CPU-bound."),
             8, 0, 1, 2,
@@ -2455,6 +2456,31 @@ class MainWindow(QMainWindow):
         value = self.ai_ears_combo.currentData()
         return str(value) if value else ""
 
+    def _vision_ready(self) -> bool:
+        model = self._current_ai_model()
+        if not model:
+            return False
+        spec = next((item for item in MODELS if item.id == model), None)
+        if spec is not None:
+            return runtime_ready() and model_ready(spec)
+        return self.ollama_ok and model.lower() in self.installed_models
+
+    def _ears_ready(self) -> bool:
+        model = self._current_ears_model()
+        if not model:
+            return True
+        spec = next(
+            (
+                item
+                for item in MODELS
+                if item.id == model and item.audio
+            ),
+            None,
+        )
+        if spec is not None:
+            return runtime_ready() and model_ready(spec)
+        return self.ollama_ok and model.lower() in self.installed_models
+
     def _populate_ears_combo(self, preferred: str | None = None) -> None:
         selected = (
             preferred
@@ -2489,20 +2515,21 @@ class MainWindow(QMainWindow):
 
     def _update_ears_state(self) -> None:
         model = self._current_ears_model()
-        if model == "lfm3-omni-2b":
-            self.ai_ears_state.setText("ready · bundled runtime")
-        elif model == "lfm3-omni":
-            self.ai_ears_state.setText("ready · Ollama")
-        elif model_ready(LFM3_OMNI_2B):
+        if not model:
             self.ai_ears_state.setText("off")
-        else:
+        elif self._ears_ready():
+            self.ai_ears_state.setText("")
+        elif not (model_ready(LFM3_OMNI_2B) and runtime_ready()):
             self.ai_ears_state.setText("2.0 GB download")
+        else:
+            self.ai_ears_state.setText("not ready")
         self.install_ears_btn.setVisible(
             not (model_ready(LFM3_OMNI_2B) and runtime_ready())
         )
 
     def _ears_changed(self) -> None:
         self._update_ears_state()
+        self._update_ai_state()
 
     def _download_selected_model(self) -> None:
         if (
@@ -2867,34 +2894,48 @@ class MainWindow(QMainWindow):
         running = bool(getattr(self, "_job_running", False))
         model = self._current_ai_model()
         spec = next((item for item in MODELS if item.id == model), None)
+        vision_ready = self._vision_ready()
+        ears_selected = bool(self._current_ears_model())
+        ears_ready = self._ears_ready()
+        full_ready = vision_ready and (not ears_selected or ears_ready)
         if spec is not None:
-            ready = runtime_ready() and model_ready(spec)
-            self.download_model_btn.setVisible(not ready)
+            spec_ready = runtime_ready() and model_ready(spec)
+            self.download_model_btn.setVisible(not spec_ready)
             self.download_model_btn.setEnabled(not running)
             self.download_model_btn.setText(
                 f"Download {sum(item.size for item in spec.files) / 1e9:.1f} GB"
             )
         else:
-            ready = self.vlm_available and self.ollama_ok
             self.download_model_btn.hide()
         self.ai_model.setEnabled(
             not running and (self.vlm_available or bool(self.bundled_models))
         )
-        if ready:
+        if full_ready:
             self.ai_state.setText("ready")
             self.ai_state.setStyleSheet("color: #7ac77a;")
             self.ai_state.setToolTip(
-                "Local AI ready. The director watches the whole clip and transcribes "
-                "audio locally."
+                "Local AI ready. The vision model and audio ears are installed."
+            )
+        elif vision_ready or (ears_selected and ears_ready):
+            self.ai_state.setText("partially ready")
+            self.ai_state.setStyleSheet("color: #d6a84f;")
+            missing = (
+                "Audio ears are not ready."
+                if vision_ready
+                else "The vision model is not ready."
+            )
+            self.ai_state.setToolTip(
+                f"Local AI is incomplete. {missing} Open the model picker or "
+                "Install button to finish setup."
             )
         else:
-            self.ai_state.setText("setup required")
-            self.ai_state.setStyleSheet("")
+            self.ai_state.setText("not ready")
+            self.ai_state.setStyleSheet("color: #d66a6a;")
             self.ai_state.setToolTip(
-                "Install Ollama and a local vision model to enable highlighting."
+                "Install a vision model and audio ears to enable highlighting."
             )
         if hasattr(self, "analyze_btn"):
-            self.analyze_btn.setEnabled(not running and ready)
+            self.analyze_btn.setEnabled(not running and full_ready)
         self._update_ai_setup()
 
     def _update_ai_setup(self) -> None:
@@ -4124,6 +4165,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--story-game", default="generic", help=argparse.SUPPRESS)
     parser.add_argument("--story-model", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--story-runtime", default="auto", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--story-low-power", action="store_true", help=argparse.SUPPRESS
+    )
     parser.add_argument("--preview-test", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--preview-start", type=float, default=0.0, help=argparse.SUPPRESS)
     parser.add_argument("--preview-end", type=float, default=10.0, help=argparse.SUPPRESS)
@@ -4158,6 +4202,7 @@ def main(argv: list[str] | None = None) -> int:
                         ai_mode="director",
                         ai_game=args.story_game,
                         ai_runtime=args.story_runtime,
+                        low_power=args.story_low_power,
                         **(
                             {"ai_model": args.story_model}
                             if args.story_model

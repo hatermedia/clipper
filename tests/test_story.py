@@ -15,6 +15,7 @@ from clipper.detect.story import (
     StoryWindow,
     TranscriptLine,
     _apply_audio_reading,
+    _same_model,
     _segments_from_windows,
 )
 from clipper.models import ClipWindow
@@ -575,3 +576,8 @@ def test_social_laughter_without_words_still_counts() -> None:
     assert adjusted.duration < clip.duration
     assert adjusted.score > clip.score
     assert adjusted.end <= 40.0
+
+def test_same_model_resolves_aliases() -> None:
+    assert _same_model("lfm3-omni", "lfm3-omni-2b")
+    assert not _same_model("minicpm-o-4.5", "lfm3-omni-2b")
+    assert not _same_model("qwen2.5vl:7b", "lfm3-omni-2b")

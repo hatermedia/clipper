@@ -69,7 +69,7 @@ def test_browse_and_drop_zone_open_native_pickers_directly() -> None:
 def test_legacy_ai_mode_and_game_picker_are_removed() -> None:
     source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
     assert "Fast review" not in source
-    assert "Lite" not in source
+    assert "Lite review" not in source
     assert "legacy peak-only" not in source
     assert "self.ai_game" not in source
     assert "self.ai_mode." not in source
