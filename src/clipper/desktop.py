@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import traceback
@@ -1137,6 +1138,25 @@ def load_app_fonts() -> None:
 _FONTS_LOADED = False
 
 
+def _wrap_tooltip(text: str, width: int = 62) -> str:
+    """Wrap long tooltips so they do not stretch across the desktop."""
+
+    lines: list[str] = []
+    for line in str(text).splitlines():
+        if len(line) <= width:
+            lines.append(line)
+            continue
+        lines.extend(
+            textwrap.wrap(
+                line,
+                width=width,
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+        )
+    return "\n".join(lines)
+
+
 def _clock(seconds: float) -> str:
     total = max(0, int(round(float(seconds))))
     hours, rem = divmod(total, 3600)
@@ -1180,7 +1200,7 @@ class HelpLabel(QLabel):
         if self.underMouse() and self._tooltip_text:
             QToolTip.showText(
                 self.mapToGlobal(QPoint(0, self.height() + 4)),
-                self._tooltip_text,
+                _wrap_tooltip(self._tooltip_text),
                 self,
             )
 
@@ -2028,11 +2048,8 @@ class MainWindow(QMainWindow):
         self.ai_state.setObjectName("ToggleState")
         self.ai_state.setMinimumWidth(88)
         ai_title.setToolTip(
-            "Every scan is edited by the local vision model. It transcribes the "
-            "clip with Whisper, watches the full clip in short windows, and keeps "
-            "funny interactions, banter, reactions, goals, and big plays. "
-            "A small Omni model listens for laughter, sarcasm, and tone. "
-            "It runs locally; nothing is uploaded."
+            "Local vision model + Whisper transcript + Omni audio ears.\n"
+            "Everything runs on this PC."
         )
         ai_row.addWidget(ai_title)
         ai_row.addWidget(self.ai_state)
@@ -2056,9 +2073,8 @@ class MainWindow(QMainWindow):
         self.ai_model.setEnabled(self.vlm_available or bool(self.bundled_models))
         if self.gpu_vram_mb:
             self.ai_model.setToolTip(
-                f"{self.gpu_vram_mb} MB VRAM detected. Bundled tiers: "
-                "Lite ~4 GB, Standard ~8.5 GB, Google ~10.5 GB. "
-                "Ollama vision models are listed alongside them."
+                f"{self.gpu_vram_mb} MB VRAM. "
+                "Lite ~4 GB · Standard ~8.5 GB · Google ~10.5 GB."
             )
         elif not self.vlm_available:
             self.ai_model.setToolTip(
@@ -2071,16 +2087,14 @@ class MainWindow(QMainWindow):
         self.download_model_btn.setFixedWidth(76)
         self.download_model_btn.clicked.connect(self._download_selected_model)
         self.download_model_btn.hide()
-        ai_controls.addWidget(self.download_model_btn, 0, 3)
+        ai_controls.addWidget(self.download_model_btn, 0, 4)
         ai_controls.addWidget(
             self._help(
-                "The selected model watches the whole clip and reads the HUD. "
-                "Standard is recommended on 10 GB; Google needs 12 GB+ for "
-                "headroom; Lite is fastest but less accurate. Audio ears are "
-                "separate and add laughter, sarcasm, and tone."
+                "Watches the clip and reads the HUD.\n"
+                "Standard is best on 10 GB; Google needs 12 GB+; Lite is fastest."
             ),
             0,
-            4,
+            2,
         )
 
         ears_label = QLabel("Audio ears")
@@ -2096,39 +2110,36 @@ class MainWindow(QMainWindow):
             "Optional Omni model that hears laughter, sarcasm, and tone."
         )
         ai_controls.addWidget(self.ai_ears_combo, 1, 1)
+        ai_controls.addWidget(
+            self._help(
+                "Hears laughter, sarcasm, anger, and excitement.\n"
+                "It adds evidence; it never invents a highlight."
+            ),
+            1,
+            2,
+        )
         self.ai_ears_state = QLabel("")
         self.ai_ears_state.setObjectName("Muted")
         self.ai_ears_state.setMinimumWidth(54)
-        ai_controls.addWidget(self.ai_ears_state, 1, 2)
+        ai_controls.addWidget(self.ai_ears_state, 1, 3)
         self.install_ears_btn = QPushButton("Install")
         self.install_ears_btn.setObjectName("Mono")
         self.install_ears_btn.setFixedWidth(76)
         self.install_ears_btn.clicked.connect(self._install_ears)
         self.install_ears_btn.setVisible(not model_ready(LFM3_OMNI_2B))
-        ai_controls.addWidget(self.install_ears_btn, 1, 3)
-        ai_controls.addWidget(
-            self._help(
-                "A small Omni model listens for laughter, sarcasm, anger, and "
-                "excitement in short chunks. It adds evidence to the transcript; "
-                "it never invents a highlight on its own."
-            ),
-            1,
-            4,
-        )
+        ai_controls.addWidget(self.install_ears_btn, 1, 4)
         self.low_power = ToggleRow("Low-power mode")
         self.low_power.setToolTip(
-            "Keeps only one AI model loaded at a time when vision and audio "
-            "use different models. The vision model is unloaded while the "
-            "audio ears run, then reloaded for the final edit. Significantly "
-            "slower: every video pays for the model reloads. If both roles use "
-            "the same model, no swap is needed. It also lowers analysis "
-            "threads and proxy resolution."
+            "One AI model at a time.\n"
+            "Vision and audio models swap between passes.\n"
+            "Significantly slower: every video reloads them.\n"
+            "Also lowers threads and proxy resolution."
         )
         self.game_guard = ToggleRow("Pause AI while gaming")
         self.game_guard.setChecked(True)
         self.game_guard.setToolTip(
-            "Pause AI and free VRAM/RAM while a game is running. The process "
-            "list is checked locally; analysis resumes when the game exits."
+            "Pause AI and free VRAM/RAM while a game is running.\n"
+            "Analysis resumes when the game exits."
         )
         power_row = QHBoxLayout()
         power_row.setSpacing(8)
@@ -2577,28 +2588,9 @@ class MainWindow(QMainWindow):
                 return index
         return -1
 
-    def _custom_ollama_models(self, vision: list[str]) -> list[str]:
-        known = {name.lower() for name in vision}
-        known.update(
-            {
-                "lfm3-omni",
-                "lfm3-omni:latest",
-                "lfm3-omni-2b",
-                "gemma4:12b",
-            }
-        )
-        custom = []
-        for name in self.installed_models.values():
-            key = name.lower()
-            if key in known or key.startswith("qwen2.5vl:3b"):
-                continue
-            custom.append(name)
-        return sorted(custom, key=str.lower)
-
     def _populate_ai_model_combo(self, preferred: str | None = None) -> None:
         selected = self._current_ai_model() or preferred or self.ai_default
         vision = sorted(self.ai_models, key=str.lower)
-        custom = self._custom_ollama_models(vision)
         self.ai_model.blockSignals(True)
         self.ai_model.clear()
         if self.bundled_models:
@@ -2626,17 +2618,6 @@ class MainWindow(QMainWindow):
             self._add_combo_header(self.ai_model, "Ollama")
             for model in vision:
                 self.ai_model.addItem(model, model)
-        if custom:
-            self._add_combo_header(self.ai_model, "Other Ollama models")
-            for model in custom:
-                self.ai_model.addItem(model, model)
-                index = self.ai_model.count() - 1
-                self.ai_model.setItemData(
-                    index,
-                    "Unverified local model. It may not support vision or "
-                    "the Director's JSON format.",
-                    Qt.ToolTipRole,
-                )
         if self.ai_model.count() == 0:
             self.ai_model.addItem("No supported vision model installed", None)
             item = self.ai_model.model().item(0)
@@ -4039,6 +4020,15 @@ class MainWindow(QMainWindow):
         # press on the margin over a panel. Watch presses app-wide and start the
         # native resize loop ourselves when the cursor is on this window's edge.
         try:
+            if event.type() == QEvent.ToolTip and isinstance(obj, QWidget):
+                text = obj.toolTip()
+                if text and len(text) > 90:
+                    QToolTip.showText(
+                        event.globalPos(),
+                        _wrap_tooltip(text),
+                        obj,
+                    )
+                    return True
             if (
                 os.name == "nt"
                 and event.type() == QEvent.MouseButtonPress

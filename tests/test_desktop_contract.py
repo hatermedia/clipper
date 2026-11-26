@@ -121,9 +121,10 @@ def test_gui_exposes_grouped_models_and_intentional_empty_states() -> None:
     assert "_add_combo_header" in source
     assert '"Bundled"' in source
     assert '"Ollama"' in source
-    assert '"Other Ollama models"' in source
+    assert '"Other Ollama models"' not in source
+    assert "_custom_ollama_models" not in source
     assert "No highlights yet" in source
     assert "No clip selected" in source
     assert "partially ready" in source
     assert "Quick start" in source
-    assert "slower: every video pays" in source
+    assert "Significantly slower: every video reloads them" in source
