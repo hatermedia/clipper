@@ -61,6 +61,76 @@ def test_ignores_steam_tool_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     assert gameguard.detect_running_game() is None
 
 
+def test_ignores_riot_client_launcher_processes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        gameguard,
+        "running_process_names",
+        lambda: {
+            "RiotClientServices.exe",
+            "RiotClientCrashHandler.exe",
+            "RiotClientUX.exe",
+            "Riot Client.exe",
+            "explorer.exe",
+        },
+    )
+    monkeypatch.setattr(
+        gameguard,
+        "running_process_paths",
+        lambda: {
+            "riotclientservices.exe": r"D:\Riot Games\Riot Client\RiotClientServices.exe",
+            "riotclientcrashhandler.exe": r"D:\Riot Games\Riot Client\RiotClientCrashHandler.exe",
+        },
+    )
+    assert gameguard.detect_running_game() is None
+
+
+def test_ignores_common_launchers(monkeypatch: pytest.MonkeyPatch) -> None:
+    launchers = {
+        "steam.exe": r"D:\Steam\steam.exe",
+        "leagueclient.exe": r"D:\Riot Games\League of Legends\LeagueClient.exe",
+        "epicgameslauncher.exe": r"D:\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe",
+        "battle.net.exe": r"D:\Battle.net\Battle.net.exe",
+        "eadesktop.exe": r"D:\EA Desktop\EA Desktop\EADesktop.exe",
+        "ubisoftconnect.exe": r"D:\Ubisoft\Ubisoft Connect\UbisoftConnect.exe",
+        "galaxyclient.exe": r"D:\GOG Galaxy\GalaxyClient.exe",
+        "xboxapp.exe": r"C:\Program Files\WindowsApps\Microsoft.GamingApp\XboxApp.exe",
+        "playnite.desktopapp.exe": r"D:\Playnite\Playnite.DesktopApp.exe",
+        "rockstarlauncher.exe": r"D:\Rockstar Games\Launcher\RockstarLauncher.exe",
+        "itch.exe": r"D:\itch\itch.exe",
+    }
+    monkeypatch.setattr(
+        gameguard, "running_process_names", lambda: set(launchers)
+    )
+    monkeypatch.setattr(
+        gameguard, "running_process_paths", lambda: launchers
+    )
+    assert gameguard.detect_running_game() is None
+
+
+def test_ignores_launcher_install_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        gameguard, "running_process_names", lambda: {"helper.exe"}
+    )
+    monkeypatch.setattr(
+        gameguard,
+        "running_process_paths",
+        lambda: {
+            "helper.exe": r"D:\Riot Games\Riot Client\helper.exe",
+        },
+    )
+    assert gameguard.detect_running_game() is None
+
+
+def test_riot_game_still_detected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        gameguard,
+        "running_process_names",
+        lambda: {"VALORANT-Win64-Shipping.exe", "RiotClientServices.exe"},
+    )
+    monkeypatch.setattr(gameguard, "running_process_paths", lambda: {})
+    assert gameguard.detect_running_game() == "Valorant"
+
+
 def test_custom_game_names(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     custom = tmp_path / "games.json"
     custom.write_text('{"mygame.exe": "My Game"}', encoding="utf-8")
@@ -78,6 +148,24 @@ def test_no_game(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda: {"explorer.exe", "chrome.exe"},
     )
     assert gameguard.detect_running_game() is None
+
+
+def test_title_map_contains_no_launchers() -> None:
+    for exe in (
+        "riotclient.exe",
+        "riotclientservices.exe",
+        "riotclientcrashhandler.exe",
+        "leagueclient.exe",
+        "steam.exe",
+        "epicgameslauncher.exe",
+        "battle.net.exe",
+        "eadesktop.exe",
+        "ubisoftconnect.exe",
+        "galaxyclient.exe",
+        "xboxapp.exe",
+        "playnite.desktopapp.exe",
+    ):
+        assert exe not in gameguard.KNOWN_GAMES
 
 
 def test_path_auto_detects_game() -> None:

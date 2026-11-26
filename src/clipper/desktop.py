@@ -64,7 +64,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -103,7 +102,12 @@ from .config import (
     find_ffmpeg,
     set_low_priority,
 )
-from .detect.ai import DEFAULT_MODEL, ollama_status, unload_model
+from .detect.ai import (
+    DEFAULT_MODEL,
+    is_supported_vision_model,
+    ollama_status,
+    unload_model,
+)
 from .ffmpeg import (
     FFmpegError,
     ffmpeg_version,
@@ -1536,21 +1540,19 @@ class MainWindow(QMainWindow):
         self.installed_models = installed
         vision = [
             name for name in installed.values()
-            if any(token in name.lower() for token in ("vl", "llava", "minicpm", "moondream", "gemma3"))
-            and "qwen2.5vl:3b" not in name.lower()
+            if is_supported_vision_model(name)
         ]
         self.ai_models = vision
-        self.vlm_available = bool(installed)
+        self.vlm_available = bool(vision)
         self.ai_default = (
             DEFAULT_MODEL
             if DEFAULT_MODEL.lower() in installed
-            else (vision[0] if vision else next(iter(installed.values()), "No model installed"))
+            else (vision[0] if vision else "No supported vision model installed")
         )
         self.gpu_vram_mb = nvidia_memory_mb()
         self.low_vram = bool(self.gpu_vram_mb and self.gpu_vram_mb <= 7000)
         if self.low_vram and "gemma3:4b" in installed:
             self.ai_default = "gemma3:4b"
-        self._last_ai_model = self.ai_default
         self._detected_game: str | None = None
         self.update_release: ReleaseInfo | None = None
         self.update_installer: Path | None = None
@@ -1848,12 +1850,8 @@ class MainWindow(QMainWindow):
             )
         elif not self.vlm_available:
             self.ai_model.setToolTip(
-                "No local vision model detected. Install Ollama and a model to start."
+                "No supported vision model detected. Install gemma3:4b or qwen2.5vl:7b to start."
             )
-        self.ai_model.setToolTip(
-            self.ai_model.toolTip()
-            + "\nOther local models and custom tags must support image input."
-        )
         ai_controls.addWidget(self.ai_model, 0, 1)
         ai_controls.addWidget(
             self._help(
@@ -2230,16 +2228,6 @@ class MainWindow(QMainWindow):
         label.setObjectName("Section")
         return label
 
-    def _add_ai_group(self, label: str) -> None:
-        index = self.ai_model.count()
-        self.ai_model.addItem(label, None)
-        item = self.ai_model.model().item(index)
-        if item is not None:
-            item.setEnabled(False)
-            font = item.font()
-            font.setBold(True)
-            item.setFont(font)
-
     def _select_ai_model(self, model: str | None) -> None:
         if not model:
             return
@@ -2248,78 +2236,31 @@ class MainWindow(QMainWindow):
             self.ai_model.blockSignals(True)
             self.ai_model.setCurrentIndex(index)
             self.ai_model.blockSignals(False)
-            self._last_ai_model = model
 
     def _current_ai_model(self) -> str:
         value = self.ai_model.currentData()
-        if not value or value == "__custom__":
-            return ""
-        return str(value)
+        return str(value) if value else ""
 
     def _populate_ai_model_combo(self, preferred: str | None = None) -> None:
-        selected = self._current_ai_model() or preferred or self._last_ai_model
+        selected = self._current_ai_model() or preferred or self.ai_default
         vision = sorted(self.ai_models, key=str.lower)
-        others = sorted(
-            (
-                model
-                for model in self.installed_models.values()
-                if model not in self.ai_models
-                and "qwen2.5vl:3b" not in model.lower()
-            ),
-            key=str.lower,
-        )
         self.ai_model.blockSignals(True)
         self.ai_model.clear()
-        self._add_ai_group("Vision models")
-        no_model_index: int | None = None
         if vision:
             for model in vision:
                 self.ai_model.addItem(model, model)
         else:
-            no_model_index = self.ai_model.count()
-            self.ai_model.addItem("No local model installed", None)
-            item = self.ai_model.model().item(no_model_index)
+            self.ai_model.addItem("No supported vision model installed", None)
+            item = self.ai_model.model().item(0)
             if item is not None:
                 item.setEnabled(False)
-        if others:
-            self.ai_model.insertSeparator(self.ai_model.count())
-            self._add_ai_group("Other local models")
-            for model in others:
-                self.ai_model.addItem(model, model)
-        self.ai_model.insertSeparator(self.ai_model.count())
-        self.ai_model.addItem("Custom model…", "__custom__")
         self.ai_model.blockSignals(False)
         self._select_ai_model(selected)
-        if not self._current_ai_model():
-            self._select_ai_model(self.ai_default)
         if not self._current_ai_model() and vision:
             self._select_ai_model(vision[0])
-        if not self._current_ai_model() and no_model_index is not None:
-            self.ai_model.blockSignals(True)
-            self.ai_model.setCurrentIndex(no_model_index)
-            self.ai_model.blockSignals(False)
 
     def _ai_model_changed(self) -> None:
-        if self.ai_model.currentData() == "__custom__":
-            text, accepted = QInputDialog.getText(
-                self,
-                "Custom Ollama model",
-                "Model tag (for example qwen2.5vl:7b):",
-            )
-            text = text.strip()
-            if accepted and text:
-                index = self.ai_model.findData(text)
-                if index < 0:
-                    index = self.ai_model.count() - 1
-                    self.ai_model.insertItem(index, text, text)
-                self.ai_model.setCurrentIndex(index)
-                self._last_ai_model = text
-                self._update_ai_state()
-                return
-            self._select_ai_model(self._last_ai_model or self.ai_default)
-            return
         if self._current_ai_model():
-            self._last_ai_model = self._current_ai_model()
             self._update_ai_state()
 
     def _help(self, text: str) -> QLabel:
@@ -2551,17 +2492,8 @@ class MainWindow(QMainWindow):
     def _update_ai_state(self) -> None:
         running = bool(getattr(self, "_job_running", False))
         ready = self.vlm_available and self.ollama_ok
-        selected = self._current_ai_model()
-        unverified = bool(selected) and selected not in self.ai_models
         self.ai_model.setEnabled(not running and self.vlm_available)
-        if ready and unverified:
-            self.ai_state.setText("unverified")
-            self.ai_state.setStyleSheet("color: #d6a84a;")
-            self.ai_state.setToolTip(
-                "This model is not in the known vision list. If it does not accept "
-                "image input, the director will fail."
-            )
-        elif ready:
+        if ready:
             self.ai_state.setText("ready")
             self.ai_state.setStyleSheet("color: #7ac77a;")
             self.ai_state.setToolTip(
@@ -2586,17 +2518,17 @@ class MainWindow(QMainWindow):
             return
         self.ollama_present = ollama_executable() is not None
         if self.ollama_ok and self.ollama_present:
-            self.ai_setup_title.setText("Ollama found · model needed")
+            self.ai_setup_title.setText("Ollama found · supported model needed")
             self.ai_setup_text.setText(
-                "Download a vision model to enable the local AI director."
+                "Download gemma3:4b or qwen2.5vl:7b to enable the local AI director."
             )
             self.get_ollama_btn.hide()
             self.pull_ai_btn.show()
         elif self.ollama_present:
             self.ai_setup_title.setText("Ollama is installed")
             self.ai_setup_text.setText(
-                "Start Ollama with Refresh, then download a vision model to "
-                "enable the local AI director."
+                "Start Ollama with Refresh, then download a supported vision "
+                "model to enable the local AI director."
             )
             self.get_ollama_btn.hide()
             self.pull_ai_btn.show()
@@ -2703,14 +2635,10 @@ class MainWindow(QMainWindow):
         self.installed_models = installed
         vision = [
             name for name in installed.values()
-            if any(
-                token in name.lower()
-                for token in ("vl", "llava", "minicpm", "moondream", "gemma3")
-            )
-            and "qwen2.5vl:3b" not in name.lower()
+            if is_supported_vision_model(name)
         ]
         self.ai_models = vision
-        self.vlm_available = bool(installed)
+        self.vlm_available = bool(vision)
         if vision:
             preferred = (
                 "gemma3:4b"
@@ -2718,7 +2646,7 @@ class MainWindow(QMainWindow):
                 else (DEFAULT_MODEL if DEFAULT_MODEL.lower() in installed else vision[0])
             )
         else:
-            preferred = next(iter(installed.values()), "No model installed")
+            preferred = "No supported vision model installed"
         self.ai_default = preferred
         self._populate_ai_model_combo(preferred)
         self._update_ai_state()

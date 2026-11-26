@@ -6,6 +6,19 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-26
+
+### Fixed
+
+- **Game Guard no longer treats launchers as games.** Riot Client components,
+  League Client, Steam, Epic, Battle.net, EA Desktop, Ubisoft Connect, GOG
+  Galaxy, Xbox app, Playnite, Rockstar, Bethesda, Paradox, Wargaming, Minecraft
+  Launcher, and itch are excluded by process family and install path.
+- **Only supported vision models are listed.** The picker now contains
+  `gemma3`, `qwen2.5vl`, and `qwen3-vl` models only. Text models, the “Other
+  local models” group, and custom tags were removed.
+- Added launcher regression tests and model-family tests.
+
 ## [0.8.0] - 2026-11-26
 
 ### Changed

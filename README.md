@@ -6,11 +6,11 @@ with FFmpeg. Everything runs locally. No accounts, no uploads, no browser.
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.8.0](https://github.com/hatermedia/clipper/releases/tag/v0.8.0)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.8.1](https://github.com/hatermedia/clipper/releases/tag/v0.8.1)
 
 ## Install
 
-**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.0.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.0/ClipperSetup-0.8.0.exe) (~365 MB)
+**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.1.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.1/ClipperSetup-0.8.1.exe) (~365 MB)
 
 - Per-user install, no admin prompt
 - Installs to `%LOCALAPPDATA%\Programs\Clipper`
@@ -23,7 +23,7 @@ runtime they need. A multi-gigabyte vision model is **not** bundled. The AI
 Director can install Ollama from inside the app, and then download a model only
 when you ask for it.
 
-Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.8.0/clipper-0.8.0-windows-x64-native.zip)
+Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.8.1/clipper-0.8.1-windows-x64-native.zip)
 and run `Clipper.exe`.
 
 ## What it does
@@ -64,8 +64,8 @@ The AI model is required, but it is not bundled. To set it up:
 3. On 6 GB cards use `gemma3:4b` (tested). On 8 GB+ use `qwen2.5vl:7b`.
 
 Game presets are inferred from each file's folder or name; there is no game
-dropdown to maintain. The model picker lists local Ollama vision models, other
-installed models, and a custom model tag option. If AI is not ready, Detect
+dropdown to maintain. The model picker lists only the supported local vision
+families: `gemma3`, `qwen2.5vl`, and `qwen3-vl`. If AI is not ready, Detect
 highlights stays disabled until setup finishes.
 
 ### Low-power mode

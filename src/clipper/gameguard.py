@@ -71,8 +71,25 @@ _GAME_PATH_MARKERS = (
 
 _NON_GAME_FOLDERS = {
     "launcher",
+    "riot client",
+    "riot clientux",
+    "riot client services",
+    "epic games launcher",
     "epic online services",
+    "steam",
     "steamvr",
+    "battle.net",
+    "blizzard",
+    "ea desktop",
+    "ubisoft connect",
+    "gog galaxy",
+    "xbox app",
+    "playnite",
+    "rockstar games launcher",
+    "bethesda launcher",
+    "paradox launcher",
+    "wargaming game center",
+    "minecraft launcher",
     "wallpaper_engine",
     "obs-studio",
     "source sdk base 2013",
@@ -85,6 +102,24 @@ _NON_GAME_FOLDERS = {
     "redistributables",
 }
 
+_LAUNCHER_PATH_MARKERS = (
+    "\\riot games\\riot client\\",
+    "\\epic games\\launcher\\",
+    "\\steam\\bin\\",
+    "\\steam\\steam.exe",
+    "\\battle.net\\",
+    "\\ea desktop\\",
+    "\\ubisoft connect\\",
+    "\\gog galaxy\\",
+    "\\xbox app\\",
+    "\\playnite\\",
+    "\\rockstar games\\launcher\\",
+    "\\bethesda.net launcher\\",
+    "\\paradox launcher\\",
+    "\\wargaming.net\\gamecenter\\",
+    "\\minecraft launcher\\",
+)
+
 _NON_GAME_PROCESSES = {
     "steam.exe",
     "steamwebhelper.exe",
@@ -93,14 +128,32 @@ _NON_GAME_PROCESSES = {
     "epicwebhelper.exe",
     "riotclientservices.exe",
     "riotclientux.exe",
+    "riotclientcrashhandler.exe",
+    "riotclient.exe",
+    "riot client.exe",
+    "leagueclient.exe",
+    "leagueclientux.exe",
+    "league client.exe",
     "battle.net.exe",
     "agent.exe",
     "origin.exe",
     "eadesktop.exe",
+    "eabackgroundservice.exe",
     "ubisoftconnect.exe",
     "upc.exe",
     "galaxyclient.exe",
     "goggalaxy.exe",
+    "xboxapp.exe",
+    "gamebar.exe",
+    "gamingservices.exe",
+    "playnite.desktopapp.exe",
+    "playnite.fullscreenapp.exe",
+    "rockstarlauncher.exe",
+    "bethesdanetlauncher.exe",
+    "paradoxlauncher.exe",
+    "wargaminggamecenter.exe",
+    "minecraftlauncher.exe",
+    "itch.exe",
     "wallpaper32.exe",
     "wallpaper64.exe",
     "obs64.exe",
@@ -110,6 +163,42 @@ _NON_GAME_PROCESSES = {
     "msedge.exe",
     "firefox.exe",
 }
+
+# Launchers are not games. Match their process families even when a new
+# component (crash handler, web helper, UX shell) is added by an update.
+_LAUNCHER_PROCESS_PREFIXES = (
+    "riotclient",
+    "riot client",
+    "leagueclient",
+    "league client",
+    "epicgameslauncher",
+    "epicwebhelper",
+    "battle.net",
+    "blizzard",
+    "eadesktop",
+    "eabackgroundservice",
+    "ubisoftconnect",
+    "galaxyclient",
+    "goggalaxy",
+    "xboxapp",
+    "gamebar",
+    "gamingservices",
+    "playnite",
+    "rockstarlauncher",
+    "bethesdanet",
+    "paradoxlauncher",
+    "wargaming",
+    "minecraftlauncher",
+    "amazon games",
+    "nexon",
+)
+
+
+def _is_launcher_process(name: str) -> bool:
+    exe = name.strip().lower()
+    if exe in _NON_GAME_PROCESSES:
+        return True
+    return any(exe.startswith(prefix) for prefix in _LAUNCHER_PROCESS_PREFIXES)
 
 
 class _ProcessEntry32W(ctypes.Structure):
@@ -247,6 +336,8 @@ def _custom_games() -> dict[str, str]:
 def _game_from_path(path: str) -> str | None:
     text = str(path).replace("/", "\\")
     lowered = text.lower()
+    if any(marker in lowered for marker in _LAUNCHER_PATH_MARKERS):
+        return None
     for marker in _GAME_PATH_MARKERS:
         index = lowered.find(marker)
         if index < 0:
@@ -260,24 +351,28 @@ def _game_from_path(path: str) -> str | None:
 
 
 def detect_running_game() -> str | None:
-    names = running_process_names()
+    names = {str(name).lower() for name in running_process_names()}
     if not names:
         return None
     games = dict(KNOWN_GAMES)
     games.update(_custom_games())
     for exe in names:
+        if _is_launcher_process(exe):
+            continue
         label = games.get(exe)
         if label:
             return label
     for exe in names:
+        if _is_launcher_process(exe):
+            continue
         for suffix in _UNREAL_SUFFIXES:
             if exe.endswith(suffix):
                 stem = exe[: -len(suffix)]
                 if stem and stem not in {"launcher", "crashreportclient"}:
                     return _pretty_name(stem)
-    paths = running_process_paths()
+    paths = {str(exe).lower(): path for exe, path in running_process_paths().items()}
     for exe, path in paths.items():
-        if exe in _NON_GAME_PROCESSES:
+        if _is_launcher_process(exe):
             continue
         label = _game_from_path(path)
         if label:

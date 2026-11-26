@@ -1,8 +1,8 @@
 """Local vision-language review of highlight candidates via Ollama.
 
-This is intentionally an optional second stage, not a replacement for the
-cheap audio/motion pass. The VLM looks at three frames around a candidate and
-decides whether the moment is worth clipping. Everything runs locally.
+The director is Clipper's only highlight path. It looks at full-clip windows
+with frames, transcript, HUD, and audio signals, then decides what to keep.
+Everything runs locally.
 """
 
 from __future__ import annotations
@@ -29,6 +29,17 @@ from .merge import merge_windows, pick_peaks
 
 OLLAMA_URL = os.environ.get("CLIPPER_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 DEFAULT_MODEL = "qwen2.5vl:7b"
+VISION_MODEL_FAMILIES = ("gemma3", "qwen2.5vl", "qwen3-vl")
+
+
+def is_supported_vision_model(name: str) -> bool:
+    """True only for model families the Director is built and tested around."""
+
+    lowered = name.strip().lower()
+    if not lowered or "qwen2.5vl:3b" in lowered:
+        return False
+    family = lowered.split(":", 1)[0]
+    return family in VISION_MODEL_FAMILIES
 
 
 def num_gpu_for(model: str) -> int:

@@ -4,7 +4,7 @@ import pytest
 
 from clipper.config import DetectionSettings, ai_confidence_for_sensitivity
 from clipper.detect import ai
-from clipper.detect.ai import num_gpu_for
+from clipper.detect.ai import is_supported_vision_model, num_gpu_for
 from clipper.models import ClipWindow
 
 
@@ -17,6 +17,15 @@ def test_legacy_modes_are_rejected() -> None:
     for mode in ("review", "lite"):
         with pytest.raises(ValueError, match="director"):
             DetectionSettings(ai_mode=mode).validate()
+
+
+def test_only_supported_vision_families_are_offered() -> None:
+    assert is_supported_vision_model("gemma3:4b")
+    assert is_supported_vision_model("qwen2.5vl:7b")
+    assert is_supported_vision_model("qwen3-vl:4b")
+    assert not is_supported_vision_model("qwen2.5vl:3b")
+    assert not is_supported_vision_model("qwen3:14b")
+    assert not is_supported_vision_model("Godmoded/llama3-lexi-uncensored:latest")
 
 
 def test_sensitivity_presets_map_to_ai_thresholds() -> None:

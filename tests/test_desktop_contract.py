@@ -77,7 +77,9 @@ def test_legacy_ai_mode_and_game_picker_are_removed() -> None:
     assert "ai_game=\"auto\"" in source
     assert "ai_mode=\"director\"" in source
     assert "Local AI director" in source
-    assert "Custom model" in source
+    assert "is_supported_vision_model" in source
+    assert "Other local models" not in source
+    assert "Custom model" not in source
 
 
 def test_frame_accurate_reencode_and_discord_copy_are_removed() -> None:
