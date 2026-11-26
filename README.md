@@ -7,11 +7,11 @@ no uploads, no browser.
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.8.2](https://github.com/hatermedia/clipper/releases/tag/v0.8.2)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.8.3](https://github.com/hatermedia/clipper/releases/tag/v0.8.3)
 
 ## Install
 
-**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.2.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.2/ClipperSetup-0.8.2.exe) (~365 MB)
+**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.3.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.3/ClipperSetup-0.8.3.exe) (~365 MB)
 
 - Per-user install, no admin prompt
 - Installs to `%LOCALAPPDATA%\Programs\Clipper`
@@ -30,7 +30,7 @@ Ollama from inside the app, and then download a model only when you ask for it.
 Running a newer installer over an older install reuses the same per-user folder
 and overwrites it in place. It does not create a second Clipper installation.
 
-Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.8.2/clipper-0.8.2-windows-x64-native.zip)
+Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.8.3/clipper-0.8.3-windows-x64-native.zip)
 and run `Clipper.exe`.
 
 ## What it does

@@ -346,6 +346,33 @@ def test_launch_installer_rejects_untrusted_location(
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows installer path behavior")
+def test_pending_update_round_trip(tmp_path, monkeypatch) -> None:
+    state = tmp_path / "update-state.json"
+    installer = tmp_path / "ClipperSetup-9.9.9.exe"
+    installer.write_bytes(b"MZ installer")
+    monkeypatch.setattr(update, "_state_file", lambda: state)
+    release = update.ReleaseInfo(
+        version="9.9.9",
+        tag="v9.9.9",
+        name="v9.9.9",
+        notes="",
+        page_url="https://github.com/hatermedia/clipper/releases/tag/v9.9.9",
+        published_at="",
+        installer_name="ClipperSetup-9.9.9.exe",
+        installer_url="https://github.com/hatermedia/clipper/releases/download/v9.9.9/ClipperSetup-9.9.9.exe",
+        installer_size=installer.stat().st_size,
+        checksums_name="SHA256SUMS.txt",
+        checksums_url="https://github.com/hatermedia/clipper/releases/download/v9.9.9/SHA256SUMS.txt",
+    )
+    update.save_pending_update(release, installer)
+    loaded = update.load_pending_update()
+    assert loaded is not None
+    assert loaded[0].version == "9.9.9"
+    assert loaded[1] == installer
+    update.clear_pending_update()
+    assert update.load_pending_update() is None
+
+
 def test_launch_installer_rejects_non_update_folder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -354,7 +381,7 @@ def test_launch_installer_rejects_non_update_folder(
     installer.parent.mkdir()
     installer.write_bytes(b"MZ")
     monkeypatch.setattr(update.tempfile, "gettempdir", lambda: str(tmp_path))
-    with pytest.raises(update.UpdateError, match="not a Clipper update"):
+    with pytest.raises(update.UpdateError, match="outside the update"):
         update.launch_installer(installer)
 
 

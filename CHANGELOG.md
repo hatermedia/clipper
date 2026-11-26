@@ -6,6 +6,19 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-26
+
+### Fixed
+
+- **Update downloads are cached.** A verified installer is reused from
+  `%LOCALAPPDATA%\Clipper\updates` instead of downloading the full app again.
+- **Later installs on next launch.** The pending installer is persisted and
+  applied silently on the next Clipper start.
+- **Restart and install no longer silently fails.** Removed the confirmation
+  step and made the updater wait for the helper to confirm startup; failures
+  keep Clipper open and show an error.
+- Pending installers are cleared after the new version launches.
+
 ## [0.8.2] - 2026-11-26
 
 ### Changed

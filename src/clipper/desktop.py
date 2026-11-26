@@ -127,12 +127,15 @@ from .pipeline import analyze_target, export_analysis, scan_inputs
 from .update import (
     ReleaseInfo,
     UpdateError,
+    cached_installer_path,
     check_with_cache,
     cleanup_download,
     download_installer,
     is_installed_build,
     launch_installer,
+    load_pending_update,
     open_release_page,
+    save_pending_update,
 )
 
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
@@ -513,6 +516,7 @@ class UpdateDownloadWorker(QThread):
         try:
             path = download_installer(
                 self.release,
+                destination=cached_installer_path(self.release),
                 progress=self._progress,
             )
             self.ready.emit(str(path))
@@ -1583,6 +1587,7 @@ class MainWindow(QMainWindow):
         self.ollama_poll_timer.setInterval(500)
         self.ollama_poll_timer.timeout.connect(self._poll_ollama_start)
         self.ollama_poll_deadline = 0.0
+        self._view_release_only = False
         self._manual_update_check = False
         self._job_running = False
 
@@ -1610,6 +1615,7 @@ class MainWindow(QMainWindow):
         self._update_status()
         if self.ollama_present and not self.ollama_ok:
             self._begin_ollama_start()
+        QTimer.singleShot(800, self._resume_pending_update)
         QTimer.singleShot(2500, lambda: self.check_updates(manual=False))
         self.game_timer = QTimer(self)
         self.game_timer.timeout.connect(self._poll_game)
@@ -1721,7 +1727,7 @@ class MainWindow(QMainWindow):
         self.update_action.clicked.connect(self._update_action_clicked)
         update_row.addWidget(self.update_action)
         update_later = QPushButton("Later")
-        update_later.clicked.connect(self.update_bar.hide)
+        update_later.clicked.connect(self._update_later)
         update_row.addWidget(update_later)
         self.update_bar.hide()
         content_layout.addWidget(self.update_bar)
@@ -2375,6 +2381,7 @@ class MainWindow(QMainWindow):
         assert isinstance(release, ReleaseInfo)
         self.update_release = release
         self.update_installer = None
+        self._view_release_only = False
         if release.has_installer:
             self.update_label.setText(
                 f"Clipper {release.version} is available · you have {__version__}"
@@ -2401,10 +2408,15 @@ class MainWindow(QMainWindow):
             )
 
     def _update_action_clicked(self) -> None:
+        release = self.update_release
+        if self._view_release_only:
+            self._view_release_only = False
+            if release is not None:
+                open_release_page(release)
+            return
         if self.update_installer is not None:
             self._install_update()
             return
-        release = self.update_release
         if release is None:
             self.check_updates(manual=True)
             return
@@ -2443,7 +2455,13 @@ class MainWindow(QMainWindow):
         self.update_download_worker = None
         release = self.update_release
         self.update_installer = Path(path)
+        self._view_release_only = False
         version = release.version if release else ""
+        if release is not None:
+            try:
+                save_pending_update(release, path)
+            except OSError:
+                pass
         self.update_label.setText(
             f"Update ready · Clipper {version} downloaded and SHA-256 verified"
         )
@@ -2465,7 +2483,42 @@ class MainWindow(QMainWindow):
             detail="You can download the release manually from GitHub.",
         )
 
-    def _install_update(self) -> None:
+    def _update_later(self) -> None:
+        release = self.update_release
+        installer = self.update_installer
+        if release is not None and installer is not None:
+            try:
+                save_pending_update(release, installer)
+            except OSError:
+                pass
+        self.update_bar.hide()
+
+    def _resume_pending_update(self) -> None:
+        pending = load_pending_update()
+        if pending is None:
+            return
+        release, installer = pending
+        self.update_release = release
+        if not is_installed_build():
+            self.update_installer = None
+            self._view_release_only = True
+            self.update_label.setText(
+                f"Clipper {release.version} is downloaded and ready to install."
+            )
+            self.update_action.setText("View release")
+            self.update_action.setEnabled(True)
+            self.update_bar.show()
+            return
+        self.update_installer = installer
+        self.update_label.setText(
+            f"Clipper {release.version} is downloaded — installing on launch…"
+        )
+        self.update_action.setText("Install now")
+        self.update_action.setEnabled(True)
+        self.update_bar.show()
+        QTimer.singleShot(1500, lambda: self._install_update(auto=True))
+
+    def _install_update(self, auto: bool = False) -> None:
         release = self.update_release
         installer = self.update_installer
         if release is None or installer is None:
@@ -2479,17 +2532,12 @@ class MainWindow(QMainWindow):
             )
             open_release_page(release)
             return
-        if not ask_confirm(
-            self,
-            "Install update",
-            f"Install Clipper {release.version} now?",
-            confirm="Install and restart",
-            detail="Clipper will close, install silently, and reopen.",
-        ):
-            return
         try:
             launch_installer(installer, wait_pid=os.getpid(), relaunch=True)
         except UpdateError as exc:
+            self.update_label.setText("Could not start the installer")
+            self.update_action.setText("Retry install")
+            self.update_action.setEnabled(True)
             show_message(
                 self,
                 "Could not start installer",

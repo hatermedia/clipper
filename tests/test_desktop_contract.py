@@ -95,6 +95,20 @@ def test_frame_accurate_reencode_and_discord_copy_are_removed() -> None:
     assert "turn off" not in source.lower()
 
 
+def test_update_flow_persists_and_resumes_pending_installer() -> None:
+    source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert "_resume_pending_update" in source
+    assert "save_pending_update" in source
+    assert "load_pending_update" in source
+    assert "cached_installer_path" in source
+    assert "launch_installer" in source
+    update_source = (Path(inspect.getsourcefile(MainWindow)).parent / "update.py").read_text(
+        encoding="utf-8"
+    )
+    assert "_wait_for_helper_marker" in update_source
+    assert "helper did not confirm startup" in update_source
+
+
 def test_close_event_stops_previews_workers_and_ffmpeg() -> None:
     source = inspect.getsource(MainWindow.closeEvent)
     assert "ClipPreviewDialog" in source

@@ -315,6 +315,17 @@ def _state_file() -> Path:
     return root / "Clipper" / "update-state.json"
 
 
+def update_cache_dir() -> Path:
+    base = os.environ.get("LOCALAPPDATA")
+    root = Path(base) if base else Path.home() / ".cache"
+    return root / "Clipper" / "updates"
+
+
+def cached_installer_path(release: ReleaseInfo) -> Path:
+    name = _safe_installer_name(release.installer_name, release.version)
+    return update_cache_dir() / release.version / name
+
+
 def load_state() -> dict[str, Any]:
     path = _state_file()
     try:
@@ -331,6 +342,55 @@ def save_state(state: dict[str, Any]) -> None:
         path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except OSError:
         pass
+
+
+def clear_pending_update() -> None:
+    state = load_state()
+    if "pending" not in state:
+        return
+    state.pop("pending", None)
+    save_state(state)
+
+
+def save_pending_update(release: ReleaseInfo, installer: Path | str) -> None:
+    path = Path(installer)
+    if not path.is_file():
+        return
+    state = load_state()
+    state["pending"] = {
+        "release": release.to_dict(),
+        "installer": str(path.resolve()),
+        "sha256": sha256_file(path),
+    }
+    save_state(state)
+
+
+def load_pending_update() -> tuple[ReleaseInfo, Path] | None:
+    state = load_state()
+    pending = state.get("pending")
+    if not isinstance(pending, dict):
+        return None
+    try:
+        release = ReleaseInfo.from_dict(dict(pending.get("release") or {}))
+        path = Path(str(pending.get("installer") or ""))
+        expected = str(pending.get("sha256") or "").lower()
+    except (TypeError, ValueError, OSError):
+        clear_pending_update()
+        return None
+    if not version_is_newer(release.version, __version__):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        clear_pending_update()
+        return None
+    if not expected or not path.is_file() or not path.parent.is_dir():
+        clear_pending_update()
+        return None
+    if sha256_file(path).lower() != expected:
+        clear_pending_update()
+        return None
+    return release, path
 
 
 def check_with_cache(
@@ -357,13 +417,10 @@ def check_with_cache(
         return (release if version_is_newer(release.version, current) else None), True
 
     latest = fetch_latest(timeout=timeout)
-    save_state(
-        {
-            "checked_at": now,
-            "current": current,
-            "release": latest.to_dict(),
-        }
-    )
+    state["checked_at"] = now
+    state["current"] = current
+    state["release"] = latest.to_dict()
+    save_state(state)
     return (latest if version_is_newer(latest.version, current) else None), False
 
 
@@ -452,6 +509,9 @@ def download_installer(
         raise UpdateError(
             f"The release checksums do not list {name}; refusing to install it."
         )
+    if target.is_file() and sha256_file(target).lower() == expected:
+        # A verified installer from an earlier attempt is already on disk.
+        return target
 
     digest = hashlib.sha256()
     downloaded = 0
@@ -606,6 +666,23 @@ def _update_log(message: str) -> None:
         pass
 
 
+def _wait_for_helper_marker(
+    log_path: Path, offset: int, timeout: float = 6.0
+) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with log_path.open("rb") as handle:
+                handle.seek(max(0, offset))
+                chunk = handle.read().decode("utf-8", errors="replace")
+            if "helper start" in chunk:
+                return True
+        except OSError:
+            pass
+        time.sleep(0.2)
+    return False
+
+
 def _helper_script(
     installer_path: Path,
     exe: Path,
@@ -711,11 +788,22 @@ def launch_installer(
     if not installer_path.is_file():
         raise UpdateError(f"Installer not found: {installer_path}")
     temp_root = Path(tempfile.gettempdir()).resolve()
+    trusted = False
     try:
         installer_path.relative_to(temp_root)
-    except ValueError as exc:
-        raise UpdateError("Installer path is outside the update temp directory.") from exc
-    if not installer_path.parent.name.startswith("clipper-update-"):
+        if installer_path.parent.name.startswith("clipper-update-"):
+            trusted = True
+    except ValueError:
+        pass
+    if not trusted:
+        try:
+            installer_path.relative_to(update_cache_dir().resolve())
+            trusted = True
+        except ValueError as exc:
+            raise UpdateError(
+                "Installer path is outside the update temp/cache directory."
+            ) from exc
+    if not trusted:
         raise UpdateError("Installer path is not a Clipper update download.")
     exe = installed_exe()
     # A source/pip CLI has no app to relaunch; the installer adds a Start Menu
@@ -727,6 +815,10 @@ def launch_installer(
         / "Clipper"
         / "update.log"
     )
+    try:
+        log_offset = log_path.stat().st_size
+    except OSError:
+        log_offset = 0
     _update_log(f"install requested: {installer_path} relaunch={relaunch} wait_pid={wait_pid}")
 
     lines = _helper_script(
@@ -774,6 +866,7 @@ def launch_installer(
     # ShellExecute hands the helper to Explorer, outside this process's job
     # object. A plain Popen child can be killed when the app exits, and an
     # installer cannot replace a running Clipper.exe.
+    shell_started = False
     if os.name == "nt":
         try:
             import ctypes
@@ -788,30 +881,37 @@ def launch_installer(
                 0,  # SW_HIDE
             )
             _update_log(f"ShellExecute result={result} powershell={powershell}")
-            if result > 32:
-                return helper
+            shell_started = result > 32
         except Exception as exc:
             _update_log(f"ShellExecute failed: {exc}")
 
-    creationflags = 0
-    if os.name == "nt":
-        creationflags = (
-            getattr(subprocess, "DETACHED_PROCESS", 0)
-            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-            | getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        )
-    try:
-        process = subprocess.Popen(
-            command,
-            creationflags=creationflags,
-            close_fds=True,
-        )
-        _update_log(f"Popen helper pid={process.pid}")
-    except OSError as exc:
-        shutil.rmtree(helper_dir, ignore_errors=True)
-        _update_log(f"Popen helper failed: {exc}")
-        raise UpdateError(f"Could not start the installer helper: {exc}") from exc
-    return helper
+    if not shell_started:
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = (
+                getattr(subprocess, "DETACHED_PROCESS", 0)
+                | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            )
+        try:
+            process = subprocess.Popen(
+                command,
+                creationflags=creationflags,
+                close_fds=True,
+            )
+            _update_log(f"Popen helper pid={process.pid}")
+        except OSError as exc:
+            shutil.rmtree(helper_dir, ignore_errors=True)
+            _update_log(f"Popen helper failed: {exc}")
+            raise UpdateError(f"Could not start the installer helper: {exc}") from exc
+
+    if _wait_for_helper_marker(log_path, log_offset):
+        return helper
+    shutil.rmtree(helper_dir, ignore_errors=True)
+    _update_log("helper did not confirm startup")
+    raise UpdateError(
+        "The installer helper did not start. Please retry the update."
+    )
 
 
 def open_release_page(release: ReleaseInfo | None = None) -> None:
