@@ -128,3 +128,16 @@ def test_gui_exposes_grouped_models_and_intentional_empty_states() -> None:
     assert "partially ready" in source
     assert "Quick start" in source
     assert "Significantly slower: every video reloads them" in source
+    assert "Connect local server" in source
+    assert "Local server" in source
+    assert "GPU helps decode/encode" not in source
+
+def test_long_tooltips_are_wrapped() -> None:
+    from clipper.desktop import _wrap_tooltip
+
+    text = (
+        "This is a deliberately long tooltip that would otherwise stretch "
+        "across the entire desktop and look unpolished."
+    )
+    wrapped = _wrap_tooltip(text, width=42)
+    assert max(len(line) for line in wrapped.splitlines()) <= 42

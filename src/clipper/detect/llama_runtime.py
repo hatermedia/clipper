@@ -553,8 +553,9 @@ def start_server(
     return server_state
 
 
-def openai_chat(
-    server: LlamaServer,
+def openai_chat_base(
+    base_url: str,
+    model: str,
     prompt: str,
     *,
     images: Iterable[bytes] = (),
@@ -562,10 +563,11 @@ def openai_chat(
     max_tokens: int = 320,
     timeout: float = 300.0,
     json_mode: bool = True,
+    label: str = "Local server",
 ) -> str:
     content: list[dict] = []
     for image in images:
-        encoded = __import__("base64").b64encode(image).decode("ascii")
+        encoded = base64.b64encode(image).decode("ascii")
         content.append(
             {
                 "type": "image_url",
@@ -573,7 +575,7 @@ def openai_chat(
             }
         )
     if audio is not None:
-        encoded = __import__("base64").b64encode(audio).decode("ascii")
+        encoded = base64.b64encode(audio).decode("ascii")
         content.append(
             {
                 "type": "input_audio",
@@ -582,17 +584,17 @@ def openai_chat(
         )
     content.append({"type": "text", "text": prompt})
     payload = {
-        "model": server.spec.id,
+        "model": model,
         "messages": [{"role": "user", "content": content}],
         "temperature": 0.0,
         "max_tokens": max_tokens,
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
-    if "gemma4" in server.spec.id:
+    if "gemma4" in model.lower():
         payload["chat_template_kwargs"] = {"enable_thinking": False}
     request = urllib.request.Request(
-        server.base_url + "/v1/chat/completions",
+        base_url.rstrip("/") + "/v1/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -603,23 +605,48 @@ def openai_chat(
     except urllib.error.HTTPError as exc:
         body = exc.read(600).decode("utf-8", errors="replace")
         if "response_format" in body and json_mode:
-            return openai_chat(
-                server,
+            return openai_chat_base(
+                base_url,
+                model,
                 prompt,
                 images=images,
                 audio=audio,
                 max_tokens=max_tokens,
                 timeout=timeout,
                 json_mode=False,
+                label=label,
             )
-        raise RuntimeError(f"llama.cpp HTTP {exc.code}: {body}") from exc
+        raise RuntimeError(f"{label} HTTP {exc.code}: {body}") from exc
     except Exception as exc:
-        raise RuntimeError(f"llama.cpp request failed: {exc}") from exc
+        raise RuntimeError(f"{label} request failed: {exc}") from exc
     try:
         message = data["choices"][0]["message"]
         text = str(message.get("content") or "")
     except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("llama.cpp returned an unexpected response") from exc
+        raise RuntimeError(f"{label} returned an unexpected response") from exc
     if not text.strip():
         raise RuntimeError("The local model returned an empty response")
     return text
+
+
+def openai_chat(
+    server: LlamaServer,
+    prompt: str,
+    *,
+    images: Iterable[bytes] = (),
+    audio: bytes | None = None,
+    max_tokens: int = 320,
+    timeout: float = 300.0,
+    json_mode: bool = True,
+) -> str:
+    return openai_chat_base(
+        server.base_url,
+        server.spec.id,
+        prompt,
+        images=images,
+        audio=audio,
+        max_tokens=max_tokens,
+        timeout=timeout,
+        json_mode=json_mode,
+        label="llama.cpp",
+    )

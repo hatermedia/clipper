@@ -32,6 +32,8 @@ DEFAULT_MODEL = "qwen2.5vl:7b"
 VISION_MODEL_FAMILIES = ("gemma3", "qwen2.5vl", "qwen3-vl")
 _RUNTIME_SERVERS: dict[str, Any] = {}
 _RUNTIME_MAIN: str | None = None
+_EXTERNAL_URL = ""
+_EXTERNAL_MODEL = ""
 
 
 def is_supported_vision_model(name: str) -> bool:
@@ -129,7 +131,7 @@ def configure_runtime(
     Returns ``llamacpp`` when the *vision* model runs through the runtime.
     """
 
-    global _RUNTIME_SERVERS, _RUNTIME_MAIN
+    global _RUNTIME_SERVERS, _RUNTIME_MAIN, _EXTERNAL_URL, _EXTERNAL_MODEL
     try:
         from .llama_runtime import (
             model_ready,
@@ -142,13 +144,18 @@ def configure_runtime(
         _RUNTIME_SERVERS = {}
         _RUNTIME_MAIN = None
         return "ollama"
+    external = main and settings.ai_model.startswith("server:")
+    _EXTERNAL_MODEL = settings.ai_model if external else ""
+    _EXTERNAL_URL = settings.ai_server_url.strip() if external else ""
+    if external and not _EXTERNAL_URL:
+        raise AIError("The local server URL is missing. Reconnect it in AI Setup.")
     wants_llama = settings.ai_runtime in {"auto", "llamacpp"}
-    if not wants_llama:
+    if not wants_llama and not external:
         stop_server()
         _RUNTIME_SERVERS = {}
         _RUNTIME_MAIN = None
         return "ollama"
-    main_spec = model_spec(settings.ai_model) if main else None
+    main_spec = model_spec(settings.ai_model) if main and not external else None
     ears_spec = (
         model_spec(settings.ai_ears_model) if settings.ai_ears and ears else None
     )
@@ -186,19 +193,28 @@ def configure_runtime(
                 raise
             return False
 
-    main_started = run(main_spec, required=main)
+    main_started = run(main_spec, required=main and not external)
     run(ears_spec)
     _RUNTIME_MAIN = main_spec.id if main_started and main_spec else None
-    if main and settings.ai_runtime == "llamacpp" and not main_started:
+    if (
+        main
+        and not external
+        and settings.ai_runtime == "llamacpp"
+        and not main_started
+    ):
         stop_server()
         _RUNTIME_SERVERS = {}
         raise AIError(
             f"{settings.ai_model!r} is not downloaded for the bundled runtime."
         )
+    if external:
+        return "server"
     return "llamacpp" if main_started else "ollama"
 
 
 def runtime_name() -> str:
+    if _EXTERNAL_MODEL:
+        return "server"
     return "llamacpp" if _RUNTIME_MAIN is not None else "ollama"
 
 
@@ -219,7 +235,9 @@ def runtime_active(model: str) -> bool:
 
 
 def stop_runtime() -> None:
-    global _RUNTIME_SERVERS, _RUNTIME_MAIN
+    global _RUNTIME_SERVERS, _RUNTIME_MAIN, _EXTERNAL_URL, _EXTERNAL_MODEL
+    _EXTERNAL_URL = ""
+    _EXTERNAL_MODEL = ""
     if not _RUNTIME_SERVERS:
         _RUNTIME_MAIN = None
         return
@@ -257,6 +275,25 @@ def chat(
     the ``images`` list on Ollama, which is where its audio models expect WAV
     bytes.
     """
+
+    if _EXTERNAL_URL and model == _EXTERNAL_MODEL:
+        from .llama_runtime import openai_chat_base
+
+        try:
+            text = openai_chat_base(
+                _EXTERNAL_URL,
+                model.split(":", 1)[1] if ":" in model else model,
+                prompt,
+                images=[_image_bytes(value) for value in images],
+                audio=audio,
+                max_tokens=num_predict,
+                timeout=timeout,
+                json_mode=True,
+                label="Local server",
+            )
+        except Exception as exc:
+            raise AIError(f"Local server model failed: {exc}") from exc
+        return _parse_json(text)
 
     server = _RUNTIME_SERVERS.get(_runtime_key(model))
     if server is not None:

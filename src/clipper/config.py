@@ -96,6 +96,7 @@ class DetectionSettings:
     low_power: bool = False
     ai: bool = False
     ai_model: str = "qwen2.5vl:7b"
+    ai_server_url: str = ""
     ai_runtime: str = "auto"
     ai_game: str = "auto"
     ai_mode: str = "director"

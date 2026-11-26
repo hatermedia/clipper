@@ -1161,7 +1161,7 @@ def direct_clip(
         settings.low_power and settings.ai_ears and not ears_is_main
     )
     runtime = configure_runtime(settings, ears=not low_power_swap)
-    if runtime != "llamacpp":
+    if runtime not in {"llamacpp", "server"}:
         spec = model_spec(settings.ai_model)
         if spec is not None:
             raise AIError(

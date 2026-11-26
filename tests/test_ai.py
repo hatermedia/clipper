@@ -69,3 +69,16 @@ def test_malformed_ollama_json_does_not_abort_other_candidates(
     assert len(clips) == 1
     assert any("malformed JSON" in warning for warning in warnings)
 
+
+def test_explicit_local_server_model_uses_server_runtime() -> None:
+    settings = DetectionSettings(
+        ai=True,
+        ai_model="server:local-vision",
+        ai_server_url="http://127.0.0.1:1234",
+        ai_ears=False,
+    )
+    try:
+        assert ai.configure_runtime(settings) == "server"
+        assert ai.runtime_name() == "server"
+    finally:
+        ai.stop_runtime()

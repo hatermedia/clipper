@@ -40,6 +40,15 @@ For each candidate clip the ears pass:
 
 The ears pass never invents a candidate and never deletes a HUD-verified clip.
 
+## Local server
+
+The AI model picker also offers **Connect local server…**. It accepts an
+OpenAI-compatible base URL, reads `/v1/models`, and lets the user explicitly
+choose which model to add. Only that chosen model appears in the picker; the URL
+and model list are saved for future launches. This works with LM Studio,
+llama.cpp server, vLLM, Jan, and similar local endpoints. The model must support
+vision input and JSON responses for the Director. No API key is sent.
+
 ## Low-power mode
 
 Low-power mode keeps only one model resident at a time when the selected vision

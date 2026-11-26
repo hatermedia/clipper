@@ -159,6 +159,8 @@ ROLE_START = ROLE_PREVIEW + 2
 ROLE_END = ROLE_PREVIEW + 3
 ROLE_INDEX = ROLE_PREVIEW + 4
 ROLE_NAME = ROLE_PREVIEW + 5
+CONNECT_SERVER = "__connect_local_server__"
+SERVER_PREFIX = "server:"
 
 
 STYLESHEET = """
@@ -1719,6 +1721,18 @@ class MainWindow(QMainWindow):
         self.ollama_present = ollama_executable() is not None
         installed = {str(name).lower(): str(name) for name in ai_state.get("models", [])}
         self.installed_models = installed
+        self.ai_server_url = str(self.qsettings.value("ai_server_url", "")).strip()
+        self.ai_server_models: list[str] = []
+        raw_server_models = str(self.qsettings.value("ai_server_models", "") or "")
+        if raw_server_models:
+            try:
+                loaded_server_models = json.loads(raw_server_models)
+                if isinstance(loaded_server_models, list):
+                    self.ai_server_models = [
+                        str(name) for name in loaded_server_models if str(name).strip()
+                    ]
+            except json.JSONDecodeError:
+                self.ai_server_models = []
         self.gpu_vram_mb = nvidia_memory_mb()
         vision = [
             name for name in installed.values()
@@ -2205,8 +2219,8 @@ class MainWindow(QMainWindow):
         gpu_row = QHBoxLayout()
         self.gpu = ToggleRow("Use NVIDIA GPU (NVENC)")
         self.gpu.setToolTip(
-            "Hardware decode + NVENC for the analysis proxy and re-encode. "
-            "OpenCV motion scoring and audio analysis stay on the CPU."
+            "NVENC handles proxy encode and optional re-encode.\n"
+            "Motion scoring uses OpenCV on the CPU; GPU scoring is not implemented."
         )
         self.gpu_state = self.gpu.state_label
         gpu_row.addWidget(self.gpu)
@@ -2221,10 +2235,18 @@ class MainWindow(QMainWindow):
         self.gpu.setEnabled(self.nvenc)
 
         self.advanced = QFrame()
-        advanced_layout = QGridLayout(self.advanced)
+        self.advanced.setObjectName("Group")
+        advanced_shell = QVBoxLayout(self.advanced)
+        advanced_shell.setContentsMargins(8, 8, 8, 8)
+        advanced_shell.setSpacing(6)
+        advanced_title = QLabel("Advanced detection")
+        advanced_title.setObjectName("Subhead")
+        advanced_shell.addWidget(advanced_title)
+        advanced_layout = QGridLayout()
         advanced_layout.setContentsMargins(0, 0, 0, 0)
         advanced_layout.setHorizontalSpacing(8)
-        advanced_layout.setVerticalSpacing(7)
+        advanced_layout.setVerticalSpacing(6)
+        advanced_shell.addLayout(advanced_layout)
 
         def advanced_label(text: str, tip: str) -> QHBoxLayout:
             row = QHBoxLayout()
@@ -2316,10 +2338,6 @@ class MainWindow(QMainWindow):
         advanced_layout.addWidget(self.pre, 5, 0)
         advanced_layout.addWidget(self.post, 5, 1)
         advanced_layout.addLayout(self.gpu_row, 6, 0, 1, 2)
-        advanced_layout.addWidget(
-            QLabel("GPU helps decode/encode; motion scoring remains CPU-bound."),
-            8, 0, 1, 2,
-        )
         self.advanced.setVisible(False)
         left.addWidget(self.advanced)
 
@@ -2584,12 +2602,15 @@ class MainWindow(QMainWindow):
 
     def _first_combo_model(self, combo: QComboBox) -> int:
         for index in range(combo.count()):
-            if combo.itemData(index) not in (None, ""):
+            if combo.itemData(index) not in (None, "", CONNECT_SERVER):
                 return index
         return -1
 
     def _populate_ai_model_combo(self, preferred: str | None = None) -> None:
-        selected = self._current_ai_model() or preferred or self.ai_default
+        selected = self._current_ai_model()
+        if selected == CONNECT_SERVER:
+            selected = ""
+        selected = selected or preferred or self.ai_default
         vision = sorted(self.ai_models, key=str.lower)
         self.ai_model.blockSignals(True)
         self.ai_model.clear()
@@ -2618,6 +2639,25 @@ class MainWindow(QMainWindow):
             self._add_combo_header(self.ai_model, "Ollama")
             for model in vision:
                 self.ai_model.addItem(model, model)
+        if self.ai_server_models:
+            self._add_combo_header(self.ai_model, "Local server")
+            for model in sorted(self.ai_server_models, key=str.lower):
+                self.ai_model.addItem(model, SERVER_PREFIX + model)
+                index = self.ai_model.count() - 1
+                self.ai_model.setItemData(
+                    index,
+                    f"{model}\n{self.ai_server_url}\n"
+                    "Explicitly added local server model. It must support "
+                    "vision and JSON responses for the Director.",
+                    Qt.ToolTipRole,
+                )
+        self.ai_model.addItem("Connect local server…", CONNECT_SERVER)
+        self.ai_model.setItemData(
+            self.ai_model.count() - 1,
+            "Connect an OpenAI-compatible local server "
+            "(LM Studio, llama.cpp, vLLM, or Jan).",
+            Qt.ToolTipRole,
+        )
         if self.ai_model.count() == 0:
             self.ai_model.addItem("No supported vision model installed", None)
             item = self.ai_model.model().item(0)
@@ -2633,6 +2673,85 @@ class MainWindow(QMainWindow):
                 self.ai_model.blockSignals(False)
 
     def _ai_model_changed(self) -> None:
+        model = self._current_ai_model()
+        if model == CONNECT_SERVER:
+            previous = getattr(self, "_previous_ai_model", "")
+            self._connect_local_server(previous)
+            return
+        self._previous_ai_model = model
+        self._update_ai_state()
+
+    def _connect_local_server(self, previous: str = "") -> None:
+        url, ok = QInputDialog.getText(
+            self,
+            "Connect local server",
+            "OpenAI-compatible server URL:",
+            text=self.ai_server_url or "http://127.0.0.1:1234",
+        )
+        if not ok or not url.strip():
+            self._select_ai_model(previous)
+            return
+        base = url.strip().rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3].rstrip("/")
+        try:
+            request = urllib.request.Request(
+                f"{base}/v1/models",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(request, timeout=4) as response:
+                payload = json.load(response)
+        except Exception as exc:
+            show_message(
+                self,
+                "Local server",
+                f"Could not read models from {base}.\n\n{exc}",
+                kind="warning",
+            )
+            self._select_ai_model(previous)
+            return
+        items = payload.get("data") if isinstance(payload, dict) else None
+        if not items and isinstance(payload, dict):
+            items = payload.get("models")
+        model_ids: list[str] = []
+        for item in items or []:
+            if isinstance(item, dict):
+                name = item.get("id") or item.get("name")
+            else:
+                name = item
+            if name and str(name).strip():
+                model_ids.append(str(name).strip())
+        model_ids = sorted(set(model_ids), key=str.lower)
+        if not model_ids:
+            show_message(
+                self,
+                "Local server",
+                "The server responded, but it did not expose any model IDs.",
+                kind="warning",
+            )
+            self._select_ai_model(previous)
+            return
+        model, ok = QInputDialog.getItem(
+            self,
+            "Choose a model",
+            f"Models available on {base}:",
+            model_ids,
+            0,
+            False,
+        )
+        if not ok or not model:
+            self._select_ai_model(previous)
+            return
+        if base != self.ai_server_url:
+            self.ai_server_models = []
+        self.ai_server_url = base
+        if model not in self.ai_server_models:
+            self.ai_server_models.append(model)
+        self.ai_server_models.sort(key=str.lower)
+        self._populate_ai_model_combo()
+        self._select_ai_model(f"{SERVER_PREFIX}{model}")
+        self._previous_ai_model = f"{SERVER_PREFIX}{model}"
+        self._save_settings()
         self._update_ai_state()
 
     def _preferred_bundled_model(self):
@@ -2664,8 +2783,10 @@ class MainWindow(QMainWindow):
 
     def _vision_ready(self) -> bool:
         model = self._current_ai_model()
-        if not model:
+        if not model or model == CONNECT_SERVER:
             return False
+        if model.startswith(SERVER_PREFIX):
+            return bool(self.ai_server_url) and model[len(SERVER_PREFIX):] in self.ai_server_models
         spec = next((item for item in MODELS if item.id == model), None)
         if spec is not None:
             return runtime_ready() and model_ready(spec)
@@ -2869,8 +2990,15 @@ class MainWindow(QMainWindow):
         self.qsettings.setValue("post", self.post.value())
         self.qsettings.setValue("recursive", self.recursive.isChecked())
         self.qsettings.setValue("gpu_v2", self.gpu.isChecked())
-        self.qsettings.setValue("ai_model", self._current_ai_model())
+        saved_ai_model = self._current_ai_model()
+        if saved_ai_model == CONNECT_SERVER:
+            saved_ai_model = str(getattr(self, "_previous_ai_model", "") or "")
+        self.qsettings.setValue("ai_model", saved_ai_model)
         self.qsettings.setValue("ai_ears_model", self._current_ears_model())
+        self.qsettings.setValue("ai_server_url", self.ai_server_url)
+        self.qsettings.setValue(
+            "ai_server_models", json.dumps(self.ai_server_models)
+        )
         for stale_key in ("ai_v2", "ai_mode", "ai_game"):
             self.qsettings.remove(stale_key)
         self.qsettings.setValue("game_guard", self.game_guard.isChecked())
@@ -3457,8 +3585,8 @@ class MainWindow(QMainWindow):
             return
         self.gpu_state.setText("On" if checked else "Off")
         self.gpu.setToolTip(
-            "Hardware decode + NVENC for the analysis proxy and re-encode. "
-            "OpenCV motion scoring and audio analysis stay on the CPU."
+            "NVENC handles proxy encode and optional re-encode.\n"
+            "Motion scoring uses OpenCV on the CPU; GPU scoring is not implemented."
         )
 
     def _sensitivity_changed(self, value: int) -> None:
@@ -3590,6 +3718,7 @@ class MainWindow(QMainWindow):
             preview=True,
             ai=True,
             ai_model=self._current_ai_model(),
+            ai_server_url=self.ai_server_url,
             ai_runtime="auto",
             ai_ears=bool(self._current_ears_model()),
             ai_ears_model=self._current_ears_model() or "lfm3-omni",

@@ -100,6 +100,7 @@ def _settings_payload(settings: DetectionSettings) -> dict[str, object]:
         "gpu": settings.gpu,
         "ai": settings.ai,
         "ai_model": settings.ai_model,
+        "ai_server_url": settings.ai_server_url,
         "ai_runtime": settings.ai_runtime,
         "ai_ears": settings.ai_ears,
         "ai_ears_model": settings.ai_ears_model,
