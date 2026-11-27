@@ -29,6 +29,10 @@ Clipper ships two ways from the same version:
 10. Verify every website, README, and release-note media reference points to
     the current workflow demo and current GUI screenshots. Remove retired
     screenshots and recordings instead of leaving stale promotional assets.
+11. On NVIDIA hardware, verify live free-VRAM detection with no external
+    workload, with a simulated external CUDA allocation, and with telemetry
+    unavailable. Confirm that a full model does not start when free memory is
+    below the measured allocation plus the 1 GiB reserve.
 
 Do not publish a build whose installer README does not match the staged README
 or whose frozen app does not contain the current source.

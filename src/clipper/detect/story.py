@@ -24,7 +24,14 @@ import cv2
 import numpy as np
 
 from ..config import DetectionSettings
-from ..ffmpeg import FFmpegBinaries, FFmpegError, make_thumbnail, nvidia_memory_mb
+from ..ffmpeg import FFmpegBinaries, FFmpegError, make_thumbnail
+from ..gpu import (
+    VramCheck,
+    VramError,
+    check_vram,
+    query_nvidia_memory,
+    wait_for_vram_recovery,
+)
 from ..models import ClipWindow
 from .ai import (
     AIError,
@@ -39,7 +46,11 @@ from .ai import (
 from .audio import ScoreTrack
 from .ears import AudioReading, listen_clip
 from .hud import HudLine, HudReading, chat_cue, display_text, event_lines, read_hud
-from .llama_runtime import LFM3_OMNI_2B, model_spec
+from .llama_runtime import (
+    LFM3_OMNI_2B,
+    expected_runtime_mb,
+    model_spec,
+)
 from .signals import SIGNAL_VERSION, WindowSignal, analyze_signals, tag_transcript, window_signal
 
 PROMPT_VERSION = "director-v15"
@@ -1020,15 +1031,54 @@ def _same_model(left: str, right: str) -> bool:
     return left_key == right_key
 
 
+@dataclass(frozen=True)
+class _VramPlan:
+    serial: bool
+    reason: str
+    check: VramCheck | None = None
+
+
+def _serial_plan(
+    settings: DetectionSettings,
+    ears_is_main: bool,
+    main_spec,
+    ears_spec,
+) -> _VramPlan:
+    """Choose concurrent or sequential residency from live GPU headroom."""
+    if not settings.ai_ears or ears_is_main:
+        return _VramPlan(False, "not_needed")
+    if settings.low_power:
+        return _VramPlan(True, "low_power")
+    if main_spec is None or ears_spec is None:
+        return _VramPlan(False, "not_needed")
+    expected_mb = expected_runtime_mb(main_spec) + expected_runtime_mb(ears_spec)
+    memory = query_nvidia_memory()
+    check = check_vram(
+        expected_mb,
+        label="vision and audio models",
+        memory=memory,
+    )
+    if not check.known:
+        return _VramPlan(True, "telemetry_unavailable", check)
+    if not check.fits:
+        return _VramPlan(True, "insufficient", check)
+    return _VramPlan(False, "available", check)
+
+
 def _vram_requires_serial(main_spec, ears_spec) -> bool:
     """True when the vision and ears models need a one-at-a-time swap."""
     if main_spec is None or ears_spec is None or main_spec.id == ears_spec.id:
         return False
-    total_mb = nvidia_memory_mb()
-    if not total_mb:
-        return False
-    required_mb = int((main_spec.vram_gb + ears_spec.vram_gb) * 1024) + 1024
-    return total_mb < required_mb
+    expected_mb = expected_runtime_mb(main_spec) + expected_runtime_mb(ears_spec)
+    memory = query_nvidia_memory()
+    check = check_vram(
+        expected_mb,
+        label="vision and audio models",
+        memory=memory,
+    )
+    if not check.known:
+        return True
+    return not check.fits
 
 
 def _banter_friendly_game(game: str) -> bool:
@@ -1148,6 +1198,30 @@ def _merge(clips: list[ClipWindow]) -> list[ClipWindow]:
     return merged
 
 
+def _configure_with_serial_fallback(
+    settings: DetectionSettings,
+    serial_swap: bool,
+    progress: ProgressFn | None,
+) -> tuple[str, bool, str]:
+    """Start runtime, falling back to vision-only if concurrent load races OOM."""
+    try:
+        return configure_runtime(settings, ears=not serial_swap), serial_swap, ""
+    except VramError as exc:
+        if serial_swap:
+            raise AIError(str(exc)) from exc
+        if progress:
+            progress(
+                0.862,
+                "Insufficient VRAM for simultaneous models. "
+                "Switching to sequential inference.",
+            )
+        try:
+            runtime = configure_runtime(settings, ears=False)
+        except VramError as exc2:
+            raise AIError(str(exc2)) from exc2
+        return runtime, True, str(exc)
+
+
 def direct_clip(
     video: Path,
     duration: float,
@@ -1173,19 +1247,80 @@ def direct_clip(
         ears_target = LFM3_OMNI_2B
     elif ears_target is None and main_spec is not None:
         ears_target = main_spec
-    auto_serial = bool(
-        settings.ai_ears
-        and not ears_is_main
-        and not settings.low_power
-        and _vram_requires_serial(main_spec, ears_target)
+    if progress:
+        progress(0.861, "Checking available GPU memory...")
+    vram_plan = _serial_plan(settings, ears_is_main, main_spec, ears_target)
+    serial_swap = vram_plan.serial
+    auto_serial = serial_swap and not settings.low_power
+    vram_warning = ""
+    if progress:
+        if vram_plan.reason == "low_power":
+            progress(0.861, "Low-power mode: sequential inference selected.")
+        elif vram_plan.reason == "insufficient" and vram_plan.check is not None:
+            progress(
+                0.861,
+                "Insufficient VRAM headroom for simultaneous models. "
+                "Switching to sequential inference.",
+            )
+            vram_warning = (
+                f"VRAM guard: {vram_plan.check.free_mb} MiB free; "
+                f"both models need about {vram_plan.check.expected_mb} MiB "
+                f"plus {vram_plan.check.reserve_mb} MiB reserve. "
+                "Using sequential inference."
+            )
+        elif vram_plan.reason == "telemetry_unavailable":
+            progress(
+                0.861,
+                "GPU memory telemetry unavailable. Using sequential inference.",
+            )
+            vram_warning = (
+                "GPU memory availability could not be verified; using "
+                "sequential inference."
+            )
+        elif vram_plan.reason == "available" and vram_plan.check is not None:
+            progress(
+                0.861,
+                f"GPU memory: {vram_plan.check.free_mb} MiB free. "
+                "Loading vision and audio models together.",
+            )
+    snapshot = (
+        vram_plan.check.memory
+        if vram_plan.check is not None
+        else query_nvidia_memory()
     )
-    serial_swap = bool(
-        settings.ai_ears
-        and not ears_is_main
-        and (settings.low_power or auto_serial)
+    if main_spec is not None:
+        main_check = check_vram(
+            expected_runtime_mb(main_spec),
+            label=main_spec.name,
+            memory=snapshot,
+        )
+        if main_check.known and not main_check.fits:
+            raise AIError(
+                f"Insufficient free VRAM to safely initialise {main_spec.name}. "
+                f"{main_check.message} Close GPU-heavy applications or use the "
+                "Lite model."
+            )
+    if settings.ai_ears and not ears_is_main and ears_target is not None:
+        ears_check = check_vram(
+            expected_runtime_mb(ears_target),
+            label=ears_target.name,
+            memory=snapshot,
+        )
+        if ears_check.known and not ears_check.fits:
+            raise AIError(
+                f"Insufficient free VRAM to safely initialise {ears_target.name}. "
+                f"{ears_check.message} Close GPU-heavy applications, turn off "
+                "Audio ears, or use the Lite model."
+            )
+    runtime, serial_swap, fallback_warning = _configure_with_serial_fallback(
+        settings, serial_swap, progress
     )
-    swap_label = "Low-power" if settings.low_power else "VRAM guard"
-    runtime = configure_runtime(settings, ears=not serial_swap)
+    if fallback_warning:
+        auto_serial = True
+        vram_warning = (
+            "Simultaneous model loading failed; retried sequentially. "
+            f"{fallback_warning}"
+        )
     if runtime not in {"llamacpp", "server"}:
         spec = model_spec(settings.ai_model)
         if spec is not None:
@@ -1232,16 +1367,16 @@ def direct_clip(
             progress(0.86, f"AI resumed · {stage}")
         try:
             configure_runtime(settings, ears=not serial_swap)
-        except AIError:
+        except (AIError, VramError):
             pass
 
     wait_for_game("transcribing")
 
     warnings: list[str] = []
-    if auto_serial:
-        warnings.append(
-            "VRAM is tight: vision and audio models load one at a time."
-        )
+    if vram_warning:
+        warnings.append(vram_warning)
+    elif auto_serial:
+        warnings.append("VRAM guard: using sequential inference.")
     lines: list[TranscriptLine] = []
     if wav is not None and wav.is_file():
         if progress:
@@ -1337,57 +1472,106 @@ def direct_clip(
         and wav is not None
         and wav.is_file()
     ):
+        ears_ready = True
+        failed_ears = 0
         if serial_swap:
             if progress:
-                progress(0.935, f"{swap_label}: loading audio ears")
+                progress(0.932, "Releasing vision model GPU memory...")
+            before = query_nvidia_memory()
             stop_runtime()
             unload_model(settings.ai_model)
+            recovered = wait_for_vram_recovery(
+                before.free_mb if before is not None else None
+            )
+            if progress:
+                if recovered is None:
+                    progress(
+                        0.934,
+                        "GPU memory telemetry unavailable. Loading audio model "
+                        "with conservative checks.",
+                    )
+                elif before is not None and recovered.free_mb > before.free_mb:
+                    progress(
+                        0.934,
+                        f"Available VRAM recovered ({recovered.free_mb} MiB). "
+                        "Loading audio model.",
+                    )
+                else:
+                    progress(
+                        0.934,
+                        "GPU memory did not fully recover. Checking before "
+                        "loading audio model.",
+                    )
             try:
                 configure_runtime(settings, main=False, ears=True)
-            except AIError as exc:
+            except (AIError, VramError) as exc:
                 warnings.append(f"AI ears unavailable: {exc}")
-        limit = min(len(clips), 12)
-        heard_clips: list[ClipWindow] = []
-        failed_ears = 0
-        for index, clip in enumerate(clips[:limit]):
-            if progress:
-                progress(
-                    0.94 + 0.015 * index / max(1, limit),
-                    f"AI ears: {index + 1}/{limit}",
-                )
-            try:
-                reading = listen_clip(
-                    video,
-                    wav,
-                    clip.start,
-                    clip.end,
-                    [(line.start, line.end, line.text) for line in lines],
-                    audio=audio,
-                    model=ears_model,
-                    bins=bins,
-                )
-            except (AIError, FFmpegError, OSError):
-                reading = None
-                failed_ears += 1
-            if reading is not None:
-                clip = _apply_audio_reading(
-                    clip,
-                    reading,
-                    lines,
-                    duration,
-                    settings.ai_game,
-                    settings.min_clip,
-                )
-            heard_clips.append(clip)
-        clips = heard_clips + clips[limit:]
+                ears_ready = False
+        if ears_ready:
+            limit = min(len(clips), 12)
+            heard_clips: list[ClipWindow] = []
+            for index, clip in enumerate(clips[:limit]):
+                if progress:
+                    progress(
+                        0.94 + 0.015 * index / max(1, limit),
+                        f"AI ears: {index + 1}/{limit}",
+                    )
+                try:
+                    reading = listen_clip(
+                        video,
+                        wav,
+                        clip.start,
+                        clip.end,
+                        [(line.start, line.end, line.text) for line in lines],
+                        audio=audio,
+                        model=ears_model,
+                        bins=bins,
+                    )
+                except (AIError, FFmpegError, OSError):
+                    reading = None
+                    failed_ears += 1
+                if reading is not None:
+                    clip = _apply_audio_reading(
+                        clip,
+                        reading,
+                        lines,
+                        duration,
+                        settings.ai_game,
+                        settings.min_clip,
+                    )
+                heard_clips.append(clip)
+            clips = heard_clips + clips[limit:]
         if serial_swap:
             if progress:
-                progress(0.952, f"{swap_label}: reloading vision model")
+                progress(0.952, "Releasing audio model GPU memory...")
+            before = query_nvidia_memory()
             stop_runtime()
             unload_model(ears_model)
+            recovered = wait_for_vram_recovery(
+                before.free_mb if before is not None else None
+            )
+            if progress:
+                if recovered is None:
+                    progress(
+                        0.954,
+                        "GPU memory telemetry unavailable. Reloading vision "
+                        "model with conservative checks.",
+                    )
+                elif before is not None and recovered.free_mb > before.free_mb:
+                    progress(
+                        0.954,
+                        f"Available VRAM recovered ({recovered.free_mb} MiB). "
+                        "Reloading vision model.",
+                    )
+                else:
+                    progress(
+                        0.954,
+                        "GPU memory did not fully recover. Checking before "
+                        "reloading vision model.",
+                    )
             try:
                 configure_runtime(settings, main=True, ears=False)
-            except AIError as exc:
+            except (AIError, VramError) as exc:
                 warnings.append(f"Vision model reload failed: {exc}")
         elif (
             runtime_name() == "ollama"

@@ -147,22 +147,41 @@ model load was about 2.9 GiB above idle for LFM3, 6.4 GiB for MiniCPM, and
 7.8 GiB for Gemma. Add about 2.9 GiB if LFM3 audio ears run at the same time as
 a different vision model.
 
+Clipper checks the selected NVIDIA GPU immediately before each model start and
+again between the vision, ears, and final-edit stages. It uses total, used, and
+free VRAM, not just the card's advertised capacity, so games, OBS, browser
+hardware acceleration, and other GPU workloads affect the decision. The model
+decision subtracts the measured model allocation and a 1 GiB reserve from live
+free memory. It respects `CUDA_VISIBLE_DEVICES` and follows the GPU that
+llama.cpp will use.
+
+On a 10 GB card, Clipper automatically keeps only one model resident when the
+selected vision model and LFM3 ears do not fit with 1 GB of headroom. Direct
+dual residency on the 10 GB test card peaked at 9,733 MiB of 10,240 MiB, leaving
+only about 0.5 GiB, so the guard is enabled for this pair. With a clean desktop,
+the live check reports about 9,140 MiB free: 9,600 MiB for both models plus the
+1,024 MiB reserve does not fit. It unloads the vision model before the ears
+pass and reloads it for the final edit. With the guard, a real 35-second scan
+peaked at 7,396 MiB and only one model was resident. This is slower because each
+video pays the model load cost again.
+
+If another application is using the GPU, the same rule applies to live free
+memory. A 3 GiB external allocation left 6,037 MiB free: MiniCPM alone did not
+fit and was refused with a clear message, while LFM3 alone loaded and completed
+the scan. If GPU memory telemetry is unavailable, Clipper does not treat the
+memory as sufficient; it uses sequential inference and conservative checks. If
+a model start still hits CUDA out-of-memory, Clipper stops the failed process,
+waits for its allocation to be released, retries once, then reports the error.
+
 Practical minimum and recommended VRAM:
 
 - Lite: 4 GB minimum, 6 GB recommended.
 - Standard: 8.5 GB minimum, 10 GB recommended.
 - Google: 10 GB works with little headroom, 12 GB recommended.
 
-On a 10 GB card, Clipper automatically keeps only one model resident when the
-selected vision model and LFM3 ears do not fit with 1 GB of headroom. Direct
-dual residency on the 10 GB test card peaked at 9,733 MiB of 10,240 MiB, leaving
-only about 0.5 GiB, so the guard is enabled for this pair. It unloads the vision
-model before the ears pass and reloads it for the final edit. With the guard, a
-real 35-second scan peaked at 8,021 MiB and only one model was resident. This is
-slower because each video pays the model load cost again. Low-power mode forces
-the same one-at-a-time swap and also lowers threads and proxy resolution. On
-8 GB or less, Lite is the safe choice. CPU-only fallback works but is much
-slower.
+Low-power mode forces the same one-at-a-time swap and also lowers threads and
+proxy resolution. On 8 GB or less, Lite is the safe choice. CPU-only fallback
+works but is much slower.
 
 ### Low-power mode
 
@@ -172,7 +191,7 @@ Low-power mode is a performance preset, not a separate product:
 - 256 px wide, 2 fps analysis proxy
 - Below-normal process priority
 - At most one AI model resident at a time when vision and ears differ
-- Tight-VRAM systems serialize automatically even when this is off
+- Systems with low or busy VRAM serialize automatically even when this is off
 
 The local AI director still runs. Low-power mode only trades speed for lower
 resource use; it never turns highlighting off.

@@ -28,6 +28,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable
 
+from ..gpu import (
+    VramError,
+    check_vram,
+    is_oom_text,
+    wait_for_vram_recovery,
+)
+
 RUNTIME_VERSION = "b12776"
 RUNTIME_DIR_NAME = f"llama-{RUNTIME_VERSION}"
 _NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -74,7 +81,11 @@ class ModelSpec:
     description: str
     params: str
     vram_gb: float
-    files: tuple[ModelFile, ...]
+    # Measured incremental allocation on an RTX 3080 at the default context,
+    # including the CUDA context. vram_gb remains the conservative total budget
+    # shown in the UI and docs.
+    runtime_vram_mb: int = 0
+    files: tuple[ModelFile, ...] = ()
     context: int = 8192
     server_args: tuple[str, ...] = ()
     vision: bool = True
@@ -115,6 +126,7 @@ LFM3_OMNI_2B = ModelSpec(
     ),
     params="2B",
     vram_gb=4.0,
+    runtime_vram_mb=3000,
     context=8192,
     files=(
         ModelFile(
@@ -151,6 +163,7 @@ MINICPM_O_4_5 = ModelSpec(
     ),
     params="9B",
     vram_gb=8.5,
+    runtime_vram_mb=6600,
     context=4096,
     audio=False,
     files=(
@@ -190,6 +203,7 @@ GEMMA_4_12B = ModelSpec(
     ),
     params="12B",
     vram_gb=10.5,
+    runtime_vram_mb=8100,
     context=4096,
     audio=False,
     files=(
@@ -236,6 +250,11 @@ MODEL_ALIASES = {
 def model_spec(model_id: str) -> ModelSpec | None:
     key = model_id.strip().lower()
     return MODEL_BY_ID.get(MODEL_ALIASES.get(key, key))
+
+
+def expected_runtime_mb(spec: ModelSpec) -> int:
+    """Expected additional GPU allocation for a model, in MiB."""
+    return spec.runtime_vram_mb or int(spec.vram_gb * 1024)
 
 
 def runtime_root() -> Path:
@@ -567,52 +586,80 @@ def start_server(
     model = paths.get("model")
     if model is None:
         raise RuntimeError(f"{spec.name} has no language model file")
-    port = _free_port()
-    log_path = model_dir(spec) / "server.log"
-    command = [
-        str(server),
-        "-m",
-        str(model),
-        "-c",
-        str(spec.context),
-        # One slot. The server default is four, which multiplies the KV cache
-        # and can push a 9B model into system RAM on a 10 GB card.
-        "-np",
-        "1",
-        "-ngl",
-        "99",
-        "--jinja",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        str(port),
-    ]
-    mmproj = paths.get("mmproj") or paths.get("vision")
-    if mmproj is not None and mmproj.is_file():
-        command.extend(["--mmproj", str(mmproj)])
-    command.extend(spec.server_args)
-    log = log_path.open("w", encoding="utf-8", errors="replace")
-    process = subprocess.Popen(
-        command,
-        stdout=log,
-        stderr=subprocess.STDOUT,
-        creationflags=_NO_WINDOW,
-    )
-    server_state = LlamaServer(
-        spec=spec,
-        port=port,
-        process=process,
-        log_path=log_path,
-    )
-    if not _health(server_state.base_url, timeout=timeout):
+    expected_mb = expected_runtime_mb(spec)
+    last_free_mb: int | None = None
+
+    for attempt in range(2):
+        # Re-query immediately before every launch. Games, OBS, browsers, and
+        # the previous model stage can change free memory between stages.
+        memory_check = check_vram(expected_mb, label=spec.name)
+        if memory_check.known:
+            last_free_mb = memory_check.memory.free_mb
+            if not memory_check.fits:
+                raise VramError(
+                    f"Insufficient free VRAM to safely initialise {spec.name}. "
+                    f"{memory_check.message} Close GPU-heavy applications or "
+                    "use the Lite model."
+                )
+        port = _free_port()
+        log_path = model_dir(spec) / "server.log"
+        command = [
+            str(server),
+            "-m",
+            str(model),
+            "-c",
+            str(spec.context),
+            # One slot. The server default is four, which multiplies the KV
+            # cache and can push a 9B model into system RAM on a 10 GB card.
+            "-np",
+            "1",
+            "-ngl",
+            "99",
+            "--jinja",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ]
+        mmproj = paths.get("mmproj") or paths.get("vision")
+        if mmproj is not None and mmproj.is_file():
+            command.extend(["--mmproj", str(mmproj)])
+        command.extend(spec.server_args)
+        log = log_path.open("w", encoding="utf-8", errors="replace")
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                creationflags=_NO_WINDOW,
+            )
+        finally:
+            log.close()
+        server_state = LlamaServer(
+            spec=spec,
+            port=port,
+            process=process,
+            log_path=log_path,
+        )
+        if _health(server_state.base_url, timeout=timeout):
+            _SERVERS[spec.id] = server_state
+            return server_state
         detail = server_state.log_tail()
         server_state.stop()
+        out_of_memory = is_oom_text(detail)
+        if out_of_memory and attempt == 0:
+            wait_for_vram_recovery(last_free_mb)
+            continue
+        if out_of_memory:
+            raise VramError(
+                f"{spec.name} ran out of GPU memory during startup. "
+                f"The failed process was stopped. {detail[-600:]}"
+            )
         raise RuntimeError(
             f"{spec.name} did not start."
             + (f" {detail}" if detail else "")
         )
-    _SERVERS[spec.id] = server_state
-    return server_state
+    raise VramError(f"{spec.name} could not start after releasing GPU memory.")
 
 
 def openai_chat_base(

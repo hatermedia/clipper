@@ -211,7 +211,7 @@
                 <li>Built-in SHA-256 verified updates</li>
                 <li>Footage and caches stay on your machine</li>
               </ul>
-              <p class="small dim" style="margin-top: 14px;">Disk after AI setup: about 4.5 GB for Lite, 10.6 GB for Standard with LFM3 ears, or 12.1 GB for Google with LFM3 ears. Leave extra space for analysis temp files and exports. On NVIDIA, driver 551.61 or newer is recommended; no CUDA Toolkit is needed. Standard or Google with LFM3 ears serializes automatically when the pair does not fit with headroom. CPU-only AI works but is much slower.</p>
+              <p class="small dim" style="margin-top: 14px;">Disk after AI setup: about 4.5 GB for Lite, 10.6 GB for Standard with LFM3 ears, or 12.1 GB for Google with LFM3 ears. Leave extra space for analysis temp files and exports. On NVIDIA, driver 551.61 or newer is recommended; no CUDA Toolkit is needed. Clipper checks live free VRAM before every model start and serializes automatically when games or other apps leave insufficient headroom. CPU-only AI works but is much slower.</p>
             </div>
             <div class="download-box">
               <strong style="color: #fff; font-size: 15px;">Clipper v0.8.4</strong>
@@ -248,7 +248,7 @@
           </details>
           <details>
             <summary>What does low-power mode do?</summary>
-            <p>It is a performance preset: 2 CPU threads, a 256 px / 2 fps analysis proxy, and below-normal process priority. It also forces one AI model at a time. The local AI director still runs. Tight-VRAM cards may serialize models automatically even when Low-power mode is off.</p>
+            <p>It is a performance preset: 2 CPU threads, a 256 px / 2 fps analysis proxy, and below-normal process priority. It also forces one AI model at a time. Clipper checks live free GPU memory before every model start and serializes automatically when games or other apps leave insufficient headroom, even when Low-power mode is off. Low-power mode additionally lowers threads and proxy resolution.</p>
           </details>
           <details>
             <summary>How does the one-time AI setup work?</summary>
@@ -260,11 +260,11 @@
           </details>
           <details>
             <summary>Is 6 GB enough for the AI Director?</summary>
-            <p>Yes for Lite. Lite targets about 4 GB of VRAM and measured about 2.9 GiB above idle on an RTX 3080. Standard targets about 8.5 GB, and Google about 10.5 GB. On a 6 GB card, use Lite and close other GPU-heavy apps. On a 10 GB card, Standard vision fits with room to spare; Google is tight. Running LFM3 audio ears beside a different vision model adds about 2.9 GiB, so Clipper serializes the two models automatically when they do not fit with 1 GB of headroom. Low-power mode also lowers threads and proxy resolution.</p>
+            <p>Yes for Lite. Lite targets about 4 GB of VRAM and measured about 2.9 GiB above idle on an RTX 3080. Standard targets about 8.5 GB, and Google about 10.5 GB. On a 6 GB card, use Lite and close other GPU-heavy apps. On a 10 GB card, Standard vision fits with room to spare; Google is tight. Running LFM3 audio ears beside a different vision model adds about 2.9 GiB. Clipper checks live free memory, not just total capacity, and serializes the two models when games or other apps leave insufficient headroom. Low-power mode also lowers threads and proxy resolution.</p>
           </details>
           <details>
             <summary>What if an AI download fails?</summary>
-            <p>Check internet, VPN/proxy, firewall, and free disk. Partial files resume, and runtime/model files are SHA-256 verified. If a model will not start, check <span class="mono">%LOCALAPPDATA%\Clipper\ai-models\&lt;model-id&gt;\server.log</span>, update the NVIDIA driver to 551.61 or newer, close GPU-heavy apps, and try Lite or Low-power mode.</p>
+            <p>Check internet, VPN/proxy, firewall, and free disk. Partial files resume, and runtime/model files are SHA-256 verified. If a model will not start, check <span class="mono">%LOCALAPPDATA%\Clipper\ai-models\&lt;model-id&gt;\server.log</span>, update the NVIDIA driver to 551.61 or newer, close GPU-heavy apps, and try Lite or Low-power mode. If the error says insufficient free VRAM, close GPU apps or turn off Audio ears before retrying.</p>
           </details>
           <details>
             <summary>Does Game Guard know my game?</summary>

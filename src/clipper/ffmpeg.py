@@ -113,34 +113,12 @@ def _bins(binaries: FFmpegBinaries | None) -> FFmpegBinaries:
 
 
 def nvidia_memory_mb() -> int | None:
-    """Total VRAM reported by nvidia-smi, or None when unavailable."""
+    """Total VRAM of the selected NVIDIA GPU, or None when unavailable."""
 
-    import shutil
+    from .gpu import query_nvidia_memory
 
-    smi = shutil.which("nvidia-smi")
-    if not smi:
-        return None
-    try:
-        proc = subprocess.run(
-            [
-                smi,
-                "--query-gpu=memory.total",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=8,
-            creationflags=_NO_WINDOW,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode != 0:
-        return None
-    for line in proc.stdout.splitlines():
-        line = line.strip().split(",")[0].strip()
-        if line.isdigit():
-            return int(line)
-    return None
+    snapshot = query_nvidia_memory()
+    return snapshot.total_mb if snapshot is not None else None
 
 
 def ffmpeg_version(binaries: FFmpegBinaries | None = None) -> str:

@@ -13,10 +13,13 @@ All notable changes to Clipper are documented here. The format follows
 - **Bundled AI setup documentation.** The installer README, website, main
   README, AI model guide, CLI portable README, and third-party notices now
   describe the bundled llama.cpp runtime and model tiers. Ollama is optional.
-- **Automatic VRAM guard.** Vision and audio models are serialized when their
-  conservative targets do not fit with 1 GB of headroom. The default 10 GB
-  Standard plus LFM3 configuration now loads one model at a time instead of
-  running with roughly 0.5 GiB free.
+- **Live VRAM guard.** Clipper checks the selected GPU's total, used, and free
+  memory immediately before each model start, and again between stages. It uses
+  measured model allocations plus a 1 GiB reserve, so games and other GPU
+  workloads change the decision. The default 10 GB Standard plus LFM3
+  configuration loads one model at a time. Telemetry failure uses sequential
+  inference, and a CUDA out-of-memory startup gets one clean retry before a
+  clear error.
 - **Low-power clarification.** Low-power mode still forces one model at a time
   and lowers threads, proxy resolution, and process priority.
 - **Current media.** Replaced stale screenshots and added a workflow demo for

@@ -70,9 +70,44 @@ about 2.9 GiB. Direct dual residency on the 10 GB test card peaked at
 **9,733 MiB of 10,240 MiB**, leaving only about 0.5 GiB. Clipper therefore
 serializes the two models when they do not fit with 1 GB of headroom, so a
 10 GB card loads vision, unloads it for the ears pass, then reloads it for the
-final edit. With the guard, a real 35-second scan peaked at **8,021 MiB** and
+final edit. With the guard, a real 35-second scan peaked at **7,396 MiB** and
 only one `llama-server` was resident. This is slower but avoids running on only
 a few hundred MiB of free VRAM. On 8 GB or less, Lite is the safe choice.
+
+### Live VRAM availability
+
+Total capacity is not treated as free capacity. Immediately before each model
+start, and again between the vision, ears, and final-edit stages, Clipper asks
+the selected NVIDIA GPU for:
+
+- GPU index and name.
+- Total VRAM.
+- Used VRAM.
+- Free VRAM.
+
+The query respects `CUDA_VISIBLE_DEVICES`, so it follows the GPU that the
+llama.cpp child process will use. The decision uses measured incremental model
+allocations, not downloaded file sizes:
+
+| Model | Expected additional allocation |
+| --- | ---: |
+| LFM3-Omni-2B | 3,000 MiB |
+| MiniCPM-o 4.5 | 6,600 MiB |
+| Gemma 4 12B | 8,100 MiB |
+
+A 1,024 MiB reserve is added to every decision. On a clean 10 GB desktop,
+Clipper measured about 9,140 MiB free; both models need 9,600 MiB plus the
+reserve, so it serializes. With a 3,072 MiB external CUDA allocation, free
+memory was 6,037 MiB: MiniCPM alone did not fit and was refused with a clear
+message, while LFM3 alone loaded and completed the scan. Games, OBS, browsers,
+and other GPU workloads therefore change the decision while Clipper is running.
+
+If telemetry is unavailable or returns invalid data, Clipper does not assume
+that memory is available. It uses sequential inference and conservative checks,
+and reports that live availability could not be verified. If a start still
+hits CUDA out-of-memory, Clipper stops the failed process, waits for its
+allocation to be released, retries once, and then reports the actual error.
+There is no unbounded retry loop.
 
 Practical minimum and recommended VRAM:
 
@@ -162,10 +197,10 @@ video finishes. This is significantly slower because every video pays the model
 load cost again. If both roles use the same model, no swap is needed. The mode
 also lowers analysis threads and proxy resolution.
 
-Clipper also performs the same one-at-a-time swap automatically when the vision
-and ears targets do not fit with 1 GB of headroom, even when Low-power mode is
-off. Low-power mode forces the swap and adds the lower thread/proxy/priority
-preset.
+Clipper also performs the same one-at-a-time swap automatically when live free
+VRAM cannot fit the vision and ears targets with 1 GB of headroom, even when
+Low-power mode is off. Low-power mode forces the swap and adds the lower
+thread/proxy/priority preset.
 
 ## Model sources
 
@@ -186,10 +221,11 @@ llama.cpp release `b12776`.
 - **Model does not start:** open
   `%LOCALAPPDATA%\Clipper\ai-models\<model-id>\server.log`. Check the NVIDIA
   driver, free VRAM, and other GPU apps.
-- **Out of VRAM:** Clipper automatically serializes the Standard/Google vision
-  model and LFM3 ears when they do not fit with headroom. If a scan still runs
-  out of memory, close games and GPU-heavy apps, use Lite, or enable Low-power
-  mode for the lower thread/proxy preset.
+- **Out of VRAM:** Clipper checks live free memory and automatically serializes
+  the Standard/Google vision model and LFM3 ears when they do not fit with
+  headroom. If telemetry is unavailable, it serializes conservatively. If a
+  scan still runs out of memory, close games and GPU-heavy apps, use Lite, or
+  enable Low-power mode for the lower thread/proxy preset.
 - **No CUDA device:** the runtime can fall back to the CPU, but it is much
   slower. NVIDIA/CUDA is the recommended path.
 - **Local server fails:** confirm the base URL, `/v1/models`, and that the

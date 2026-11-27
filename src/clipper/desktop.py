@@ -2134,7 +2134,7 @@ class MainWindow(QMainWindow):
             "One AI model at a time.\n"
             "Vision and audio models swap between passes.\n"
             "Also lowers threads and proxy resolution.\n"
-            "Tight-VRAM cards may swap automatically even when off."
+            "Low or busy GPU memory may swap models even when off."
         )
         self.game_guard = ToggleRow("Pause AI while gaming")
         self.game_guard.setChecked(True)

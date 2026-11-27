@@ -18,16 +18,25 @@ and media.
 - The AI model Download button no longer clips its label, and the CLI help text
   describes the local AI director accurately.
 
-## 10 GB VRAM guard
+## Live VRAM guard
 
-- Clipper now serializes the vision model and LFM3 audio ears when their
-  conservative VRAM targets do not fit with 1 GB of headroom.
-- On the RTX 3080 10 GB test machine, direct dual residency peaked at
-  9,733 MiB of 10,240 MiB. That left only about 0.5 GiB, so the default
-  Standard plus LFM3 ears configuration now uses the guard.
-- A real 35-second Standard scan with the guard peaked at 8,021 MiB and kept
-  only one `llama-server` resident.
-- Low-power mode forces the same one-at-a-time swap and also lowers threads,
+- Clipper now checks the selected GPU's total, used, and free memory immediately
+  before every model start, and again between the vision, ears, and final-edit
+  stages. It no longer treats total capacity as available capacity.
+- It respects `CUDA_VISIBLE_DEVICES` and uses measured incremental allocations
+  (LFM3 3,000 MiB, MiniCPM 6,600 MiB, Gemma 8,100 MiB) plus a 1,024 MiB reserve.
+- On the clean RTX 3080 10 GB test desktop, about 9,140 MiB was free. Both models
+  needed 9,600 MiB plus reserve, so the default Standard plus LFM3 ears
+  configuration serialized. A real 35-second scan peaked at 7,396 MiB with one
+  `llama-server` resident.
+- A simulated 3,072 MiB external CUDA workload reduced free memory to
+  6,037 MiB. MiniCPM alone was refused with a clear insufficient-VRAM message;
+  LFM3 alone loaded and completed the scan.
+- When live telemetry is unavailable, Clipper uses sequential inference and
+  conservative checks rather than assuming free memory. A failed llama.cpp
+  startup that hits CUDA out-of-memory is stopped, its memory is allowed to
+  recover, and one retry is attempted before reporting the error.
+- Low-power mode still forces one model at a time and also lowers threads,
   proxy resolution, and process priority.
 - Repeated load, swap, and stop cycles returned to the pre-test VRAM baseline
   without orphaned servers.

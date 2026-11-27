@@ -24,6 +24,7 @@ import numpy as np
 
 from ..config import DetectionSettings
 from ..ffmpeg import FFmpegError, make_thumbnail
+from ..gpu import VramError
 from ..models import ClipWindow
 from .merge import merge_windows, pick_peaks
 
@@ -187,13 +188,20 @@ def configure_runtime(
         try:
             _RUNTIME_SERVERS[spec.id] = start_server(spec)
             return True
+        except VramError:
+            _RUNTIME_SERVERS.pop(spec.id, None)
+            raise
         except Exception:
             _RUNTIME_SERVERS.pop(spec.id, None)
             if required and settings.ai_runtime == "llamacpp":
                 raise
             return False
 
-    main_started = run(main_spec, required=main and not external)
+    try:
+        main_started = run(main_spec, required=main and not external)
+    except VramError:
+        _RUNTIME_MAIN = None
+        raise
     run(ears_spec)
     _RUNTIME_MAIN = main_spec.id if main_started and main_spec else None
     if (

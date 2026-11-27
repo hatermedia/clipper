@@ -36,25 +36,64 @@ these tests, but the margin is too small to recommend.
 
 ### Automatic VRAM guard
 
-`story._vram_requires_serial()` now compares the vision and ears targets with
-total VRAM plus 1 GB headroom. When the pair does not fit, Clipper starts only
-the vision model, unloads it before the ears pass, starts LFM3 for ears, then
-reloads the vision model for the final edit.
+`story._serial_plan()` now checks the selected GPU's live free memory, not total
+capacity alone. It uses measured incremental allocations of 3,000 MiB for LFM3,
+6,600 MiB for MiniCPM, and 8,100 MiB for Gemma, plus a 1,024 MiB reserve. The
+decision is rechecked immediately before every `llama-server` launch and between
+the vision, ears, and final-edit stages.
 
-A real 35-second Standard scan on the 10 GB card:
+A real 35-second Standard scan on the 10 GB card with a clean desktop:
 
 | Mode | Peak used | Peak delta | Max `llama-server` | Both resident |
 | --- | ---: | ---: | ---: | --- |
-| Normal, automatic guard | 8,021 MiB | 6,763 MiB | 1 | 0 samples |
-| Low-power, forced swap | 7,890 MiB | 6,492 MiB | 1 | 0 samples |
-| LFM3 vision and ears | 4,393 MiB | 3,105 MiB | 1 | 0 samples |
+| Normal, live guard | 7,396 MiB | 6,484 MiB | 1 | 0 samples |
+| Low-power, forced swap | 7,376 MiB | 6,477 MiB | 1 | 0 samples |
+| LFM3 vision and ears | 3,837 MiB | 2,937 MiB | 1 | 0 samples |
+
+The normal scan reported:
+
+```text
+VRAM guard: 9140 MiB free; both models need about 9600 MiB plus 1024 MiB reserve. Using sequential inference.
+```
 
 The automatic guard scan returned one clip at 14.28-35.02 seconds with score 80
 and reason `AI goal (HUD): VELY SCORED`. Low-power returned the same goal at
 13.28-35.02 seconds. No CUDA OOM occurred.
 
+### External workload and dynamic recheck
+
+A separate process allocated 3,072 MiB with `cudaMalloc` to simulate a game or
+other GPU workload. With a clean desktop baseline at 919 MiB used and 9,133 MiB
+free, the allocation raised usage to 4,015 MiB and left 6,037 MiB free.
+MiniCPM alone needed 6,600 MiB plus reserve and was refused before any process
+started. LFM3 alone loaded and completed the same scan, peaking at 6,960 MiB
+total with one model resident.
+
+A second test allocated 2,048 MiB after MiniCPM was already resident, which
+simulates memory being consumed between the vision and audio stages:
+
+| Stage | Used | Free | Result |
+| --- | ---: | ---: | --- |
+| Clean baseline | 916 MiB | 9,136 MiB | Normal desktop |
+| MiniCPM loaded | 7,393 MiB | 2,659 MiB | Vision model resident |
+| +2,048 MiB external | 9,438 MiB | 614 MiB | Simulated external workload |
+| LFM3 start attempt | 9,666 MiB | 574 MiB | Refused with a clear insufficient-VRAM error; no `llama-server` started |
+| After stopping MiniCPM and freeing external allocation | 958 MiB | 9,094 MiB | Memory recovered |
+
+### Telemetry unavailable and CUDA OOM
+
+- An invalid `CUDA_VISIBLE_DEVICES` value made telemetry return `None`. The plan
+  selected sequential inference with reason `telemetry_unavailable`; no model
+  was treated as safely fitting.
+- Mocked `nvidia-smi` tests cover missing executables, command failures,
+  incomplete rows, `[N/A]` fields, multiple GPUs, and UUID selection.
+- Mocked llama.cpp OOM tests verify one retry, failed-process termination,
+  memory-recovery polling, and a final `VramError` without leaving a server in
+  `_SERVERS`.
+
 Repeated load, swap, and stop cycles returned to the pre-test VRAM baseline.
-No orphaned `llama-server` process was left after a successful stop.
+No orphaned `llama-server` process was left after a successful stop or failed
+start.
 
 ## Real-clip validation
 
@@ -87,8 +126,20 @@ capture library.
 
 ## Conclusion
 
-The default 10 GB Standard plus LFM3 ears configuration is safe only because
-Clipper now serializes the models automatically. It should not be described as
-a simultaneous dual-model configuration on 10 GB cards. The docs and UI now
-state that tight-VRAM systems load one model at a time, and Low-power mode
-additionally lowers threads and proxy resolution.
+The default 10 GB Standard plus LFM3 ears configuration is safe because
+Clipper checks live free VRAM immediately before each model start and serializes
+when the selected pair cannot fit with a 1 GiB reserve. It is not described as a
+simultaneous dual-model configuration on 10 GB cards. Games and other GPU
+workloads reduce the measured free memory and change the decision.
+
+No live game was running during these tests. The external workload was a
+3,072 MiB CUDA allocation from a separate process, which is representative of
+memory pressure but not a substitute for every game engine. Multi-GPU selection
+was verified with mocked telemetry; only one physical GPU was available. Actual
+CUDA OOM startup recovery was verified with mocked failures, not by forcing a
+live driver OOM.
+
+The docs and UI state that low or busy GPU memory loads one model at a time, and
+Low-power mode additionally lowers threads and proxy resolution. When telemetry
+is unavailable, Clipper uses the conservative sequential path rather than
+assuming the memory is free.

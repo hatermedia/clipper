@@ -202,9 +202,25 @@ about 2.9 GiB. Direct dual residency on the 10 GB test card peaked at 9,733 MiB
 of 10,240 MiB, leaving only about 0.5 GiB. Clipper therefore serializes the two
 models when they do not fit with 1 GB of headroom, so a 10 GB card loads vision,
 unloads it for the ears pass, then reloads it for the final edit. With the
-guard, a real 35-second scan peaked at 8,021 MiB and only one model was
+guard, a real 35-second scan peaked at 7,396 MiB and only one model was
 resident. This is slower but keeps a safe margin. Low-power mode forces the same
 swap and also lowers threads and proxy resolution.
+
+Clipper does not use total capacity alone. Immediately before each model start,
+and again between the vision, ears, and final-edit stages, it queries the
+selected NVIDIA GPU for total, used, and free VRAM. It respects
+CUDA_VISIBLE_DEVICES and uses measured model allocations (LFM3 3,000 MiB,
+MiniCPM 6,600 MiB, Gemma 8,100 MiB) plus a 1,024 MiB reserve. Games, OBS,
+browsers, and other GPU workloads therefore reduce the available budget.
+
+On a clean 10 GB desktop, about 9,140 MiB was free; both models needed
+9,600 MiB plus the reserve, so Clipper serialized. With a 3,072 MiB external
+CUDA allocation, 6,037 MiB was free: MiniCPM alone did not fit and was refused
+with a clear message, while LFM3 alone loaded and completed the scan. If GPU
+memory telemetry is unavailable, Clipper uses sequential inference and
+conservative checks rather than assuming the memory is free. If a start still
+hits CUDA out-of-memory, it stops the failed process, waits for the allocation
+to be released, retries once, and then reports the error.
 
 If VRAM is still tight, use Lite, lower the analysis settings, close games and
 browser hardware acceleration, or use Low-power mode.
@@ -254,8 +270,11 @@ Model does not start or analysis fails:
 - Open the model's server log:
   %LOCALAPPDATA%\Clipper\ai-models\<model-id>\server.log
 - Update the NVIDIA driver to 551.61 or newer.
-- Close games and other GPU-heavy apps, then retry. Use Low-power mode on cards
-  with 10 GB or less.
+- Close games and other GPU-heavy apps, then retry. Clipper serializes models
+  automatically when live free VRAM is insufficient. Use Lite or Low-power mode
+  if memory remains tight.
+- If the error says insufficient free VRAM, close GPU-heavy applications or
+  turn off Audio ears before retrying.
 - Check that Windows has enough free RAM and disk space for the model and the
   analysis proxy.
 - Try the Lite model to confirm the runtime works. If Lite works and a larger

@@ -129,3 +129,159 @@ def test_download_failure_is_reported(
             tmp_path / "missing.bin",
             timeout=0.2,
         )
+
+class _FakeProcess:
+    def __init__(self, stdout=None, text: str = "") -> None:
+        self._stdout = stdout
+        self.terminated = False
+        if stdout is not None and text:
+            stdout.write(text)
+            stdout.flush()
+
+    def poll(self):
+        return None
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def wait(self, timeout=None):
+        return 0
+
+    def kill(self) -> None:
+        self.terminated = True
+
+
+def _prepare_start_server(monkeypatch, tmp_path: Path):
+    from clipper.gpu import GpuMemory, VramCheck
+
+    snapshot = GpuMemory(
+        index=0,
+        name="RTX 3080",
+        uuid="GPU-0",
+        total_mb=10240,
+        used_mb=1024,
+        free_mb=9216,
+    )
+    monkeypatch.setattr(llama_runtime, "runtime_ready", lambda: True)
+    monkeypatch.setattr(llama_runtime, "model_ready", lambda _spec: True)
+    monkeypatch.setattr(llama_runtime, "runtime_server", lambda: tmp_path / "llama-server.exe")
+    monkeypatch.setattr(llama_runtime, "_stage_runtime_dlls", lambda _root: None)
+    monkeypatch.setattr(
+        llama_runtime,
+        "model_paths",
+        lambda _spec: {"model": tmp_path / "model.gguf"},
+    )
+    monkeypatch.setattr(llama_runtime, "model_dir", lambda _spec: tmp_path)
+    monkeypatch.setattr(llama_runtime, "_free_port", lambda: 12345)
+    monkeypatch.setattr(
+        llama_runtime,
+        "check_vram",
+        lambda expected_mb, **kwargs: VramCheck(
+            memory=snapshot,
+            expected_mb=expected_mb,
+            reserve_mb=1024,
+            label=kwargs.get("label", "model"),
+        ),
+    )
+    monkeypatch.setattr(llama_runtime, "_SERVERS", {})
+    return snapshot
+
+
+def test_start_server_retries_once_after_cuda_oom(monkeypatch, tmp_path: Path) -> None:
+    snapshot = _prepare_start_server(monkeypatch, tmp_path)
+    health = iter([False, True])
+    calls = []
+
+    def fake_popen(_command, **kwargs):
+        text = "CUDA error: out of memory\n" if not calls else "ready\n"
+        calls.append(True)
+        return _FakeProcess(kwargs.get("stdout"), text)
+
+    monkeypatch.setattr(llama_runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(llama_runtime, "_health", lambda *a, **k: next(health))
+    monkeypatch.setattr(
+        llama_runtime, "wait_for_vram_recovery", lambda *a, **k: snapshot
+    )
+    try:
+        server = llama_runtime.start_server(LFM3_OMNI_2B)
+        assert server.spec.id == LFM3_OMNI_2B.id
+        assert len(calls) == 2
+        assert llama_runtime.active_server(LFM3_OMNI_2B.id) is server
+    finally:
+        llama_runtime.stop_server()
+
+
+def test_start_server_reports_oom_after_one_retry(monkeypatch, tmp_path: Path) -> None:
+    from clipper.gpu import VramError
+
+    _prepare_start_server(monkeypatch, tmp_path)
+    calls = []
+
+    def fake_popen(_command, **kwargs):
+        calls.append(True)
+        return _FakeProcess(kwargs.get("stdout"), "CUDA error: out of memory\n")
+
+    monkeypatch.setattr(llama_runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(llama_runtime, "_health", lambda *a, **k: False)
+    monkeypatch.setattr(
+        llama_runtime, "wait_for_vram_recovery", lambda *a, **k: None
+    )
+    with pytest.raises(VramError, match="out of GPU memory"):
+        llama_runtime.start_server(LFM3_OMNI_2B)
+    assert len(calls) == 2
+    assert llama_runtime.active_server(LFM3_OMNI_2B.id) is None
+
+
+def test_start_server_rejects_insufficient_free_vram(monkeypatch, tmp_path: Path) -> None:
+    from clipper.gpu import GpuMemory, VramCheck, VramError
+
+    monkeypatch.setattr(llama_runtime, "runtime_ready", lambda: True)
+    monkeypatch.setattr(llama_runtime, "model_ready", lambda _spec: True)
+    monkeypatch.setattr(llama_runtime, "runtime_server", lambda: tmp_path / "llama-server.exe")
+    monkeypatch.setattr(llama_runtime, "_stage_runtime_dlls", lambda _root: None)
+    monkeypatch.setattr(
+        llama_runtime,
+        "model_paths",
+        lambda _spec: {"model": tmp_path / "model.gguf"},
+    )
+    snapshot = GpuMemory(
+        index=0,
+        name="RTX 3080",
+        uuid="GPU-0",
+        total_mb=10240,
+        used_mb=7000,
+        free_mb=3240,
+    )
+    monkeypatch.setattr(
+        llama_runtime,
+        "check_vram",
+        lambda expected_mb, **kwargs: VramCheck(
+            memory=snapshot,
+            expected_mb=expected_mb,
+            reserve_mb=1024,
+            label=kwargs.get("label", "model"),
+        ),
+    )
+    monkeypatch.setattr(llama_runtime, "_SERVERS", {})
+    with pytest.raises(VramError, match="Insufficient free VRAM"):
+        llama_runtime.start_server(LFM3_OMNI_2B)
+    assert llama_runtime.active_server(LFM3_OMNI_2B.id) is None
+
+
+def test_start_server_reuses_an_active_server(monkeypatch, tmp_path: Path) -> None:
+    _prepare_start_server(monkeypatch, tmp_path)
+    calls = []
+
+    def fake_popen(_command, **kwargs):
+        calls.append(True)
+        return _FakeProcess(kwargs.get("stdout"), "ready\n")
+
+    monkeypatch.setattr(llama_runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(llama_runtime, "_health", lambda *a, **k: True)
+    try:
+        first = llama_runtime.start_server(LFM3_OMNI_2B)
+        second = llama_runtime.start_server(LFM3_OMNI_2B)
+        assert first is second
+        assert len(calls) == 1
+    finally:
+        llama_runtime.stop_server()

@@ -51,6 +51,22 @@ def test_director_reviews_every_window_of_the_full_clip(
 ) -> None:
     reviewed: list[tuple[float, float]] = []
 
+    from clipper.gpu import GpuMemory
+
+    monkeypatch.setattr(
+        story,
+        "query_nvidia_memory",
+        lambda: GpuMemory(
+            index=0,
+            name="RTX 4090",
+            uuid="GPU-0",
+            total_mb=24564,
+            used_mb=4096,
+            free_mb=20468,
+        ),
+    )
+    monkeypatch.setattr(story, "configure_runtime", lambda *args, **kwargs: "ollama")
+    monkeypatch.setattr(story, "stop_runtime", lambda: None)
     monkeypatch.setattr(story, "model_available", lambda _model: True)
     monkeypatch.setattr(story, "transcribe_audio", lambda *args, **kwargs: [])
     monkeypatch.setattr(
@@ -588,8 +604,20 @@ def test_vram_guard_serialises_default_10gb_pair(monkeypatch) -> None:
         LFM3_OMNI_2B,
         MINICPM_O_4_5,
     )
+    from clipper.gpu import GpuMemory
 
-    monkeypatch.setattr(story, "nvidia_memory_mb", lambda: 10240)
+    monkeypatch.setattr(
+        story,
+        "query_nvidia_memory",
+        lambda: GpuMemory(
+            index=0,
+            name="RTX 3080",
+            uuid="GPU-0",
+            total_mb=10240,
+            used_mb=0,
+            free_mb=10240,
+        ),
+    )
     assert story._vram_requires_serial(MINICPM_O_4_5, LFM3_OMNI_2B)
     assert story._vram_requires_serial(GEMMA_4_12B, LFM3_OMNI_2B)
     assert not story._vram_requires_serial(LFM3_OMNI_2B, LFM3_OMNI_2B)
@@ -597,13 +625,170 @@ def test_vram_guard_serialises_default_10gb_pair(monkeypatch) -> None:
 
 def test_vram_guard_allows_both_models_on_16gb(monkeypatch) -> None:
     from clipper.detect.llama_runtime import LFM3_OMNI_2B, MINICPM_O_4_5
+    from clipper.gpu import GpuMemory
 
-    monkeypatch.setattr(story, "nvidia_memory_mb", lambda: 16384)
+    monkeypatch.setattr(
+        story,
+        "query_nvidia_memory",
+        lambda: GpuMemory(
+            index=0,
+            name="RTX 4080",
+            uuid="GPU-0",
+            total_mb=16384,
+            used_mb=1024,
+            free_mb=15360,
+        ),
+    )
     assert not story._vram_requires_serial(MINICPM_O_4_5, LFM3_OMNI_2B)
 
 
-def test_vram_guard_is_off_without_nvidia(monkeypatch) -> None:
+def test_vram_guard_is_conservative_without_telemetry(monkeypatch) -> None:
     from clipper.detect.llama_runtime import LFM3_OMNI_2B, MINICPM_O_4_5
 
-    monkeypatch.setattr(story, "nvidia_memory_mb", lambda: None)
-    assert not story._vram_requires_serial(MINICPM_O_4_5, LFM3_OMNI_2B)
+    monkeypatch.setattr(story, "query_nvidia_memory", lambda: None)
+    assert story._vram_requires_serial(MINICPM_O_4_5, LFM3_OMNI_2B)
+
+
+def test_serial_plan_low_power_forces_serial(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import LFM3_OMNI_2B, MINICPM_O_4_5
+    from clipper.gpu import GpuMemory
+
+    settings = DetectionSettings(ai=True, ai_ears=True, low_power=True)
+    monkeypatch.setattr(
+        story,
+        "query_nvidia_memory",
+        lambda: GpuMemory(
+            index=0,
+            name="RTX 4090",
+            uuid="GPU-0",
+            total_mb=24564,
+            used_mb=1024,
+            free_mb=23540,
+        ),
+    )
+    plan = story._serial_plan(
+        settings, False, MINICPM_O_4_5, LFM3_OMNI_2B
+    )
+    assert plan.serial is True
+    assert plan.reason == "low_power"
+
+
+def test_serial_plan_serialises_when_game_consumes_vram(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import LFM3_OMNI_2B, MINICPM_O_4_5
+    from clipper.gpu import GpuMemory
+
+    settings = DetectionSettings(ai=True, ai_ears=True, low_power=False)
+    monkeypatch.setattr(
+        story,
+        "query_nvidia_memory",
+        lambda: GpuMemory(
+            index=0,
+            name="RTX 3080",
+            uuid="GPU-0",
+            total_mb=10240,
+            used_mb=3500,
+            free_mb=6740,
+        ),
+    )
+    plan = story._serial_plan(
+        settings, False, MINICPM_O_4_5, LFM3_OMNI_2B
+    )
+    assert plan.serial is True
+    assert plan.reason == "insufficient"
+    assert plan.check is not None
+    assert plan.check.free_mb == 6740
+
+
+def test_serial_plan_allows_concurrent_on_24gb(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import LFM3_OMNI_2B, MINICPM_O_4_5
+    from clipper.gpu import GpuMemory
+
+    settings = DetectionSettings(ai=True, ai_ears=True, low_power=False)
+    monkeypatch.setattr(
+        story,
+        "query_nvidia_memory",
+        lambda: GpuMemory(
+            index=0,
+            name="RTX 4090",
+            uuid="GPU-0",
+            total_mb=24564,
+            used_mb=4096,
+            free_mb=20468,
+        ),
+    )
+    plan = story._serial_plan(
+        settings, False, MINICPM_O_4_5, LFM3_OMNI_2B
+    )
+    assert plan.serial is False
+    assert plan.reason == "available"
+    assert settings.low_power is False
+
+
+def test_serial_plan_is_conservative_without_telemetry(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import LFM3_OMNI_2B, MINICPM_O_4_5
+
+    settings = DetectionSettings(ai=True, ai_ears=True, low_power=False)
+    monkeypatch.setattr(story, "query_nvidia_memory", lambda: None)
+    plan = story._serial_plan(
+        settings, False, MINICPM_O_4_5, LFM3_OMNI_2B
+    )
+    assert plan.serial is True
+    assert plan.reason == "telemetry_unavailable"
+
+
+def test_serial_plan_does_not_serialise_same_model(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import LFM3_OMNI_2B
+
+    settings = DetectionSettings(ai=True, ai_ears=True, low_power=True)
+    monkeypatch.setattr(story, "query_nvidia_memory", lambda: None)
+    plan = story._serial_plan(settings, True, LFM3_OMNI_2B, LFM3_OMNI_2B)
+    assert plan.serial is False
+    assert plan.reason == "not_needed"
+
+
+def test_configure_with_serial_fallback_retries_vision_only(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import LFM3_OMNI_2B, MINICPM_O_4_5
+    from clipper.gpu import VramError
+
+    settings = DetectionSettings(ai=True, ai_ears=True, low_power=False)
+    calls: list[bool] = []
+
+    def fake_configure(_settings, *, main=True, ears=True):
+        calls.append(ears)
+        if len(calls) == 1:
+            raise VramError("not enough free VRAM")
+        return "llamacpp"
+
+    monkeypatch.setattr(story, "configure_runtime", fake_configure)
+    messages: list[str] = []
+    runtime, serial, warning = story._configure_with_serial_fallback(
+        settings, False, lambda _fraction, message: messages.append(message)
+    )
+    assert runtime == "llamacpp"
+    assert serial is True
+    assert calls == [True, False]
+    assert "sequential inference" in messages[0]
+    assert "not enough free VRAM" in warning
+
+
+def test_configure_with_serial_fallback_reports_failure(monkeypatch) -> None:
+    from clipper.gpu import VramError
+
+    settings = DetectionSettings(ai=True, ai_ears=True, low_power=False)
+
+    def fake_configure(_settings, *, main=True, ears=True):
+        raise VramError("still not enough free VRAM")
+
+    monkeypatch.setattr(story, "configure_runtime", fake_configure)
+    with pytest.raises(story.AIError, match="still not enough"):
+        story._configure_with_serial_fallback(settings, True, None)
+
+
+def test_serial_plan_low_power_without_bundled_main(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import LFM3_OMNI_2B
+
+    settings = DetectionSettings(ai=True, ai_ears=True, low_power=True)
+    monkeypatch.setattr(story, "query_nvidia_memory", lambda: None)
+    plan = story._serial_plan(settings, False, None, LFM3_OMNI_2B)
+    assert plan.serial is True
+    assert plan.reason == "low_power"
