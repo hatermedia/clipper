@@ -69,6 +69,12 @@ If the LFM3 audio ears run at the same time as a different vision model, add
 about 2.9 GiB. On a 10 GB card, use Low-power mode with Standard or Google, or
 close other GPU apps. On 8 GB or less, Lite is the safe choice.
 
+Practical minimum and recommended VRAM:
+
+- Lite: 4 GB minimum, 6 GB recommended.
+- Standard: 8.5 GB minimum, 10 GB recommended.
+- Google: 10 GB works with little headroom, 12 GB recommended.
+
 The Audio ears setting can be turned off to save the extra model. If the
 selected vision model is LFM3, the same model handles vision and audio and no
 second copy is used.

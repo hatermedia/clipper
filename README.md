@@ -143,6 +143,12 @@ model load was about 2.9 GiB above idle for LFM3, 6.4 GiB for MiniCPM, and
 7.8 GiB for Gemma. Add about 2.9 GiB if LFM3 audio ears run at the same time as
 a different vision model.
 
+Practical minimum and recommended VRAM:
+
+- Lite: 4 GB minimum, 6 GB recommended.
+- Standard: 8.5 GB minimum, 10 GB recommended.
+- Google: 10 GB works with little headroom, 12 GB recommended.
+
 On a 10 GB card, use Low-power mode with Standard or Google, or close other GPU
 apps. Low-power mode keeps at most one model resident and swaps between the
 vision and ears passes. It is slower because each video pays the model load
