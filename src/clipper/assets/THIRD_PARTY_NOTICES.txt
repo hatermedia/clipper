@@ -19,8 +19,13 @@ Python / video / AI runtime
 - OpenCV (opencv-python / opencv-python-headless) - Apache-2.0.
   https://opencv.org/license/
 - ONNX Runtime - MIT. https://github.com/microsoft/onnxruntime
-- Ollama (optional, downloaded from GitHub and installed by the user) - MIT.
+- llama.cpp runtime (downloaded on demand from GitHub Releases) - MIT.
+  https://github.com/ggml-org/llama.cpp
+- Ollama (optional alternative backend; not installed by Clipper) - MIT.
   https://github.com/ollama/ollama
+- NVIDIA CUDA runtime libraries (downloaded on demand with llama.cpp) -
+  NVIDIA CUDA Toolkit End User License Agreement.
+  https://docs.nvidia.com/cuda/eula/
 - RapidOCR / RapidOCR ONNX Runtime - Apache-2.0.
   https://github.com/RapidAI/RapidOCR
 - PaddleOCR models used by RapidOCR - Apache-2.0.
@@ -99,13 +104,19 @@ Installer / build tooling
 
 Model provider terms
 --------------------
-- Qwen2.5-VL and Gemma models are optional external Ollama downloads and are
-  not redistributed by Clipper. Users must comply with the respective model
-  licenses and Ollama's terms. The bundled Python code does not include model
-  weights for Qwen or Gemma.
+- LFM3-Omni-2B is downloaded from the Ollama registry under the LFM Open
+  License v1.0. MiniCPM-o 4.5 is downloaded from Hugging Face under
+  Apache-2.0. Gemma 4 12B is downloaded from the Ollama registry under the
+  Gemma Terms of Use. Qwen2.5-VL 7B is an optional external download under
+  Apache-2.0 and is not part of the bundled picker.
+- These model weights are not redistributed by Clipper. Users must comply with
+  the respective model licenses and the registry or hosting terms. The bundled
+  Python code does not include model weights.
 
 Privacy
 -------
-All audio, video, OCR, acoustic analysis, and optional Ollama inference run on
-the user's machine. Clipper does not upload footage. GitHub is contacted only
-for the user-initiated or scheduled update check.
+All audio, video, OCR, acoustic analysis, and local llama.cpp or explicitly
+configured local-server inference run on the user's machine. Clipper does not
+upload footage. GitHub is contacted only for the user-initiated or scheduled
+update check, and the configured model hosts only when the user downloads a
+runtime or model.

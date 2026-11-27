@@ -118,3 +118,14 @@ def test_runtime_stages_msvc_runtime_beside_server(
     llama_runtime._stage_runtime_dlls(target)
     for name in llama_runtime.RUNTIME_DLLS:
         assert (target / name).read_bytes() == b"dll"
+
+def test_download_failure_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(llama_runtime.time, "sleep", lambda _seconds: None)
+    with pytest.raises(RuntimeError, match="Download failed"):
+        llama_runtime._download(
+            "http://127.0.0.1:9/missing",
+            tmp_path / "missing.bin",
+            timeout=0.2,
+        )

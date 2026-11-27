@@ -28,6 +28,7 @@ if (-not (Test-Path (Join-Path $AppDir "Clipper.exe"))) {
 }
 $RequiredFiles = @(
     "Clipper.exe",
+    "README.txt",
     "close_clipper.ps1",
     "THIRD_PARTY_NOTICES.txt",
     "FFMPEG_NOTICE.txt",
@@ -42,6 +43,14 @@ foreach ($relative in $RequiredFiles) {
     if (-not (Test-Path (Join-Path $AppDir $relative))) {
         throw "Release payload is missing $relative. Rebuild with packaging\build_desktop.ps1."
     }
+}
+$ReadmePath = Join-Path $AppDir "README.txt"
+$ReadmeText = Get-Content $ReadmePath -Raw
+if (-not $ReadmeText.Contains("Clipper $Version - Windows x64")) {
+    throw "README.txt does not contain the build version $Version. Rebuild the desktop payload."
+}
+if ($ReadmeText.Contains("__CLIPPER_VERSION__")) {
+    throw "README.txt still contains the version placeholder. Rebuild the desktop payload."
 }
 if (-not (Test-Path $Makensis)) {
     throw "NSIS not found at $Makensis"

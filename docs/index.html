@@ -4,16 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Clipper - automatic gaming highlight trimmer</title>
-  <meta name="description" content="Clipper is a native Windows app that finds highlights in gameplay footage and cuts them with FFmpeg. Local AI, no uploads, no admin install." />
+  <meta name="description" content="Clipper is a native Windows app that finds highlights in gameplay footage and cuts them with FFmpeg. Bundled local AI, no uploads, no admin install, no Ollama required." />
   <link rel="canonical" href="https://hatermedia.github.io/clipper/" />
   <meta property="og:title" content="Clipper - raw gameplay in. Highlights out." />
-  <meta property="og:description" content="Native Windows highlight trimmer with local AI, smart padding, and lossless FFmpeg cuts. No uploads, no accounts." />
+  <meta property="og:description" content="Native Windows highlight trimmer with bundled local AI, smart padding, and lossless FFmpeg cuts. No uploads, no accounts, no Ollama required." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://hatermedia.github.io/clipper/" />
   <meta property="og:image" content="https://hatermedia.github.io/clipper/og.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Clipper - raw gameplay in. Highlights out." />
-  <meta name="twitter:description" content="Native Windows highlight trimmer with local AI and lossless FFmpeg cuts." />
+  <meta name="twitter:description" content="Native Windows highlight trimmer with bundled local AI and lossless FFmpeg cuts." />
   <meta name="twitter:image" content="https://hatermedia.github.io/clipper/og.png" />
   <link rel="icon" href="media/icon.png" />
   <link rel="stylesheet" href="site.css" />
@@ -24,7 +24,7 @@
     "name": "Clipper",
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Windows 10, Windows 11",
-    "description": "Native Windows highlight trimmer with local AI, smart padding, and lossless FFmpeg cuts.",
+    "description": "Native Windows highlight trimmer with bundled local AI, smart padding, and lossless FFmpeg cuts.",
     "url": "https://hatermedia.github.io/clipper/",
     "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.8.3",
     "license": "https://opensource.org/license/mit",
@@ -73,8 +73,8 @@
             <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">View source</a>
           </div>
           <div class="hero-meta">
-            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 21h14"/></svg> ~365 MB installer</span>
-            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg> no Python or FFmpeg install</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 21h14"/></svg> about 380 MiB installer</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg> no Python, FFmpeg, or admin</span>
             <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/></svg> footage never uploaded</span>
           </div>
         </div>
@@ -121,7 +121,7 @@
           <article class="card">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12a7 7 0 0 1 14 0"/><path d="M8 12a4 4 0 0 1 8 0"/><circle cx="12" cy="17" r="1"/></svg></div>
             <h3>Low-power analysis</h3>
-            <p>A performance preset, not a fake “AI off” mode: 2 threads, a 256 px / 2 fps proxy, and below-normal priority. AI Director still runs if it is enabled.</p>
+            <p>A performance preset, not a fake “AI off” mode: 2 threads, a 256 px / 2 fps proxy, and below-normal priority. AI Director still runs.</p>
           </article>
         </div>
       </div>
@@ -132,25 +132,25 @@
         <div>
           <span class="eyebrow">Local AI · one path</span>
           <h2 style="font-size: clamp(27px, 3.6vw, 38px); color: #fff; margin: 14px 0 12px;">Every clip is edited by the local AI director.</h2>
-          <p class="muted" style="margin-bottom: 18px;">There is no heuristic-only mode. The director watches the full clip in short windows, transcribes the audio with Whisper, reads HUD/audio signals, and keeps the story beats. Desktop and Omegle-style captures use Social mode instead of game logic. Ollama and the vision model are not bundled; install them once from the app.</p>
+          <p class="muted" style="margin-bottom: 18px;">There is no heuristic-only mode. The director watches the full clip in short windows, transcribes the audio with Whisper, reads HUD/audio signals, and keeps the story beats. Desktop and Omegle-style captures use Social mode instead of game logic. Clipper downloads its own pinned llama.cpp runtime and one model tier on first setup. Ollama is optional, not required.</p>
           <div class="compare">
             <div class="compare-row compare-head">
               <div class="compare-cell">Included <span class="tag on">in the app</span></div>
               <div class="compare-cell">One-time AI setup</div>
             </div>
             <div class="compare-row">
-              <div class="compare-cell">Whisper transcription, HUD OCR, YAMNet audio tags, FFmpeg, and the runtime.</div>
-              <div class="compare-cell">Ollama plus one local vision model. Game presets are inferred from the folder or file name.</div>
+              <div class="compare-cell">Whisper transcription, HUD OCR, YAMNet audio tags, FFmpeg, and the Qt/Python runtime.</div>
+              <div class="compare-cell">Pinned llama.cpp runtime plus one model tier. Game presets are inferred from the folder or file name.</div>
             </div>
             <div class="compare-row">
               <div class="compare-cell">Analysis stays on your machine after setup.</div>
-              <div class="compare-cell"><strong>gemma3:4b</strong> on 6 GB cards, <strong>qwen2.5vl:7b</strong> on 8 GB+.</div>
+              <div class="compare-cell"><strong>Lite</strong> 2.05 GB, <strong>Standard</strong> 6.12 GB, <strong>Google</strong> 7.56 GB downloads. Runtime 749 MB.</div>
             </div>
           </div>
         </div>
         <figure>
-          <img src="media/desktop-ai-setup.png" alt="Clipper showing local AI setup required with Install Ollama and Refresh actions" />
-          <figcaption class="small dim" style="margin-top: 8px;">Detect highlights stays disabled until a local model is ready. <strong>Install Ollama</strong> downloads and verifies the prerequisite; <strong>Install model</strong> appears after it is ready.</figcaption>
+          <img src="media/desktop-ai-setup.png" alt="Clipper showing the AI model tier picker and local AI setup panel" />
+          <figcaption class="small dim" style="margin-top: 8px;">Choose Lite, Standard, or Google. Clipper downloads the llama.cpp runtime and the model with progress in the panel. Detect highlights stays disabled until a model is ready.</figcaption>
         </figure>
       </div>
     </section>
@@ -184,24 +184,25 @@
           <div class="install-grid">
             <div>
               <h2>Install the native app.</h2>
-              <p>Windows 10/11, per-user install, no admin prompt. The installer includes FFmpeg, Whisper <span class="mono">base.en</span>, RapidOCR, YAMNet, and the runtime it needs. First install extracts about 1 GB, including the 145 MB Whisper model, so it can take a minute.</p>
+              <p>Windows 10/11, per-user install, no admin prompt. The installer is about 380 MiB and includes FFmpeg, Whisper <span class="mono">base.en</span>, RapidOCR, YAMNet, and the Qt/Python runtime. The installed app is about 1.05 GB. AI models are not bundled: choose a tier in the app and Clipper downloads the pinned llama.cpp runtime (749 MB) plus the model (2.05-7.56 GB).</p>
               <ul class="check-list">
                 <li>Installs to <span class="mono">%LOCALAPPDATA%\Programs\Clipper</span></li>
                 <li>Upgrades in place; no side-by-side copies</li>
-                <li>One-click local AI setup, no admin prompt</li>
+                <li>Bundled llama.cpp AI setup; no Ollama required</li>
+                <li>Models and runtime live in <span class="mono">%LOCALAPPDATA%\Clipper</span> and survive upgrades</li>
                 <li>Adds Desktop and Start Menu shortcuts</li>
                 <li>Built-in SHA-256 verified updates</li>
-                <li>User footage and caches stay on your machine</li>
+                <li>Footage and caches stay on your machine</li>
               </ul>
             </div>
             <div class="download-box">
               <strong style="color: #fff; font-size: 15px;">Clipper v0.8.3</strong>
-              <p class="muted" style="margin-top: 6px;">Native Windows x64. No Python. No FFmpeg install. No admin.</p>
+              <p class="muted" style="margin-top: 6px;">Native Windows x64. No Python, FFmpeg, admin, or Ollama install.</p>
               <div class="cta-row" style="margin-top: 16px;">
                 <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.8.3/ClipperSetup-0.8.3.exe" target="_blank" rel="noreferrer">Download installer</a>
                 <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.8.3/clipper-0.8.3-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
               </div>
-              <p class="meta">SHA-256 checksums are published with every release. The portable zip is for people who do not want an installer.</p>
+              <p class="meta">SHA-256 checksums are published with every release. The portable zip is for people who do not want an installer. The AI runtime and model download on first setup.</p>
             </div>
           </div>
         </div>
@@ -217,11 +218,11 @@
         <div class="faq">
           <details>
             <summary>Is it really all local?</summary>
-            <p>Yes. Analysis, OCR, transcription, and export run on your machine. Clipper does not upload footage. Network access is limited to the optional GitHub update check and, only when you click them, the one-click Ollama install and model download. The app has no accounts and no telemetry.</p>
+            <p>Yes. Analysis, OCR, transcription, and export run on your machine. Clipper does not upload footage. Network access is limited to the optional GitHub update check, the AI runtime/model downloads when you click them, and the local server URL you configure. The app has no accounts and no telemetry.</p>
           </details>
           <details>
             <summary>Does AI Director require Ollama?</summary>
-            <p>Yes. Clipper is AI-only now. Whisper, HUD OCR, and YAMNet ship with the app, but the vision director needs Ollama and a local model. <strong>Install Ollama</strong> downloads and verifies the prerequisite from inside Clipper, then <strong>Install model</strong> downloads the vision model. Detect highlights stays disabled until both are ready.</p>
+            <p>No. Clipper uses a bundled llama.cpp runtime and one of three model tiers. Whisper, HUD OCR, and YAMNet ship with the app. Select Lite, Standard, or Google in the AI model picker and click Download. Ollama is optional, not required.</p>
           </details>
           <details>
             <summary>What is smart padding and merging?</summary>
@@ -232,12 +233,20 @@
             <p>It is a performance preset: 2 CPU threads, a 256 px / 2 fps analysis proxy, and below-normal process priority. The local AI director still runs. Low-power mode only trades speed for lower resource use; it never turns highlighting off.</p>
           </details>
           <details>
-            <summary>How does Clipper install Ollama?</summary>
-            <p><strong>Install Ollama</strong> downloads the official Ollama installer (about 1.9 GB) from GitHub, checks its published SHA-256 and Authenticode signature, installs it for the current Windows user, and starts it. No admin prompt and no browser trip. Then <strong>Install model</strong> downloads <span class="mono">gemma3:4b</span> or <span class="mono">qwen2.5vl:7b</span> through Ollama. The base Clipper installer stays small because neither Ollama nor the model is bundled.</p>
+            <summary>How does the one-time AI setup work?</summary>
+            <p>Open the <strong>AI model</strong> dropdown and choose Lite, Standard, or Google. Click <strong>Download</strong>. Clipper installs the pinned llama.cpp runtime first (749 MB download, about 1.41 GB installed), then the selected model: Lite 2.05 GB, Standard 6.12 GB, or Google 7.56 GB. Downloads are SHA-256 verified and resume when possible. Runtime and models live in <span class="mono">%LOCALAPPDATA%\Clipper</span> and survive app upgrades. No admin prompt is needed.</p>
+          </details>
+          <details>
+            <summary>Can I use Ollama instead?</summary>
+            <p>Ollama is optional. The normal picker does not require or list Ollama models. It remains an alternative backend for the CLI and existing configurations, and for models that need Ollama-specific audio support. The default setup uses the bundled llama.cpp runtime and an explicitly connected local OpenAI-compatible server if you choose one.</p>
           </details>
           <details>
             <summary>Is 6 GB enough for the AI Director?</summary>
-            <p>Use <span class="mono">gemma3:4b</span> on 6 GB cards. On 8 GB or more, <span class="mono">qwen2.5vl:7b</span> gives better story judgment.</p>
+            <p>Lite is the safe choice on 8 GB or less. Lite targets about 4 GB of VRAM, Standard about 8.5 GB, and Google about 10.5 GB. On a 10 GB card, Standard vision fits with room to spare; Google is tight. Running LFM3 audio ears beside a different vision model adds about 2.9 GiB, so use Low-power mode on 10 GB or close other GPU apps. Measured on an RTX 3080 10 GB, model load was about 2.9 GiB for Lite, 6.4 GiB for Standard, and 7.8 GiB for Google, not counting the desktop or other apps.</p>
+          </details>
+          <details>
+            <summary>What if an AI download fails?</summary>
+            <p>Check internet, VPN/proxy, firewall, and free disk. Partial files resume, and runtime/model files are SHA-256 verified. If a model will not start, check <span class="mono">%LOCALAPPDATA%\Clipper\ai-models\&lt;model-id&gt;\server.log</span>, update the NVIDIA driver to 551.61 or newer, close GPU-heavy apps, and try Lite or Low-power mode.</p>
           </details>
           <details>
             <summary>Does Game Guard know my game?</summary>

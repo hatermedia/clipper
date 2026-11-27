@@ -61,7 +61,13 @@ foreach ($exe in @("ffmpeg.exe", "ffprobe.exe")) {
 
 Copy-Item (Join-Path $PSScriptRoot "launcher-ui.cmd") (Join-Path $Dist "Clipper UI.cmd") -Force
 Copy-Item (Join-Path $PSScriptRoot "launcher-cli.cmd") (Join-Path $Dist "Clipper CLI.cmd") -Force
-Copy-Item (Join-Path $PSScriptRoot "PORTABLE_README.txt") (Join-Path $Dist "README.txt") -Force
+$ReadmeSource = Join-Path $PSScriptRoot "PORTABLE_README.txt"
+$ReadmeText = Get-Content $ReadmeSource -Raw
+$ReadmeText = $ReadmeText.Replace("__CLIPPER_VERSION__", $Version)
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText(
+    (Join-Path $Dist "README.txt"), $ReadmeText, $Utf8NoBom
+)
 Copy-Item (Join-Path $Root "LICENSE") (Join-Path $Dist "LICENSE") -Force
 
 & $Python (Join-Path $PSScriptRoot "prepare_whisper_model.py") (Join-Path $PSScriptRoot "models\base.en")

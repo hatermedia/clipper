@@ -1,5 +1,5 @@
-Clipper 0.8.3 - Windows x64 CLI portable
-====================================
+Clipper __CLIPPER_VERSION__ - Windows x64 CLI portable
+=====================================================
 
 No Python install. No FFmpeg install. Everything is in this folder.
 
@@ -19,11 +19,26 @@ Open "Clipper CLI.cmd", or run clipper.exe directly:
 
 The bundled ffmpeg/ffprobe live in the bin folder.
 
+LOCAL AI
+--------
+Whisper transcription, RapidOCR HUD reading, and YAMNet audio tagging are
+bundled, so OCR and transcription work offline after install.
+
+The AI Director still needs a local vision model. This CLI portable does not
+include the multi-gigabyte model or the llama.cpp runtime. The desktop app is
+the recommended first-run experience because it downloads and manages the
+bundled llama.cpp runtime and model tiers.
+
+The CLI currently defaults to an Ollama vision model. If you use that path,
+install Ollama yourself and install a supported vision model, for example:
+
+  ollama pull qwen2.5vl:7b
+
+Ollama is optional for the desktop app and is not installed by Clipper.
+
 NOTES
 -----
 - Footage never leaves this machine. The UI binds to 127.0.0.1.
-- Whisper transcription, RapidOCR HUD reading, and YAMNet audio tagging are
-  bundled, so AI/OCR works without downloads after install.
 - Default export uses FFmpeg stream copy (instant, lossless). Stream copy can
   start on an earlier keyframe; use --reencode for exact edges.
 - Windows SmartScreen may warn about an unsigned executable. The source is at

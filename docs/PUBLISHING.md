@@ -11,8 +11,24 @@ Clipper ships two ways from the same version:
 2. Run `pytest -q` and the frozen self-test.
 3. Run `packaging\build_installer.ps1`. It creates the installer, portable
    zip, `SHA256SUMS.txt`, and verifies the release payload.
-4. Build wheel/sdist with `python -m build`.
-5. Verify notices and license files are present in the payload.
+4. Verify the installer README is the current one. The build substitutes
+   `__CLIPPER_VERSION__` in `packaging\PORTABLE_DESKTOP_README.txt` and copies
+   it to `desktop-dist\Clipper\README.txt`. `build_installer.ps1` rejects a
+   README with the wrong version or an unresolved placeholder.
+5. Extract `README.txt` from the generated installer and compare it with the
+   staged payload. For example:
+   `7z e packaging\release\ClipperSetup-X.Y.Z.exe README.txt -o<temp-dir>`.
+6. Confirm the installer was built from the current source commit. The frozen
+   `llama_runtime` must include the MSVC runtime staging logic from `ed2b278`
+   or later, and the app version must match the README.
+7. Test the installer on a clean per-user profile or a fresh Windows VM:
+   install, launch, first-run AI setup, runtime download, model initialization,
+   and one analysis. Verify Ollama is not installed or required.
+8. Build wheel/sdist with `python -m build`.
+9. Verify notices and license files are present in the payload.
+
+Do not publish a build whose installer README does not match the staged README
+or whose frozen app does not contain the current source.
 
 ## GitHub release
 

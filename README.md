@@ -7,31 +7,68 @@ no uploads, no browser.
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) · **Release:** [v0.8.3](https://github.com/hatermedia/clipper/releases/tag/v0.8.3)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) | **Release:** [v0.8.3](https://github.com/hatermedia/clipper/releases/tag/v0.8.3)
 
 ## Install
 
-**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.3.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.3/ClipperSetup-0.8.3.exe) (~365 MB)
+**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.3.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.3/ClipperSetup-0.8.3.exe)
 
 - Per-user install, no admin prompt
 - Installs to `%LOCALAPPDATA%\Programs\Clipper`
 - Desktop and Start Menu shortcuts
 - Built-in SHA-256 verified updates
-- Uninstall removes the app and settings, not your footage or caches
+- Uninstall removes the app and settings, not your footage, exports, models, or
+  runtime
 
-The installer includes FFmpeg, Whisper `base.en`, RapidOCR, YAMNet, and the
-runtime they need. That is about 1 GB extracted, including the 145 MB Whisper
-model, so the first install can take a minute even on a fast connection. The
-newer per-file installer no longer waits behind one solid compression block.
+The installer is about 380 MiB. It includes FFmpeg, Whisper `base.en`, RapidOCR,
+YAMNet, and the runtime they need. The installed app is about 1.05 GB (1.0 GiB),
+including the 145 MB Whisper model. The installer is compressed per file, so an
+upgrade does not wait behind one solid compression block.
 
-A multi-gigabyte vision model is **not** bundled. The AI Director can install
-Ollama from inside the app, and then download a model only when you ask for it.
+A multi-gigabyte vision model is **not** bundled. Clipper downloads its own
+llama.cpp runtime and a model only when you ask for them from the AI panel:
+
+- Lite: LFM3-Omni-2B, 2.05 GB download / 1.91 GiB on disk
+- Standard: MiniCPM-o 4.5, 6.12 GB download / 5.70 GiB on disk
+- Google: Gemma 4 12B, 7.56 GB download / 7.04 GiB on disk
+
+The llama.cpp runtime is a separate download of 749 MB (715 MiB), and about
+1.41 GB (1.31 GiB) when installed. Runtime and models live under
+`%LOCALAPPDATA%\Clipper` and survive app upgrades.
 
 Running a newer installer over an older install reuses the same per-user folder
 and overwrites it in place. It does not create a second Clipper installation.
 
 Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.8.3/clipper-0.8.3-windows-x64-native.zip)
 and run `Clipper.exe`.
+
+### Requirements
+
+- Windows 10 or Windows 11, 64-bit
+- About 1 GB free disk for the app before AI setup
+- Internet access for the first AI runtime/model download and update checks
+- No administrator rights, Python, FFmpeg, Ollama, Visual C++ Redistributable,
+  or CUDA Toolkit install
+
+An NVIDIA GPU is optional but recommended. The bundled llama.cpp runtime is a
+CUDA 12.4 build and needs an NVIDIA Windows driver version 551.61 or newer. No
+CUDA Toolkit is needed. The runtime includes its own CUDA user-mode DLLs.
+NVENC/NVDEC are used when the driver and GPU support them; otherwise FFmpeg uses
+CPU encoding. AMD and Intel GPUs can run the app, but the bundled AI runtime and
+Clipper's GPU/NVENC path are NVIDIA/CUDA-focused.
+
+CPU-only AI is supported as a fallback and is much slower. OpenCV motion
+scoring and audio analysis already run on the CPU; the GPU is used for
+decode/encode and the AI models.
+
+Approximate total disk use after setup:
+
+- Lite only: about 4.5 GB (4.2 GiB)
+- Standard plus LFM3 audio ears: about 10.6 GB (9.9 GiB)
+- Google plus LFM3 audio ears: about 12.1 GB (11.2 GiB)
+
+Leave extra space for the analysis proxy, temporary audio, preview frames, and
+exports. Long source videos can need several gigabytes of working space.
 
 ## What it does
 
@@ -61,20 +98,56 @@ watches the full clip in short windows, transcribes the audio with Whisper, and
 uses HUD/audio signals to find the story beats. There is no heuristic-only
 highlighting fallback.
 
-The AI model is required, but it is not bundled. To set it up:
+The AI model is required for Detect highlights, but it is not bundled. To set it
+up:
 
-1. Open Clipper and click **Install Ollama** in the AI setup panel. Clipper
-   downloads the official installer, verifies its SHA-256 and Authenticode
-   signature, installs it for the current user, and starts it. No browser trip.
-2. Click **Install model** to download `gemma3:4b` or `qwen2.5vl:7b` through
-   Ollama, with progress shown in the panel.
-3. On 6 GB cards use `gemma3:4b` (tested). On 8 GB+ use `qwen2.5vl:7b`.
+1. Open the **AI model** dropdown in the Local AI director panel.
+2. Choose a bundled tier: **Lite**, **Standard**, or **Google**.
+3. Click **Download**. Clipper installs the llama.cpp runtime first, then the
+   selected model, with progress shown in the panel.
+4. Wait for the model to become ready, then click **Detect highlights**.
 
-Game presets are inferred from each file's folder or name; there is no game
-dropdown to maintain. `Desktop` and Omegle-style captures use **Social** mode,
-which ignores game HUD and prioritises jokes, trolling, reactions, and banter. The model picker lists only the supported local vision
-families: `gemma3`, `qwen2.5vl`, and `qwen3-vl`. If AI is not ready, Detect
-highlights stays disabled until setup finishes.
+The picker shows the download size next to each tier. Installed models do not
+show a download tag. The runtime and models are stored in:
+
+- `%LOCALAPPDATA%\Clipper\ai-runtime\llama-b12776`
+- `%LOCALAPPDATA%\Clipper\ai-models\<model-id>`
+
+Audio ears are optional. They use LFM3-Omni-2B. If the vision model is LFM3, the
+same model handles vision and audio. If the vision model is MiniCPM or Gemma,
+Clipper downloads LFM3 separately for the ears pass. You can turn audio ears off
+in the AI panel.
+
+The AI model dropdown also offers **Connect local server...**. It accepts an
+OpenAI-compatible base URL, reads `/v1/models`, and lets you add exactly one
+model. That model must accept image input and return JSON. No API key is sent.
+This is optional and works with LM Studio, llama.cpp server, vLLM, Jan, and
+similar local endpoints.
+
+Ollama is not required. Clipper does not install it. It remains an optional
+alternative backend for the CLI and existing configurations, and for models
+that need Ollama-specific audio support. The normal first-run path is the
+bundled llama.cpp runtime and one of the three bundled model tiers.
+
+### VRAM guidance
+
+The model picker shows conservative planning targets:
+
+- Lite LFM3: about 4 GB VRAM
+- Standard MiniCPM: about 8.5 GB VRAM
+- Google Gemma: about 10.5 GB VRAM
+
+These are not exact consumption figures. On the test machine (RTX 3080 10 GB,
+driver 610.88, 8192 context for LFM3 and 4096 for the larger models), measured
+model load was about 2.9 GiB above idle for LFM3, 6.4 GiB for MiniCPM, and
+7.8 GiB for Gemma. Add about 2.9 GiB if LFM3 audio ears run at the same time as
+a different vision model.
+
+On a 10 GB card, use Low-power mode with Standard or Google, or close other GPU
+apps. Low-power mode keeps at most one model resident and swaps between the
+vision and ears passes. It is slower because each video pays the model load
+cost again. On 8 GB or less, Lite is the safe choice. CPU-only fallback works
+but is much slower.
 
 ### Low-power mode
 
@@ -83,6 +156,7 @@ Low-power mode is a performance preset, not a separate product:
 - 2 CPU threads
 - 256 px wide, 2 fps analysis proxy
 - Below-normal process priority
+- At most one AI model resident at a time when vision and ears differ
 
 The local AI director still runs. Low-power mode only trades speed for lower
 resource use; it never turns highlighting off.
@@ -101,12 +175,40 @@ Xbox paths. You can add private or missed titles in
 }
 ```
 
+When a known game is running, Clipper pauses the director and releases model
+VRAM. It resumes when the game closes.
+
 ## Privacy
 
 Footage never leaves the machine. Analysis, OCR, transcription, and export are
-local. Clipper has no accounts and no telemetry. Network access is limited to the
-optional GitHub update check and, only when you click them, the one-click Ollama
-install and model download. Release downloads are HTTPS and SHA-256 verified.
+local. Clipper has no accounts and no telemetry. Network access is limited to
+the optional GitHub update check, the AI runtime and model downloads when you
+request them, and the local server URL you configure. Local server requests go
+to the endpoint you enter, normally on your machine or local network. Clipper
+does not send an API key. Release downloads use HTTPS and are checked against
+SHA-256 hashes.
+
+## Troubleshooting
+
+The full troubleshooting guide is in `README.txt` inside the installer and in
+the portable zip. Common points:
+
+- **SmartScreen warning:** the build is unsigned. Use "More info" then "Run
+  anyway" only for a file downloaded from the official release page.
+- **AI download fails:** check internet, VPN/proxy, firewall, and free disk.
+  Partial downloads resume; runtime and model files are SHA-256 verified.
+- **Model does not start:** check
+  `%LOCALAPPDATA%\Clipper\ai-models\<model-id>\server.log`, update the NVIDIA
+  driver to 551.61 or newer, close GPU-heavy apps, and try Lite or Low-power
+  mode.
+- **No supported vision model installed:** download a bundled tier or connect
+  a local OpenAI-compatible server.
+- **Local server fails:** use a base URL such as `http://127.0.0.1:1234`; the
+  server must expose `/v1/models` and accept image input with JSON responses.
+  Clipper does not send an API key.
+- **Uninstall:** removes the app and settings, not footage, exports, models, or
+  the llama.cpp runtime. Delete `%LOCALAPPDATA%\Clipper\ai-models` and
+  `%LOCALAPPDATA%\Clipper\ai-runtime` manually to reclaim that space.
 
 ## Build from source
 

@@ -108,7 +108,6 @@ from .config import (
     set_low_priority,
 )
 from .detect.ai import (
-    DEFAULT_MODEL,
     OLLAMA_URL,
     is_supported_vision_model,
     ollama_status,
@@ -1749,28 +1748,18 @@ class MainWindow(QMainWindow):
             for spec in self.bundled_models
             if runtime_ready() and model_ready(spec)
         ]
-        self.vlm_available = bool(vision or self.bundled_ready)
+        self.vlm_available = bool(self.bundled_ready)
         preferred_bundled = self._preferred_bundled_model()
         self.ai_default = (
             preferred_bundled.id
             if preferred_bundled is not None
             else (
-                DEFAULT_MODEL
-                if DEFAULT_MODEL.lower() in installed
-                else (
-                    vision[0]
-                    if vision
-                    else (
-                        self.bundled_models[0].id
-                        if self.bundled_models
-                        else "No supported vision model installed"
-                    )
-                )
+                self.bundled_models[0].id
+                if self.bundled_models
+                else ""
             )
         )
         self.low_vram = bool(self.gpu_vram_mb and self.gpu_vram_mb <= 7000)
-        if self.low_vram and "gemma3:4b" in installed:
-            self.ai_default = "gemma3:4b"
         self._detected_game: str | None = None
         self.update_release: ReleaseInfo | None = None
         self.update_installer: Path | None = None
@@ -1810,8 +1799,6 @@ class MainWindow(QMainWindow):
         if initial_input:
             self.set_input(initial_input, scan=False)
         self._update_status()
-        if self.ollama_present and not self.ollama_ok:
-            self._begin_ollama_start()
         QTimer.singleShot(800, self._resume_pending_update)
         QTimer.singleShot(2500, lambda: self.check_updates(manual=False))
         self.game_timer = QTimer(self)
@@ -2093,7 +2080,7 @@ class MainWindow(QMainWindow):
         elif not self.vlm_available:
             self.ai_model.setToolTip(
                 "No supported vision model detected. Download a bundled model "
-                "or install gemma3:4b / qwen2.5vl:7b."
+                "or connect a local server."
             )
         ai_controls.addWidget(self.ai_model, 0, 1)
         self.download_model_btn = QPushButton("Download")
@@ -3222,8 +3209,10 @@ class MainWindow(QMainWindow):
             spec_ready = runtime_ready() and model_ready(spec)
             self.download_model_btn.setVisible(not spec_ready)
             self.download_model_btn.setEnabled(not running)
-            self.download_model_btn.setText(
-                f"Download {sum(item.size for item in spec.files) / 1e9:.1f} GB"
+            size_gb = sum(item.size for item in spec.files) / 1e9
+            self.download_model_btn.setText("Download")
+            self.download_model_btn.setToolTip(
+                f"Download {spec.name}: {size_gb:.1f} GB."
             )
         else:
             self.download_model_btn.hide()
@@ -3273,6 +3262,16 @@ class MainWindow(QMainWindow):
         self.get_ollama_btn.hide()
         self.pull_ai_btn.hide()
         self.refresh_ai_btn.hide()
+        if not (
+            (self.ai_install_worker and self.ai_install_worker.isRunning())
+            or (
+                self.llama_install_worker
+                and self.llama_install_worker.isRunning()
+            )
+        ):
+            self.ai_setup_status.hide()
+            self.ai_setup_status.setText("")
+            self.ai_setup_progress.hide()
 
     def _set_ai_setup_busy(self, busy: bool) -> None:
         for button in (self.get_ollama_btn, self.refresh_ai_btn, self.pull_ai_btn):
@@ -3389,57 +3388,6 @@ class MainWindow(QMainWindow):
             self.ai_setup_status.show()
 
     def _refresh_ai_models(self) -> None:
-        self.ai_setup_status.setText("Checking Ollama...")
-        self.ai_setup_status.show()
-        self.ai_setup_status.repaint()
-        state = ollama_status(timeout=3)
-        if not state.get("ok"):
-            self.bundled_models = [
-                spec
-                for spec in MODELS
-                if spec.engine == "llamacpp" and spec.vision
-            ]
-            self.bundled_ready = [
-                spec
-                for spec in self.bundled_models
-                if runtime_ready() and model_ready(spec)
-            ]
-            self.vlm_available = bool(self.bundled_ready)
-            if self.bundled_models:
-                preferred_bundled = self._preferred_bundled_model()
-                preferred = (
-                    preferred_bundled.id
-                    if preferred_bundled is not None
-                    else self.bundled_models[0].id
-                )
-                self._populate_ai_model_combo(preferred)
-                self._populate_ears_combo()
-                self._update_ai_state()
-                self.ai_setup_status.setText(
-                    "Bundled local AI available. Ollama is optional."
-                )
-                self.ai_setup_status.show()
-                return
-            if ollama_executable() is not None:
-                self._begin_ollama_start()
-            else:
-                self.ai_setup_status.setText(
-                    "Ollama is not installed. Click Install Ollama."
-                )
-                self.ai_setup_status.show()
-                self._update_ai_state()
-            return
-        self.ollama_ok = bool(state.get("ok"))
-        self.ollama_present = ollama_executable() is not None
-        installed = {
-            str(name).lower(): str(name) for name in state.get("models", [])
-        }
-        self.installed_models = installed
-        vision = [
-            name for name in installed.values()
-            if is_supported_vision_model(name)
-        ]
-        self.ai_models = vision
         self.bundled_models = [
             spec
             for spec in MODELS
@@ -3450,34 +3398,17 @@ class MainWindow(QMainWindow):
             for spec in self.bundled_models
             if runtime_ready() and model_ready(spec)
         ]
-        self.vlm_available = bool(vision or self.bundled_ready)
+        self.vlm_available = bool(self.bundled_ready)
         preferred_bundled = self._preferred_bundled_model()
-        if preferred_bundled is not None:
-            preferred = preferred_bundled.id
-        elif vision:
-            preferred = (
-                "gemma3:4b"
-                if self.low_vram and "gemma3:4b" in installed
-                else (DEFAULT_MODEL if DEFAULT_MODEL.lower() in installed else vision[0])
-            )
-        elif self.bundled_models:
-            preferred = self.bundled_models[0].id
-        else:
-            preferred = "No supported vision model installed"
+        preferred = (
+            preferred_bundled.id
+            if preferred_bundled is not None
+            else (self.bundled_models[0].id if self.bundled_models else "")
+        )
         self.ai_default = preferred
         self._populate_ai_model_combo(preferred)
         self._populate_ears_combo()
         self._update_ai_state()
-        if not self.ollama_ok:
-            self.ai_setup_status.setText(
-                "Ollama is not responding. Click Install Ollama or start it."
-            )
-        elif not self.vlm_available:
-            self.ai_setup_status.setText(
-                "Ollama is running, but no supported vision model is installed. "
-                "Click Install model."
-            )
-        self.ai_setup_status.show()
 
     def _pull_ai_model(self) -> None:
         if self.pull_worker is not None and self.pull_worker.isRunning():
