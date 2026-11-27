@@ -27,8 +27,8 @@ def _build_batch_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="clipper",
         description=(
-            "Clipper - turn raw gaming footage into highlight clips. "
-            "Hybrid audio + motion detection, smart padding, lossless FFmpeg cuts."
+            "Clipper - turn raw gaming footage into highlight clips with a local "
+            "AI director, smart padding, and lossless FFmpeg cuts."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -119,7 +119,10 @@ def _build_batch_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--ai-model",
         default="qwen2.5vl:7b",
-        help="Ollama vision model (default: qwen2.5vl:7b)",
+        help=(
+            "Local vision model (default: qwen2.5vl:7b via Ollama; "
+            "bundled llama.cpp model ids also work)"
+        ),
     )
     parser.add_argument(
         "--ai-game",
