@@ -66,8 +66,13 @@ approximately:
 | Gemma 4 12B | 7.8 GiB | about 9.3 GiB |
 
 If the LFM3 audio ears run at the same time as a different vision model, add
-about 2.9 GiB. On a 10 GB card, use Low-power mode with Standard or Google, or
-close other GPU apps. On 8 GB or less, Lite is the safe choice.
+about 2.9 GiB. Direct dual residency on the 10 GB test card peaked at
+**9,733 MiB of 10,240 MiB**, leaving only about 0.5 GiB. Clipper therefore
+serializes the two models when they do not fit with 1 GB of headroom, so a
+10 GB card loads vision, unloads it for the ears pass, then reloads it for the
+final edit. With the guard, a real 35-second scan peaked at **8,021 MiB** and
+only one `llama-server` was resident. This is slower but avoids running on only
+a few hundred MiB of free VRAM. On 8 GB or less, Lite is the safe choice.
 
 Practical minimum and recommended VRAM:
 
@@ -157,6 +162,11 @@ video finishes. This is significantly slower because every video pays the model
 load cost again. If both roles use the same model, no swap is needed. The mode
 also lowers analysis threads and proxy resolution.
 
+Clipper also performs the same one-at-a-time swap automatically when the vision
+and ears targets do not fit with 1 GB of headroom, even when Low-power mode is
+off. Low-power mode forces the swap and adds the lower thread/proxy/priority
+preset.
+
 ## Model sources
 
 - LFM3-Omni-2B: Ollama registry blobs, LFM Open License v1.0.
@@ -176,8 +186,10 @@ llama.cpp release `b12776`.
 - **Model does not start:** open
   `%LOCALAPPDATA%\Clipper\ai-models\<model-id>\server.log`. Check the NVIDIA
   driver, free VRAM, and other GPU apps.
-- **Out of VRAM:** use Lite, close games and GPU-heavy apps, or enable
-  Low-power mode. Standard and Google are tight on a 10 GB card.
+- **Out of VRAM:** Clipper automatically serializes the Standard/Google vision
+  model and LFM3 ears when they do not fit with headroom. If a scan still runs
+  out of memory, close games and GPU-heavy apps, use Lite, or enable Low-power
+  mode for the lower thread/proxy preset.
 - **No CUDA device:** the runtime can fall back to the CPU, but it is much
   slower. NVIDIA/CUDA is the recommended path.
 - **Local server fails:** confirm the base URL, `/v1/models`, and that the

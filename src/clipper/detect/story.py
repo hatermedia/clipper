@@ -24,7 +24,7 @@ import cv2
 import numpy as np
 
 from ..config import DetectionSettings
-from ..ffmpeg import FFmpegBinaries, FFmpegError, make_thumbnail
+from ..ffmpeg import FFmpegBinaries, FFmpegError, make_thumbnail, nvidia_memory_mb
 from ..models import ClipWindow
 from .ai import (
     AIError,
@@ -1020,6 +1020,17 @@ def _same_model(left: str, right: str) -> bool:
     return left_key == right_key
 
 
+def _vram_requires_serial(main_spec, ears_spec) -> bool:
+    """True when the vision and ears models need a one-at-a-time swap."""
+    if main_spec is None or ears_spec is None or main_spec.id == ears_spec.id:
+        return False
+    total_mb = nvidia_memory_mb()
+    if not total_mb:
+        return False
+    required_mb = int((main_spec.vram_gb + ears_spec.vram_gb) * 1024) + 1024
+    return total_mb < required_mb
+
+
 def _banter_friendly_game(game: str) -> bool:
     key = game.strip().lower()
     if not key or key in {"auto", "generic"}:
@@ -1157,10 +1168,24 @@ def direct_clip(
         ears_is_main = _same_model(
             settings.ai_model, settings.ai_ears_model
         )
-    low_power_swap = (
-        settings.low_power and settings.ai_ears and not ears_is_main
+    ears_target = ears_candidate
+    if ears_target is not None and not ears_target.audio:
+        ears_target = LFM3_OMNI_2B
+    elif ears_target is None and main_spec is not None:
+        ears_target = main_spec
+    auto_serial = bool(
+        settings.ai_ears
+        and not ears_is_main
+        and not settings.low_power
+        and _vram_requires_serial(main_spec, ears_target)
     )
-    runtime = configure_runtime(settings, ears=not low_power_swap)
+    serial_swap = bool(
+        settings.ai_ears
+        and not ears_is_main
+        and (settings.low_power or auto_serial)
+    )
+    swap_label = "Low-power" if settings.low_power else "VRAM guard"
+    runtime = configure_runtime(settings, ears=not serial_swap)
     if runtime not in {"llamacpp", "server"}:
         spec = model_spec(settings.ai_model)
         if spec is not None:
@@ -1206,13 +1231,17 @@ def direct_clip(
         if progress:
             progress(0.86, f"AI resumed · {stage}")
         try:
-            configure_runtime(settings, ears=not low_power_swap)
+            configure_runtime(settings, ears=not serial_swap)
         except AIError:
             pass
 
     wait_for_game("transcribing")
 
     warnings: list[str] = []
+    if auto_serial:
+        warnings.append(
+            "VRAM is tight: vision and audio models load one at a time."
+        )
     lines: list[TranscriptLine] = []
     if wav is not None and wav.is_file():
         if progress:
@@ -1308,9 +1337,9 @@ def direct_clip(
         and wav is not None
         and wav.is_file()
     ):
-        if low_power_swap:
+        if serial_swap:
             if progress:
-                progress(0.935, "Low-power: loading audio ears")
+                progress(0.935, f"{swap_label}: loading audio ears")
             stop_runtime()
             unload_model(settings.ai_model)
             try:
@@ -1351,9 +1380,9 @@ def direct_clip(
                 )
             heard_clips.append(clip)
         clips = heard_clips + clips[limit:]
-        if low_power_swap:
+        if serial_swap:
             if progress:
-                progress(0.952, "Low-power: reloading vision model")
+                progress(0.952, f"{swap_label}: reloading vision model")
             stop_runtime()
             unload_model(ears_model)
             try:

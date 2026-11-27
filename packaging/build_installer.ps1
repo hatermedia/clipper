@@ -70,12 +70,25 @@ if (-not (Test-Path $Setup)) { throw "Installer not found: $Setup" }
 $Artifacts = @($Setup)
 $Portable = Join-Path $Release "clipper-$Version-windows-x64-native.zip"
 if (Test-Path $Portable) { $Artifacts += $Portable }
+$Dist = Join-Path $Root "dist"
+foreach ($name in @(
+    "clipper_gg-$Version-py3-none-any.whl",
+    "clipper_gg-$Version.tar.gz"
+)) {
+    $artifact = Join-Path $Dist $name
+    if (Test-Path $artifact) { $Artifacts += $artifact }
+}
 $Sums = Join-Path $Release "SHA256SUMS.txt"
 $Names = @($Artifacts | ForEach-Object { Split-Path $_ -Leaf })
 $Lines = @()
 if (Test-Path $Sums) {
     $Lines = @(Get-Content $Sums | Where-Object {
         if (-not $_) { return $false }
+        # Drop installer/zip/wheel lines from older versions so the checksum
+        # file only describes the release being staged.
+        if ($_ -match '\s+(ClipperSetup-.*\.exe|clipper-.*-windows-x64-native\.zip|clipper_gg-.*\.(whl|tar\.gz))$') {
+            return $false
+        }
         foreach ($name in $Names) {
             if ($_ -match ("\s+" + [regex]::Escape($name) + "$")) { return $false }
         }

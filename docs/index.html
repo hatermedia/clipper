@@ -24,9 +24,10 @@
     "name": "Clipper",
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Windows 10, Windows 11",
+    "softwareVersion": "0.8.4",
     "description": "Native Windows highlight trimmer with bundled local AI, smart padding, and lossless FFmpeg cuts.",
     "url": "https://hatermedia.github.io/clipper/",
-    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.8.3",
+    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.8.4",
     "license": "https://opensource.org/license/mit",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
   }
@@ -50,6 +51,7 @@
       <nav class="nav-links" aria-label="Primary">
         <a href="#features">Features</a>
         <a href="#ai">Local AI</a>
+        <a href="#demo">Demo</a>
         <a href="#install">Install</a>
         <a href="#faq">FAQ</a>
         <a class="btn btn-ghost btn-sm nav-cta" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub ↗</a>
@@ -69,7 +71,7 @@
             runs on your machine. No accounts, no uploads, no admin prompt.
           </p>
           <div class="cta-row" style="margin-top: 24px;">
-            <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.8.3/ClipperSetup-0.8.3.exe" target="_blank" rel="noreferrer">Download for Windows</a>
+            <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.8.4/ClipperSetup-0.8.4.exe" target="_blank" rel="noreferrer">Download for Windows</a>
             <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">View source</a>
           </div>
           <div class="hero-meta">
@@ -82,6 +84,21 @@
           <img src="media/desktop.png" alt="Clipper native Windows app showing a flat highlight list and inline preview player" />
           <figcaption>The native app: scan, review, preview, and export without leaving the window.</figcaption>
         </figure>
+      </div>
+    </section>
+
+    <section class="section-tight" id="demo">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">See the workflow</span>
+          <h2>Pick footage. Detect highlights. Preview. Export.</h2>
+          <p>Recorded from the actual Clipper 0.8.4 desktop app on Windows 11 with the bundled llama.cpp runtime. No mockup, no cloud round-trip.</p>
+        </div>
+        <video controls preload="metadata" poster="media/demo-poster.jpg" style="width: 100%; display: block; border: 1px solid var(--line); border-radius: 12px; background: #000;">
+          <source src="media/demo.mp4" type="video/mp4" />
+          Your browser does not support the video tag. <a href="media/demo.mp4">Download the demo</a>.
+        </video>
+        <p class="small dim" style="margin-top: 10px;">The demo selects a real Rocket League capture, runs the local AI director, previews the goal, and exports the selected clip with lossless stream copy.</p>
       </div>
     </section>
 
@@ -194,14 +211,14 @@
                 <li>Built-in SHA-256 verified updates</li>
                 <li>Footage and caches stay on your machine</li>
               </ul>
-              <p class="small dim" style="margin-top: 14px;">Disk after AI setup: about 4.5 GB for Lite, 10.6 GB for Standard with LFM3 ears, or 12.1 GB for Google with LFM3 ears. Leave extra space for analysis temp files and exports. On NVIDIA, driver 551.61 or newer is recommended; no CUDA Toolkit is needed. CPU-only AI works but is much slower.</p>
+              <p class="small dim" style="margin-top: 14px;">Disk after AI setup: about 4.5 GB for Lite, 10.6 GB for Standard with LFM3 ears, or 12.1 GB for Google with LFM3 ears. Leave extra space for analysis temp files and exports. On NVIDIA, driver 551.61 or newer is recommended; no CUDA Toolkit is needed. Standard or Google with LFM3 ears serializes automatically when the pair does not fit with headroom. CPU-only AI works but is much slower.</p>
             </div>
             <div class="download-box">
-              <strong style="color: #fff; font-size: 15px;">Clipper v0.8.3</strong>
+              <strong style="color: #fff; font-size: 15px;">Clipper v0.8.4</strong>
               <p class="muted" style="margin-top: 6px;">Native Windows x64. No Python, FFmpeg, admin, or Ollama install.</p>
               <div class="cta-row" style="margin-top: 16px;">
-                <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.8.3/ClipperSetup-0.8.3.exe" target="_blank" rel="noreferrer">Download installer</a>
-                <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.8.3/clipper-0.8.3-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
+                <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.8.4/ClipperSetup-0.8.4.exe" target="_blank" rel="noreferrer">Download installer</a>
+                <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.8.4/clipper-0.8.4-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
               </div>
               <p class="meta">SHA-256 checksums are published with every release. The portable zip is for people who do not want an installer. The AI runtime and model download on first setup.</p>
             </div>
@@ -231,7 +248,7 @@
           </details>
           <details>
             <summary>What does low-power mode do?</summary>
-            <p>It is a performance preset: 2 CPU threads, a 256 px / 2 fps analysis proxy, and below-normal process priority. The local AI director still runs. Low-power mode only trades speed for lower resource use; it never turns highlighting off.</p>
+            <p>It is a performance preset: 2 CPU threads, a 256 px / 2 fps analysis proxy, and below-normal process priority. It also forces one AI model at a time. The local AI director still runs. Tight-VRAM cards may serialize models automatically even when Low-power mode is off.</p>
           </details>
           <details>
             <summary>How does the one-time AI setup work?</summary>
@@ -243,7 +260,7 @@
           </details>
           <details>
             <summary>Is 6 GB enough for the AI Director?</summary>
-            <p>Yes for Lite. Lite targets about 4 GB of VRAM and measured about 2.9 GiB above idle on an RTX 3080. Standard targets about 8.5 GB, and Google about 10.5 GB. On a 6 GB card, use Lite and close other GPU-heavy apps. On a 10 GB card, Standard vision fits with room to spare; Google is tight. Running LFM3 audio ears beside a different vision model adds about 2.9 GiB, so use Low-power mode on 10 GB or close other GPU apps.</p>
+            <p>Yes for Lite. Lite targets about 4 GB of VRAM and measured about 2.9 GiB above idle on an RTX 3080. Standard targets about 8.5 GB, and Google about 10.5 GB. On a 6 GB card, use Lite and close other GPU-heavy apps. On a 10 GB card, Standard vision fits with room to spare; Google is tight. Running LFM3 audio ears beside a different vision model adds about 2.9 GiB, so Clipper serializes the two models automatically when they do not fit with 1 GB of headroom. Low-power mode also lowers threads and proxy resolution.</p>
           </details>
           <details>
             <summary>What if an AI download fails?</summary>
@@ -275,7 +292,7 @@
         </a>
         <div class="footer-links">
           <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://github.com/hatermedia/clipper/releases/tag/v0.8.3" target="_blank" rel="noreferrer">Release</a>
+          <a href="https://github.com/hatermedia/clipper/releases/tag/v0.8.4" target="_blank" rel="noreferrer">Release</a>
           <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">README</a>
           <a href="https://github.com/hatermedia/clipper/issues" target="_blank" rel="noreferrer">Issues</a>
         </div>

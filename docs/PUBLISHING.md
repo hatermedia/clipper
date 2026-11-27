@@ -26,6 +26,9 @@ Clipper ships two ways from the same version:
    and one analysis. Verify Ollama is not installed or required.
 8. Build wheel/sdist with `python -m build`.
 9. Verify notices and license files are present in the payload.
+10. Verify every website, README, and release-note media reference points to
+    the current workflow demo and current GUI screenshots. Remove retired
+    screenshots and recordings instead of leaving stale promotional assets.
 
 Do not publish a build whose installer README does not match the staged README
 or whose frozen app does not contain the current source.

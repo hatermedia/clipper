@@ -198,12 +198,15 @@ approximately:
 - Gemma: 7.8 GiB above idle.
 
 If the LFM3 audio ears run at the same time as a different vision model, add
-about 2.9 GiB. On a 10 GB card, use Low-power mode with Standard or Google, or
-close other GPU apps. Low-power mode keeps at most one model resident and
-swaps between the vision and ears passes. It is slower because each video pays
-the model load cost again.
+about 2.9 GiB. Direct dual residency on the 10 GB test card peaked at 9,733 MiB
+of 10,240 MiB, leaving only about 0.5 GiB. Clipper therefore serializes the two
+models when they do not fit with 1 GB of headroom, so a 10 GB card loads vision,
+unloads it for the ears pass, then reloads it for the final edit. With the
+guard, a real 35-second scan peaked at 8,021 MiB and only one model was
+resident. This is slower but keeps a safe margin. Low-power mode forces the same
+swap and also lowers threads and proxy resolution.
 
-If VRAM is tight, use Lite, lower the analysis settings, close games and
+If VRAM is still tight, use Lite, lower the analysis settings, close games and
 browser hardware acceleration, or use Low-power mode.
 
 
@@ -215,7 +218,9 @@ PERFORMANCE NOTES
 - OpenCV motion scoring and audio RMS stay on the CPU. GPU motion scoring is
   not implemented.
 - Low-power mode uses 2 CPU threads, a 256 px wide 2 fps analysis proxy, and
-  below-normal process priority. The AI director still runs.
+  below-normal process priority. It also forces one model at a time. The AI
+  director still runs. Tight-VRAM cards may serialize automatically even when
+  Low-power mode is off.
 - Game Guard pauses AI work and releases model VRAM while a known game is
   running. It resumes when the game closes.
 - Long interactions can stay 30-90 seconds. Clipper does not force every

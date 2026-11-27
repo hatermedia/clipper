@@ -6,6 +6,30 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-11-27
+
+### Changed
+
+- **Bundled AI setup documentation.** The installer README, website, main
+  README, AI model guide, CLI portable README, and third-party notices now
+  describe the bundled llama.cpp runtime and model tiers. Ollama is optional.
+- **Automatic VRAM guard.** Vision and audio models are serialized when their
+  conservative targets do not fit with 1 GB of headroom. The default 10 GB
+  Standard plus LFM3 configuration now loads one model at a time instead of
+  running with roughly 0.5 GiB free.
+- **Low-power clarification.** Low-power mode still forces one model at a time
+  and lowers threads, proxy resolution, and process priority.
+- **Current media.** Replaced stale screenshots and added a workflow demo for
+  footage selection, detection, preview, and export.
+
+### Fixed
+
+- Removed automatic Ollama startup and stale Ollama setup status from the
+  desktop app. The picker uses bundled models and explicit local servers.
+- Fixed the AI model Download button label clipping.
+- Corrected CLI help text that still described hybrid audio and motion
+  detection.
+
 ## [0.8.3] - 2026-11-26
 
 ### Fixed

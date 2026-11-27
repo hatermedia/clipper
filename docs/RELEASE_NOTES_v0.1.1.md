@@ -4,6 +4,8 @@ Windows portable build, public landing page, and a lower-friction download path.
 
 ![Clipper demo](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/demo.gif)
 
+*Current workflow demo. The original v0.1.1 recording has been retired.*
+
 **SHA-256 checksums:** [SHA256SUMS.txt](https://github.com/hatermedia/clipper/releases/download/v0.1.1/SHA256SUMS.txt)
 
 ## Highlights
@@ -14,10 +16,11 @@ Windows portable build, public landing page, and a lower-friction download path.
 - **Frozen-build FFmpeg discovery** - the executable looks in its own folder,
   `bin/`, and `ffmpeg/bin/` before falling back to `PATH`.
 - **Public site** - [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/)
-  with a 20-second real UI demo, install paths, guides, and an optional
+  with a real UI demo, install paths, guides, and an optional
   done-for-you clip service.
-- **Historical demo assets** - `docs/media/demo.mp4` (19.5s, 630 KB) and `demo.gif` (3.7 MB),
-  recorded from the actual UI doing scan → detect → export.
+- **Demo media** - the current workflow demo is `docs/media/demo.mp4` and
+  `demo.gif`, recorded from the current UI doing scan, detect, preview, and
+  export. The original v0.1.1 recording has been retired.
 - **Historical guides** - batch ShadowPlay trimming, automatic highlight detection, and an
   honest open-source comparison.
 - **Service pilot** - a separate, optional done-for-you clip pack. The software

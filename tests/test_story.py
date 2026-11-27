@@ -581,3 +581,29 @@ def test_same_model_resolves_aliases() -> None:
     assert _same_model("lfm3-omni", "lfm3-omni-2b")
     assert not _same_model("minicpm-o-4.5", "lfm3-omni-2b")
     assert not _same_model("qwen2.5vl:7b", "lfm3-omni-2b")
+
+def test_vram_guard_serialises_default_10gb_pair(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import (
+        GEMMA_4_12B,
+        LFM3_OMNI_2B,
+        MINICPM_O_4_5,
+    )
+
+    monkeypatch.setattr(story, "nvidia_memory_mb", lambda: 10240)
+    assert story._vram_requires_serial(MINICPM_O_4_5, LFM3_OMNI_2B)
+    assert story._vram_requires_serial(GEMMA_4_12B, LFM3_OMNI_2B)
+    assert not story._vram_requires_serial(LFM3_OMNI_2B, LFM3_OMNI_2B)
+
+
+def test_vram_guard_allows_both_models_on_16gb(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import LFM3_OMNI_2B, MINICPM_O_4_5
+
+    monkeypatch.setattr(story, "nvidia_memory_mb", lambda: 16384)
+    assert not story._vram_requires_serial(MINICPM_O_4_5, LFM3_OMNI_2B)
+
+
+def test_vram_guard_is_off_without_nvidia(monkeypatch) -> None:
+    from clipper.detect.llama_runtime import LFM3_OMNI_2B, MINICPM_O_4_5
+
+    monkeypatch.setattr(story, "nvidia_memory_mb", lambda: None)
+    assert not story._vram_requires_serial(MINICPM_O_4_5, LFM3_OMNI_2B)

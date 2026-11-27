@@ -7,11 +7,15 @@ no uploads, no browser.
 
 ![Clipper native desktop app](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/desktop.png)
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) | **Release:** [v0.8.3](https://github.com/hatermedia/clipper/releases/tag/v0.8.3)
+![Clipper workflow demo](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/demo.gif)
+
+*Workflow demo recorded from Clipper 0.8.4: select footage, detect highlights, preview, and export. [Watch the full MP4](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/demo.mp4).*
+
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) | **Release:** [v0.8.4](https://github.com/hatermedia/clipper/releases/tag/v0.8.4)
 
 ## Install
 
-**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.3.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.3/ClipperSetup-0.8.3.exe)
+**Windows 10/11 installer (recommended):** [Download ClipperSetup-0.8.4.exe](https://github.com/hatermedia/clipper/releases/download/v0.8.4/ClipperSetup-0.8.4.exe)
 
 - Per-user install, no admin prompt
 - Installs to `%LOCALAPPDATA%\Programs\Clipper`
@@ -39,7 +43,7 @@ The llama.cpp runtime is a separate download of 749 MB (715 MiB), and about
 Running a newer installer over an older install reuses the same per-user folder
 and overwrites it in place. It does not create a second Clipper installation.
 
-Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.8.3/clipper-0.8.3-windows-x64-native.zip)
+Prefer a portable copy? [Download the native zip](https://github.com/hatermedia/clipper/releases/download/v0.8.4/clipper-0.8.4-windows-x64-native.zip)
 and run `Clipper.exe`.
 
 ### Requirements
@@ -149,11 +153,16 @@ Practical minimum and recommended VRAM:
 - Standard: 8.5 GB minimum, 10 GB recommended.
 - Google: 10 GB works with little headroom, 12 GB recommended.
 
-On a 10 GB card, use Low-power mode with Standard or Google, or close other GPU
-apps. Low-power mode keeps at most one model resident and swaps between the
-vision and ears passes. It is slower because each video pays the model load
-cost again. On 8 GB or less, Lite is the safe choice. CPU-only fallback works
-but is much slower.
+On a 10 GB card, Clipper automatically keeps only one model resident when the
+selected vision model and LFM3 ears do not fit with 1 GB of headroom. Direct
+dual residency on the 10 GB test card peaked at 9,733 MiB of 10,240 MiB, leaving
+only about 0.5 GiB, so the guard is enabled for this pair. It unloads the vision
+model before the ears pass and reloads it for the final edit. With the guard, a
+real 35-second scan peaked at 8,021 MiB and only one model was resident. This is
+slower because each video pays the model load cost again. Low-power mode forces
+the same one-at-a-time swap and also lowers threads and proxy resolution. On
+8 GB or less, Lite is the safe choice. CPU-only fallback works but is much
+slower.
 
 ### Low-power mode
 
@@ -163,6 +172,7 @@ Low-power mode is a performance preset, not a separate product:
 - 256 px wide, 2 fps analysis proxy
 - Below-normal process priority
 - At most one AI model resident at a time when vision and ears differ
+- Tight-VRAM systems serialize automatically even when this is off
 
 The local AI director still runs. Low-power mode only trades speed for lower
 resource use; it never turns highlighting off.

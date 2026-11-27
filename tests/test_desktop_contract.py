@@ -127,7 +127,8 @@ def test_gui_exposes_grouped_models_and_intentional_empty_states() -> None:
     assert "No clip selected" in source
     assert "partially ready" in source
     assert "Quick start" in source
-    assert "Significantly slower: every video reloads them" in source
+    assert "Also lowers threads and proxy resolution." in source
+    assert "Tight-VRAM cards may swap automatically even when off." in source
     assert "Connect local server" in source
     assert "Local server" in source
     assert "GPU helps decode/encode" not in source
