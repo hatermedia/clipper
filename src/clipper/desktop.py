@@ -2611,7 +2611,6 @@ class MainWindow(QMainWindow):
         if selected == CONNECT_SERVER:
             selected = ""
         selected = selected or preferred or self.ai_default
-        vision = sorted(self.ai_models, key=str.lower)
         self.ai_model.blockSignals(True)
         self.ai_model.clear()
         if self.bundled_models:
@@ -2635,10 +2634,6 @@ class MainWindow(QMainWindow):
                     f"{spec.vram_gb:.1f} GB VRAM.",
                     Qt.ToolTipRole,
                 )
-        if vision:
-            self._add_combo_header(self.ai_model, "Ollama")
-            for model in vision:
-                self.ai_model.addItem(model, model)
         if self.ai_server_models:
             self._add_combo_header(self.ai_model, "Local server")
             for model in sorted(self.ai_server_models, key=str.lower):
@@ -2838,7 +2833,7 @@ class MainWindow(QMainWindow):
     def _update_ears_state(self) -> None:
         model = self._current_ears_model()
         if not model:
-            self.ai_ears_state.setText("off")
+            self.ai_ears_state.setText("")
         elif self._ears_ready():
             self.ai_ears_state.setText("")
         elif not (model_ready(LFM3_OMNI_2B) and runtime_ready()):
@@ -3270,39 +3265,14 @@ class MainWindow(QMainWindow):
         self.ai_setup.setVisible(not ready_now)
         if ready_now:
             return
-        bundled_hint = (
-            "You can also download a bundled model with the Download button above. "
-            if getattr(self, "bundled_models", None)
-            else ""
+        self.ai_setup_title.setText("Local AI setup required")
+        self.ai_setup_text.setText(
+            "Download a bundled model with the Download button above, or "
+            "connect a local server from the AI model menu."
         )
-        self.ollama_present = ollama_executable() is not None
-        if self.ollama_ok and self.ollama_present:
-            self.ai_setup_title.setText("Ollama found · supported model needed")
-            self.ai_setup_text.setText(
-                bundled_hint
-                + "Download gemma3:4b or qwen2.5vl:7b to enable the local AI director."
-            )
-            self.get_ollama_btn.hide()
-            self.pull_ai_btn.show()
-        elif self.ollama_present:
-            self.ai_setup_title.setText("Ollama is installed")
-            self.ai_setup_text.setText(
-                bundled_hint
-                + "Start Ollama with Refresh, then download a supported vision "
-                "model to enable the local AI director."
-            )
-            self.get_ollama_btn.hide()
-            self.pull_ai_btn.show()
-        else:
-            self.ai_setup_title.setText("Local AI setup required")
-            self.ai_setup_text.setText(
-                bundled_hint
-                + "Clipper uses the local vision director for every scan. Install "
-                "Ollama, then download a vision model to start."
-            )
-            self.get_ollama_btn.show()
-            self.pull_ai_btn.hide()
-        self.refresh_ai_btn.show()
+        self.get_ollama_btn.hide()
+        self.pull_ai_btn.hide()
+        self.refresh_ai_btn.hide()
 
     def _set_ai_setup_busy(self, busy: bool) -> None:
         for button in (self.get_ollama_btn, self.refresh_ai_btn, self.pull_ai_btn):

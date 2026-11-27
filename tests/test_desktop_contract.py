@@ -141,3 +141,9 @@ def test_long_tooltips_are_wrapped() -> None:
     )
     wrapped = _wrap_tooltip(text, width=42)
     assert max(len(line) for line in wrapped.splitlines()) <= 42
+
+def test_ai_model_picker_only_lists_bundled_and_local_server_models() -> None:
+    source = inspect.getsource(MainWindow._populate_ai_model_combo)
+    assert '"Ollama"' not in source
+    assert "Connect local server" in source
+    assert "SERVER_PREFIX" in source
