@@ -63,7 +63,7 @@ approximately:
 | --- | ---: | ---: |
 | LFM3-Omni-2B | 2.9 GiB | about 4.4 GiB |
 | MiniCPM-o 4.5 | 6.4 GiB | about 7.8 GiB |
-| Gemma 4 12B | 7.8 GiB | about 9.5 GiB |
+| Gemma 4 12B | 7.8 GiB | about 9.3 GiB |
 
 If the LFM3 audio ears run at the same time as a different vision model, add
 about 2.9 GiB. On a 10 GB card, use Low-power mode with Standard or Google, or
