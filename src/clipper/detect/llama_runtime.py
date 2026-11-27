@@ -15,8 +15,10 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -31,6 +33,20 @@ RUNTIME_DIR_NAME = f"llama-{RUNTIME_VERSION}"
 _NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 ProgressFn = Callable[[int, int], None]
 CancelledFn = Callable[[], bool]
+
+# The llama.cpp release is built with the MSVC toolchain but does not include
+# the Visual C++ runtime. Clipper carries these DLLs for its own process, so
+# copy them beside llama-server.exe instead of requiring a system-wide
+# VC++ Redistributable install.
+RUNTIME_DLLS = (
+    "msvcp140.dll",
+    "msvcp140_1.dll",
+    "msvcp140_2.dll",
+    "msvcp140_codecvt_ids.dll",
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+    "concrt140.dll",
+)
 
 
 @dataclass(frozen=True)
@@ -272,6 +288,49 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _runtime_dll_sources() -> list[Path]:
+    sources: list[Path] = []
+    meipass = getattr(sys, "_MEIPASS", "")
+    if meipass:
+        sources.append(Path(meipass))
+    try:
+        import PySide6
+
+        sources.append(Path(PySide6.__file__).resolve().parent)
+    except Exception:
+        pass
+    system_root = os.environ.get("SystemRoot")
+    if system_root:
+        sources.append(Path(system_root) / "System32")
+    return sources
+
+
+def _stage_runtime_dlls(root: Path) -> None:
+    """Copy the MSVC runtime beside llama-server.exe.
+
+    llama-server runs from %LOCALAPPDATA%, so it cannot see the app's
+    _internal directory. Staging the runtime makes the on-demand install
+    self-contained even when the VC++ Redistributable is not installed.
+    """
+    sources = _runtime_dll_sources()
+    for name in RUNTIME_DLLS:
+        target = root / name
+        for source in sources:
+            candidate = source / name
+            if not candidate.is_file():
+                continue
+            try:
+                if (
+                    target.is_file()
+                    and target.stat().st_size == candidate.stat().st_size
+                ):
+                    break
+                shutil.copy2(candidate, target)
+            except OSError:
+                continue
+            break
+
+
 def _download(
     url: str,
     target: Path,
@@ -347,6 +406,7 @@ def install_runtime(
     cancelled: CancelledFn | None = None,
 ) -> Path:
     if runtime_ready():
+        _stage_runtime_dlls(runtime_root())
         return runtime_server()
     root = runtime_root()
     root.mkdir(parents=True, exist_ok=True)
@@ -375,6 +435,7 @@ def install_runtime(
     server = runtime_server()
     if not server.is_file():
         raise RuntimeError("The llama.cpp runtime did not contain llama-server.exe")
+    _stage_runtime_dlls(root)
     (root / ".ready").write_text("ok", encoding="utf-8")
     return server
 
@@ -501,6 +562,7 @@ def start_server(
     if not model_ready(spec):
         raise RuntimeError(f"{spec.name} is not downloaded")
     server = runtime_server()
+    _stage_runtime_dlls(runtime_root())
     paths = model_paths(spec)
     model = paths.get("model")
     if model is None:

@@ -101,3 +101,20 @@ def test_openai_chat_sends_images_audio_and_text(
     assert content[0]["type"] == "image_url"
     assert content[1]["type"] == "input_audio"
     assert content[2] == {"type": "text", "text": "watch this"}
+
+
+def test_runtime_stages_msvc_runtime_beside_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "runtime"
+    source.mkdir()
+    target.mkdir()
+    for name in llama_runtime.RUNTIME_DLLS:
+        (source / name).write_bytes(b"dll")
+    monkeypatch.setattr(
+        llama_runtime, "_runtime_dll_sources", lambda: [source]
+    )
+    llama_runtime._stage_runtime_dlls(target)
+    for name in llama_runtime.RUNTIME_DLLS:
+        assert (target / name).read_bytes() == b"dll"
