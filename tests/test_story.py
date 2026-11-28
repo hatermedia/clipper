@@ -15,6 +15,7 @@ from clipper.detect.story import (
     StoryWindow,
     TranscriptLine,
     _apply_audio_reading,
+    _clean_model_text,
     _same_model,
     _segments_from_windows,
 )
@@ -792,3 +793,9 @@ def test_serial_plan_low_power_without_bundled_main(monkeypatch) -> None:
     plan = story._serial_plan(settings, False, None, LFM3_OMNI_2B)
     assert plan.serial is True
     assert plan.reason == "low_power"
+
+
+def test_refine_placeholders_are_discarded() -> None:
+    assert _clean_model_text("one short sentence") == ""
+    assert _clean_model_text("The concrete proof or the contradiction.") == ""
+    assert _clean_model_text("Real proof from the HUD") == "Real proof from the HUD"

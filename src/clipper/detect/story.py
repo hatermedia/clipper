@@ -1026,6 +1026,21 @@ Return JSON only. Start and end must be numbers within the candidate:
 {{"keep": true|false, "start": {clip.start:.2f}, "end": {clip.end:.2f}, "score": 0.0, "summary": "one short sentence", "evidence": "the concrete proof or the contradiction"}}"""
 
 
+def _clean_model_text(value: object) -> str:
+    """Drop schema placeholders that a small model sometimes echoes back."""
+
+    text = str(value or "").strip()
+    key = " ".join(text.lower().strip(" .").split())
+    if key in {
+        "one short sentence",
+        "the concrete proof or the contradiction",
+        "concrete proof or the contradiction",
+        "the concrete proof",
+    }:
+        return ""
+    return text
+
+
 def _refine_clip(
     video: Path,
     clip: ClipWindow,
@@ -1074,8 +1089,8 @@ def _refine_clip(
     keep = verdict.get("keep")
     if isinstance(keep, str):
         keep = keep.lower() == "true"
-    summary = str(verdict.get("summary") or "").strip()
-    evidence = str(verdict.get("evidence") or "").strip()
+    summary = _clean_model_text(verdict.get("summary"))
+    evidence = _clean_model_text(verdict.get("evidence"))
     if not keep:
         # The scan pass already verified social candidates with a quoted human
         # line or signal agreement. Do not let the vision-only refine pass erase
@@ -1118,18 +1133,19 @@ def _refine_clip(
         or "(hud)" in clip.reason.lower()
     )
     reason = clip.reason if concrete or not summary else f"AI final: {summary}"
+    final_record: dict[str, Any] = {
+        "kept": True,
+        "score": round(max(0.05, min(0.99, score)), 3),
+        "start": round(start, 3),
+        "end": round(end, 3),
+    }
+    if summary:
+        final_record["summary"] = _short_text(summary, 240)
+    if evidence:
+        final_record["proof"] = _short_text(evidence, 300)
     final_evidence = _merge_evidence(
         clip.evidence,
-        {
-            "final": {
-                "kept": True,
-                "score": round(max(0.05, min(0.99, score)), 3),
-                "summary": _short_text(summary, 240),
-                "proof": _short_text(evidence, 300),
-                "start": round(start, 3),
-                "end": round(end, 3),
-            }
-        },
+        {"final": final_record},
     )
     return replace(
         clip,
