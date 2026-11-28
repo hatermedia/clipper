@@ -57,15 +57,46 @@ class ReframePlan:
             return max(0, (self.source_height - self.crop_height) // 2)
         return int(np.median([sample.y for sample in self.samples]))
 
-    def command_text(self) -> str:
+    def command_text(self, fps: float = 0.0) -> str:
         """sendcmd instructions for the crop filter.
 
-        Times are relative to the start of the rendered clip because the export
-        seeks before opening the input, which resets FFmpeg timestamps to zero.
+        With ``fps`` set, the sampled path is interpolated and written at that
+        rate. FFmpeg only updates the crop when a command arrives, so a 2 fps
+        path without interpolation visibly steps every half second. Export uses
+        60 Hz commands so the movement follows the smoothed path.
         """
 
+        if not self.samples:
+            return ""
+        points = list(self.samples)
+        if fps > 0 and len(points) > 1:
+            step = 1.0 / max(1.0, float(fps))
+            last = max(0.0, points[-1].time)
+            count = int(last / step) + 1
+            interpolated: list[ReframeSample] = []
+            index = 0
+            for frame in range(count):
+                stamp = min(last, frame * step)
+                while index + 1 < len(points) and points[index + 1].time <= stamp:
+                    index += 1
+                first = points[index]
+                second = points[min(index + 1, len(points) - 1)]
+                span = max(1e-6, second.time - first.time)
+                ratio = max(0.0, min(1.0, (stamp - first.time) / span))
+                interpolated.append(
+                    ReframeSample(
+                        time=stamp,
+                        x=int(round(first.x + (second.x - first.x) * ratio)),
+                        y=int(round(first.y + (second.y - first.y) * ratio)),
+                    )
+                )
+            if interpolated[-1].time < last:
+                interpolated.append(
+                    ReframeSample(last, points[-1].x, points[-1].y)
+                )
+            points = interpolated
         lines: list[str] = []
-        for sample in self.samples:
+        for sample in points:
             x = max(0, min(self.source_width - self.crop_width, int(sample.x)))
             y = max(0, min(self.source_height - self.crop_height, int(sample.y)))
             lines.append(f"{max(0.0, sample.time):.3f} crop@reframe x {x};")
@@ -241,8 +272,8 @@ def plan_reframe(
     target_height: int,
     *,
     mode: str = "auto",
-    sample_fps: float = 2.0,
-    max_samples: int = 240,
+    sample_fps: float = 4.0,
+    max_samples: int = 360,
 ) -> ReframePlan:
     """Sample a clip and produce a smoothed crop path.
 

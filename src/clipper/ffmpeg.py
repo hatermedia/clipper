@@ -611,8 +611,15 @@ def render_clip(
         if use_reframe and reframe_plan is not None:
             with tempfile.TemporaryDirectory(prefix="clipper_reframe_") as raw:
                 temp = Path(raw)
+                command_writer = getattr(reframe_plan, "command_text", None)
+                try:
+                    command_text = (
+                        command_writer(fps=60.0) if callable(command_writer) else ""
+                    )
+                except TypeError:
+                    command_text = command_writer() if callable(command_writer) else ""
                 (temp / "reframe.cmd").write_text(
-                    str(getattr(reframe_plan, "command_text", lambda: "")()),
+                    str(command_text),
                     encoding="utf-8",
                 )
                 cmd = build(

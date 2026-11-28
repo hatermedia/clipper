@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -82,6 +83,37 @@ def test_command_text_targets_named_crop_filter() -> None:
     assert "1.500 crop@reframe x 200;" in text
     assert "crop@reframe y 0;" in text
     assert plan.static_x == 150
+
+
+def test_command_text_interpolates_for_smooth_export() -> None:
+    from clipper.reframe import ReframePlan, ReframeSample
+
+    plan = ReframePlan(
+        source_width=1920,
+        source_height=1080,
+        crop_width=608,
+        crop_height=1080,
+        samples=(
+            ReframeSample(0.0, 100, 0),
+            ReframeSample(2.0, 200, 0),
+        ),
+        mode="action",
+        confidence=0.7,
+        reason="action tracking",
+    )
+    text = plan.command_text(fps=60.0)
+    x_values = [
+        int(match)
+        for match in re.findall(r"crop@reframe x (\d+);", text)
+    ]
+    assert len(x_values) == 121
+    assert x_values[0] == 100
+    assert x_values[-1] == 200
+    assert max(
+        abs(x_values[index] - x_values[index - 1])
+        for index in range(1, len(x_values))
+    ) <= 2
+    assert len(text.splitlines()) == 242
 
 
 def test_plan_reframe_on_a_real_generated_clip(tmp_path: Path) -> None:
