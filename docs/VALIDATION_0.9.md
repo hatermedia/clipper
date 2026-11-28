@@ -182,5 +182,8 @@ are in `SHA256SUMS-0.9.0.txt`.
 - New-file detection used a real trimmed video with a settled timestamp, not a
   full ShadowPlay or Steam write cycle.
 - The installer is unsigned, so SmartScreen warnings remain.
+- PyInstaller reported non-blocking warnings for unused
+  `onnxruntime.quantization`, `tzdata`, and `scipy.special._cdflib` imports.
+  Frozen smoke, live AI, and export tests passed with the packaged build.
 - The public website and public download links remain on the 0.8.4 stable
   release until publishing is authorized.
