@@ -39,6 +39,10 @@ Local test build. Not published.
 
 ### Fixed
 
+- Final evidence now discards schema placeholders that a small model sometimes
+  echoes from the prompt instead of displaying them as proof.
+- Vertical reframe commands are interpolated at 60 Hz, removing the visible
+  0.5-second crop steps from the first tracking implementation.
 - Detect now checks the selected bundled model or local server instead of
   requiring an Ollama process.
 - Desktop scans and the watch queue exclude the export folder, so Clipper does

@@ -11,6 +11,7 @@ install of the same user.
 
 from __future__ import annotations
 
+import atexit
 import base64
 import hashlib
 import json
@@ -562,6 +563,9 @@ def stop_server(model_id: str | None = None) -> None:
     for server in list(_SERVERS.values()):
         server.stop()
     _SERVERS.clear()
+
+
+atexit.register(stop_server)
 
 
 def start_server(

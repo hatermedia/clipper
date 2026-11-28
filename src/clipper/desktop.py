@@ -5733,6 +5733,8 @@ def main(argv: list[str] | None = None) -> int:
             payload = {"error": str(exc)}
             Path(args.story_test).write_text(json.dumps(payload, indent=2), encoding="utf-8")
             return 1
+        finally:
+            stop_runtime()
         Path(args.story_test).write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return 0
 
