@@ -42,7 +42,8 @@ environment into both packages:
 Those rejected artifacts are retained only under
 `packaging/release/rejected-0.9.0-stale-metadata` and were never distributed.
 
-The corrected build now:
+The corrected packages were built from commit
+`be9df6340cf535bc36b5daee6128404c06f0b228`. The corrected build now:
 
 - Refuses to start from a dirty Git tree and records the full commit hash.
 - Removes stale `clipper_gg-*.dist-info` and editable `direct_url.json` data.
@@ -180,7 +181,9 @@ process behind.
 
 The corrected installer and portable zip are the only 0.9.0 artifacts staged
 for release. Their sizes and SHA-256 values are in `SHA256SUMS-0.9.0.txt`; the
-build commit is in `BUILD_INFO.txt`.
+build commit is in `BUILD_INFO.txt`. Every line in that checksum file was
+re-hashed and matched, covering the two 0.9.0 artifacts and the four preserved
+FFmpeg source assets.
 
 The installer was extracted and inspected before installation. Its README says
 0.9.0 and includes the workflow section, `BUILD_INFO.txt` is present, the
@@ -203,8 +206,8 @@ hash (`E1DC3441...`), 0.8.4 registry values, and 0.8.4 shortcut targets. The
 0.8.4 installer and portable zip hashes are unchanged:
 `A5607F6F...` and `9CBBB4D2...`.
 
-`SHA256SUMS.txt` was preserved for 0.8.4. The corrected 0.9.0 checksums are in
-`SHA256SUMS-0.9.0.txt`.
+The 0.8.4 checksum file is preserved as `SHA256SUMS-0.8.4.txt`. The corrected
+0.9.0 checksums are in `SHA256SUMS-0.9.0.txt`.
 
 ## Remaining limitations
 
