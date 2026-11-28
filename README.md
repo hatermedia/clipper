@@ -95,6 +95,26 @@ exports. Long source videos can need several gigabytes of working space.
 - **GPU + CPU controls** - real NVENC test, balanced thread cap, and a low-power
   preset.
 
+## Next workflow features
+
+The 0.9 development work adds the post-detection workflow. These features are
+not in the 0.8.4 installer yet:
+
+- **Clip library** - reopen previous scans and keep keep/reject decisions,
+  notes, tags, evidence, and export history. Stored locally under
+  `%LOCALAPPDATA%\Clipper\library`.
+- **Creator presets** - YouTube Shorts, TikTok, Reels, square, landscape, H.264,
+  HEVC, batch export, and filename templates.
+- **Automatic vertical reframe** - action or facecam tracking with a smoothed
+  crop path, plus a center fallback.
+- **Why this clip?** - transcript, HUD proof, audio signals, reviewed windows,
+  and model confidence for every clip.
+- **Watch folders and queue** - baseline a folder, queue new recordings, wait for
+  idle time or game exit, pause, resume, and recover after a crash.
+
+See [docs/WORKFLOW_0.9.md](docs/WORKFLOW_0.9.md) for behavior, storage, CLI
+examples, and current limitations.
+
 ## First run and local AI
 
 Clipper is AI-first. Every scan is reviewed by a local vision director that
@@ -216,9 +236,11 @@ VRAM. It resumes when the game closes.
 ## Privacy
 
 Footage never leaves the machine. Analysis, OCR, transcription, and export are
-local. Clipper has no accounts and no telemetry. Network access is limited to
-the optional GitHub update check, the AI runtime and model downloads when you
-request them, and the local server URL you configure. Local server requests go
+local. Clipper has no accounts and no telemetry. The 0.9 clip library and scan
+queue are local data under `%LOCALAPPDATA%\Clipper`; they store paths, notes,
+tags, evidence text, and preview JPGs, not copies of the source video. Network
+access is limited to the optional GitHub update check, the AI runtime and model
+downloads when you request them, and the local server URL you configure. Local server requests go
 to the endpoint you enter, normally on your machine or local network. Clipper
 does not send an API key. Release downloads use HTTPS and are checked against
 SHA-256 hashes.

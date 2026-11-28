@@ -143,6 +143,19 @@ def test_long_tooltips_are_wrapped() -> None:
     wrapped = _wrap_tooltip(text, width=42)
     assert max(len(line) for line in wrapped.splitlines()) <= 42
 
+def test_desktop_exposes_library_presets_evidence_and_queue() -> None:
+    source = Path(inspect.getsourcefile(MainWindow)).read_text(encoding="utf-8")
+    assert "ClipLibrary" in source
+    assert "ScanWorkflow" in source
+    assert "Why this clip?" in source
+    assert "Watch folders and scan queue" in source
+    assert "ROLE_CLIP_ID" in source
+    assert "record_exports" in source
+    assert "reframe_mode" in source
+    assert "export_preset" in source
+    assert "Only when idle" in source
+
+
 def test_ai_model_picker_only_lists_bundled_and_local_server_models() -> None:
     source = inspect.getsource(MainWindow._populate_ai_model_combo)
     assert '"Ollama"' not in source

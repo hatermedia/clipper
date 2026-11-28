@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import tempfile
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -26,12 +27,55 @@ from .ffmpeg import (
     last_proxy_backend,
     make_proxy,
     make_thumbnail,
+    nvenc_available,
     probe_media,
     render_clip,
 )
-from .models import AnalysisSummary, ClipWindow, FileAnalysis, MediaInfo
+from .models import (
+    AnalysisSummary,
+    ClipWindow,
+    FileAnalysis,
+    MediaInfo,
+    clip_key,
+)
+from .presets import (
+    ExportPreset,
+    LOSSLESS,
+    output_suffix,
+    preset_for,
+    render_filename,
+)
+from .reframe import plan_reframe
 
 ProgressFn = Callable[[float, str], None]
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+@dataclass
+class ExportItem:
+    source: str
+    clip_id: str
+    start: float
+    end: float
+    preset: str = "lossless"
+    path: str = ""
+    error: str = ""
+    at: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "source": self.source,
+            "clip_id": self.clip_id,
+            "start": round(self.start, 3),
+            "end": round(self.end, 3),
+            "preset": self.preset,
+            "path": self.path,
+            "error": self.error,
+            "at": self.at or _utc_now(),
+        }
 
 
 @dataclass
@@ -40,6 +84,8 @@ class ExportResult:
     errors: list[str] = field(default_factory=list)
     reencoded: list[Path] = field(default_factory=list)
     clips_total: int = 0
+    items: list[ExportItem] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -51,6 +97,8 @@ class ExportResult:
             "errors": list(self.errors),
             "reencoded": [str(path) for path in self.reencoded],
             "clips_total": self.clips_total,
+            "items": [item.to_dict() for item in self.items],
+            "warnings": list(self.warnings),
         }
 
 
@@ -305,12 +353,6 @@ def _safe_stem(stem: str, limit: int = 70) -> str:
     return (cleaned or "clip")[:limit]
 
 
-def _compact_time(seconds: float) -> str:
-    seconds = max(0.0, seconds)
-    minutes, secs = divmod(int(round(seconds)), 60)
-    return f"{minutes:02d}m{secs:02d}s"
-
-
 def _unique_path(path: Path) -> Path:
     if not path.exists():
         return path
@@ -319,6 +361,22 @@ def _unique_path(path: Path) -> Path:
         if not candidate.exists():
             return candidate
     raise ClipperError(f"Could not find a free filename for {path.name}")
+
+
+def _custom_preset(reencode: bool, encoder: str, crf: int) -> ExportPreset:
+    if not reencode:
+        return LOSSLESS
+    key = str(encoder).lower()
+    codec = "hevc" if "hevc" in key or "265" in key else "h264"
+    return ExportPreset(
+        id="custom",
+        label="Custom re-encode",
+        description="Frame-accurate re-encode with the selected encoder.",
+        fit="source",
+        codec=codec,
+        quality=int(crf),
+        suffix="",
+    )
 
 
 def export_analysis(
@@ -330,54 +388,138 @@ def export_analysis(
     preset: str = "veryfast",
     progress: ProgressFn | None = None,
     threads: int = 0,
+    *,
+    export_preset: ExportPreset | str | None = None,
+    filename_template: str | None = None,
+    reframe_mode: str = "auto",
 ) -> ExportResult:
+    """Export clips with lossless copy or a creator preset.
+
+    ``preset`` remains the x264 speed preset for compatibility. The output
+    format is selected with ``export_preset``. When it is omitted, the old
+    ``reencode``/``encoder``/``crf`` behavior is preserved.
+    """
+
     configure_cpu_limits(threads)
     bins = find_ffmpeg()
     destination = Path(output_dir).expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
+
+    if export_preset is None:
+        chosen = _custom_preset(reencode, encoder, crf)
+        explicit_encoder = encoder if reencode else ""
+    else:
+        chosen = preset_for(export_preset)
+        explicit_encoder = ""
+
+    nvenc = False if chosen.lossless else nvenc_available(bins)
+    if chosen.codec == "copy":
+        resolved_encoder = "libx264"
+    elif chosen.codec == "hevc":
+        resolved_encoder = "hevc_nvenc" if nvenc else "libx265"
+    else:
+        resolved_encoder = "h264_nvenc" if nvenc else "libx264"
+    if explicit_encoder and explicit_encoder not in {"auto", "gpu"}:
+        resolved_encoder = explicit_encoder
 
     jobs: list[tuple[FileAnalysis, int, ClipWindow]] = []
     for analysis in summary.files:
         if analysis.error:
             continue
         for index, clip in enumerate(analysis.clips, start=1):
+            if not clip.id:
+                clip.id = clip_key(analysis.path, clip.start, clip.end)
             jobs.append((analysis, index, clip))
 
     result = ExportResult(clips_total=len(jobs))
     if not jobs:
         return result
 
+    game = str(summary.setting_summary.get("ai_game") or "")
+    created_at = summary.created_at or _utc_now()
     for done, (analysis, index, clip) in enumerate(jobs):
-        suffix = ".mp4" if reencode else Path(analysis.path).suffix.lower()
-        if suffix not in VIDEO_EXTENSIONS:
-            suffix = ".mp4"
-        filename = (
-            f"{_safe_stem(Path(analysis.path).stem)}_clip_{index:02d}_"
-            f"{_compact_time(clip.start)}-{_compact_time(clip.end)}{suffix}"
+        suffix = output_suffix(chosen, analysis.path)
+        filename = render_filename(
+            filename_template,
+            source=analysis.path,
+            clip=clip,
+            index=index,
+            preset=chosen,
+            game=game,
+            created_at=created_at,
         )
-        target = _unique_path(destination / filename)
+        target = _unique_path(destination / f"{filename}{suffix}")
+        item = ExportItem(
+            source=analysis.path,
+            clip_id=clip.id,
+            start=clip.start,
+            end=clip.end,
+            preset=chosen.id,
+            at=_utc_now(),
+        )
         _report(
             progress,
             done / len(jobs),
             f"Exporting {target.name} ({done + 1}/{len(jobs)})",
         )
+        plan = None
+        wants_reframe = (
+            chosen.reframe == "auto"
+            and chosen.width > 0
+            and chosen.height > 0
+            and not chosen.lossless
+            and str(reframe_mode).lower() not in {"none", "off", "center"}
+        )
+        if wants_reframe:
+            _report(
+                progress,
+                done / len(jobs),
+                f"Tracking the action for {target.name} ({done + 1}/{len(jobs)})",
+            )
+            try:
+                plan = plan_reframe(
+                    analysis.path,
+                    clip.start,
+                    clip.end,
+                    chosen.width,
+                    chosen.height,
+                    mode=reframe_mode,
+                )
+            except Exception as exc:
+                result.warnings.append(
+                    f"{analysis.name} clip {index}: reframe skipped ({exc})."
+                )
         try:
             rendered, used_reencode = render_clip(
                 analysis.path,
                 clip,
                 target,
-                reencode=reencode,
-                encoder=encoder,
-                crf=crf,
+                reencode=not chosen.lossless,
+                encoder=resolved_encoder,
+                crf=chosen.quality if export_preset is not None else crf,
                 preset=preset,
                 bins=bins,
                 threads=threads,
+                target_width=chosen.width,
+                target_height=chosen.height,
+                fit=chosen.fit,
+                fps=chosen.fps,
+                audio_bitrate=chosen.audio_bitrate,
+                reframe_plan=plan,
+                fallback_encoder=(
+                    "libx265" if chosen.codec == "hevc" else "libx264"
+                ),
             )
+            item.path = str(rendered)
             result.outputs.append(rendered)
+            result.items.append(item)
             if used_reencode:
                 result.reencoded.append(rendered)
         except (FFmpegError, OSError) as exc:
-            result.errors.append(f"{analysis.name} clip {index}: {exc}")
+            message = f"{analysis.name} clip {index}: {exc}"
+            item.error = str(exc)
+            result.errors.append(message)
+            result.items.append(item)
 
     _report(progress, 1.0, f"Exported {len(result.outputs)} clip(s)")
     return result

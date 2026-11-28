@@ -8,6 +8,7 @@ browser or a permanently open command prompt.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import subprocess
@@ -43,6 +44,7 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import (
+    QBrush,
     QColor,
     QDesktopServices,
     QFontDatabase,
@@ -82,6 +84,8 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QStackedWidget,
+    QTabWidget,
+    QTextBrowser,
     QToolTip,
     QTreeWidget,
     QTreeWidgetItem,
@@ -130,8 +134,24 @@ from .ffmpeg import (
     terminate_active_processes,
 )
 from .gameguard import detect_running_game
-from .models import AnalysisSummary
+from .library import (
+    ClipLibrary,
+    LibraryError,
+    library_dir,
+    preview_dir as library_preview_dir,
+)
+from .models import AnalysisSummary, ClipWindow
 from .pipeline import analyze_target, export_analysis, scan_inputs
+from .presets import DEFAULT_TEMPLATE, preset_choices, preset_for
+from .watch import (
+    DONE,
+    FAILED,
+    RUNNING,
+    QueueJob,
+    ScanWorkflow,
+    WorkflowError,
+    is_system_idle,
+)
 from .update import (
     ReleaseInfo,
     UpdateError,
@@ -158,6 +178,7 @@ ROLE_START = ROLE_PREVIEW + 2
 ROLE_END = ROLE_PREVIEW + 3
 ROLE_INDEX = ROLE_PREVIEW + 4
 ROLE_NAME = ROLE_PREVIEW + 5
+ROLE_CLIP_ID = ROLE_PREVIEW + 6
 CONNECT_SERVER = "__connect_local_server__"
 SERVER_PREFIX = "server:"
 
@@ -433,6 +454,31 @@ QListWidget {
     color: #b8b8b8;
     outline: 0;
 }
+QTabWidget::pane {
+    background: #171717;
+    border: 1px solid #303030;
+    border-radius: 8px;
+}
+QTabBar::tab {
+    background: #242424;
+    color: #a8a8b0;
+    border: 1px solid #303030;
+    border-bottom: none;
+    padding: 6px 14px;
+    margin-right: 2px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+QTabBar::tab:selected { background: #171717; color: #ffffff; }
+QTabBar::tab:hover { color: #ffffff; }
+QTextBrowser {
+    background: #171717;
+    border: none;
+    color: #d8d8de;
+    padding: 8px;
+    selection-background-color: #2f9bff;
+    selection-color: #0b0b0b;
+}
 QScrollArea { border: none; background: transparent; }
 QScrollBar:vertical { background: transparent; width: 10px; margin: 2px; }
 QScrollBar::handle:vertical { background: #474747; border-radius: 4px; min-height: 28px; }
@@ -450,7 +496,8 @@ QToolTip {
     padding: 6px;
     font-size: 11px;
 }
-QDialog { background: transparent; }
+QDialog { background: #1a1a1a; }
+QDialog#AppDialog { background: transparent; }
 QFrame#DialogPanel {
     background: #2a2a2a;
     border: 1px solid #404040;
@@ -469,12 +516,20 @@ class AnalyzeWorker(QThread):
     done = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, path: str, settings: DetectionSettings, recursive: bool, preview_dir: Path) -> None:
+    def __init__(
+        self,
+        path: str,
+        settings: DetectionSettings,
+        recursive: bool,
+        preview_dir: Path,
+        exclude: Path | None = None,
+    ) -> None:
         super().__init__()
         self.path = path
         self.settings = settings
         self.recursive = recursive
         self.preview_dir = preview_dir
+        self.exclude = exclude
         self._cancel = False
 
     def cancel(self) -> None:
@@ -492,6 +547,7 @@ class AnalyzeWorker(QThread):
                 self.settings,
                 recursive=self.recursive,
                 preview_dir=self.preview_dir,
+                exclude=self.exclude,
                 progress=self._progress,
                 on_file_done=self.file_done.emit,
             )
@@ -512,11 +568,18 @@ class ExportWorker(QThread):
         summary: AnalysisSummary,
         output_dir: str,
         threads: int,
+        *,
+        preset_id: str = "lossless",
+        filename_template: str = DEFAULT_TEMPLATE,
+        reframe_mode: str = "auto",
     ) -> None:
         super().__init__()
         self.summary = summary
         self.output_dir = output_dir
         self.threads = threads
+        self.preset_id = preset_id
+        self.filename_template = filename_template
+        self.reframe_mode = reframe_mode
         self._cancel = False
 
     def cancel(self) -> None:
@@ -534,6 +597,9 @@ class ExportWorker(QThread):
                 output_dir=self.output_dir,
                 progress=self._progress,
                 threads=self.threads,
+                export_preset=preset_for(self.preset_id),
+                filename_template=self.filename_template,
+                reframe_mode=self.reframe_mode,
             )
             self.done.emit(result)
         except Cancelled:
@@ -1348,6 +1414,7 @@ class AppDialog(QDialog):
         detail: str = "",
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("AppDialog")
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setModal(True)
@@ -1489,6 +1556,7 @@ class ClipPreviewDialog(QDialog):
         reason: str = "",
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("AppDialog")
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setModal(True)
@@ -1691,6 +1759,416 @@ class ClipPreviewDialog(QDialog):
 
 
 
+class LibraryDialog(QDialog):
+    """Reopen previous scans and manage saved history."""
+
+    def __init__(self, parent: QWidget, library: ClipLibrary) -> None:
+        super().__init__(parent)
+        self.library = library
+        self.selected_scan_id = ""
+        self.deleted_ids: list[str] = []
+        self.setWindowTitle("Clip library")
+        self.resize(760, 480)
+        self.setMinimumSize(560, 360)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(8)
+        title = QLabel("Clip library")
+        title.setObjectName("Section")
+        layout.addWidget(title)
+        hint = QLabel(
+            "Reopen a scan to keep its notes, tags, keep/reject decisions, "
+            "and export history. Everything is stored locally."
+        )
+        hint.setObjectName("Muted")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        self.list = QListWidget()
+        self.list.itemDoubleClicked.connect(lambda _: self._open())
+        layout.addWidget(self.list, 1)
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+        delete = QPushButton("Delete")
+        delete.setToolTip("Remove this scan from the library. Source footage is untouched.")
+        delete.clicked.connect(self._delete)
+        actions.addWidget(delete)
+        refresh = QPushButton("Refresh")
+        refresh.setObjectName("Mono")
+        refresh.setToolTip("Reload scans saved by a background queue job.")
+        refresh.clicked.connect(self.refresh)
+        actions.addWidget(refresh)
+        actions.addStretch(1)
+        close = QPushButton("Close")
+        close.clicked.connect(self.reject)
+        actions.addWidget(close)
+        open_btn = QPushButton("Open scan")
+        open_btn.setObjectName("Accent")
+        open_btn.setDefault(True)
+        open_btn.clicked.connect(self._open)
+        actions.addWidget(open_btn)
+        layout.addLayout(actions)
+        self.delete_btn = delete
+        self.open_btn = open_btn
+        self.refresh()
+
+    def refresh(self) -> None:
+        error_text = ""
+        try:
+            scans = self.library.scans()
+        except LibraryError as exc:
+            scans = []
+            error_text = f"Library error: {exc}"
+        self.list.clear()
+        for info in scans:
+            item = QListWidgetItem(info.label)
+            item.setData(Qt.UserRole, info.id)
+            item.setToolTip(
+                f"{info.input_path}\n"
+                f"Created {info.created_at}\n"
+                f"{info.clips} clip(s), {info.kept} kept"
+            )
+            self.list.addItem(item)
+        if not scans:
+            empty = QListWidgetItem(
+                error_text or "No saved scans yet. Run a scan and it appears here."
+            )
+            empty.setFlags(Qt.NoItemFlags)
+            empty.setForeground(QBrush(QColor("#8f8f96")))
+            self.list.addItem(empty)
+        self.open_btn.setEnabled(bool(scans))
+        self.delete_btn.setEnabled(bool(scans))
+        if scans:
+            self.list.setCurrentRow(0)
+
+    def _selected(self) -> str:
+        item = self.list.currentItem()
+        return str(item.data(Qt.UserRole) or "") if item is not None else ""
+
+    def _open(self) -> None:
+        scan_id = self._selected()
+        if not scan_id:
+            return
+        self.selected_scan_id = scan_id
+        self.accept()
+
+    def _delete(self) -> None:
+        scan_id = self._selected()
+        item = self.list.currentItem()
+        if not scan_id or item is None:
+            return
+        if not ask_confirm(
+            self,
+            "Delete saved scan?",
+            item.text(),
+            confirm="Delete",
+            kind="warning",
+        ):
+            return
+        try:
+            self.library.delete(scan_id)
+        except LibraryError as exc:
+            show_message(self, "Library", str(exc), kind="critical")
+            return
+        self.deleted_ids.append(scan_id)
+        if self.selected_scan_id == scan_id:
+            self.selected_scan_id = ""
+        self.refresh()
+
+
+class WorkflowDialog(QDialog):
+    """Watch folders, the background queue, and pause/idle controls."""
+
+    def __init__(self, main: "MainWindow", workflow: ScanWorkflow) -> None:
+        super().__init__(main)
+        self.main = main
+        self.workflow = workflow
+        self._loading = False
+        self.setWindowTitle("Watch folders and scan queue")
+        self.resize(820, 620)
+        self.setMinimumSize(620, 460)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(8)
+        title = QLabel("Watch folders and scan queue")
+        title.setObjectName("Section")
+        layout.addWidget(title)
+        hint = QLabel(
+            "Clipper queues new recordings after they settle, then scans them "
+            "when the PC is idle. Existing files are ignored when a folder is added."
+        )
+        hint.setObjectName("Muted")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        folder_header = QHBoxLayout()
+        folder_header.addWidget(self._label("Watch folders"))
+        folder_header.addStretch(1)
+        add = QPushButton("Add folder")
+        add.setObjectName("Mono")
+        add.clicked.connect(self._add_folder)
+        folder_header.addWidget(add)
+        add_current = QPushButton("Add current")
+        add_current.setObjectName("Mono")
+        add_current.setToolTip("Use the footage folder currently selected in the main window.")
+        add_current.clicked.connect(self._add_current)
+        folder_header.addWidget(add_current)
+        subfolders = QPushButton("Subfolders")
+        subfolders.setObjectName("Mono")
+        subfolders.setToolTip("Include subfolders for the selected watch folder.")
+        subfolders.clicked.connect(self._toggle_subfolders)
+        folder_header.addWidget(subfolders)
+        remove = QPushButton("Remove")
+        remove.setObjectName("Mono")
+        remove.clicked.connect(self._remove_folder)
+        folder_header.addWidget(remove)
+        layout.addLayout(folder_header)
+        self.folders = QListWidget()
+        self.folders.setMaximumHeight(130)
+        self.folders.itemChanged.connect(self._folder_changed)
+        layout.addWidget(self.folders)
+
+        options = QHBoxLayout()
+        options.setSpacing(12)
+        self.pause = ToggleRow("Pause queue")
+        self.pause.setToolTip("Stop starting new background scans. Active work finishes.")
+        self.pause.toggled.connect(self._pause_changed)
+        options.addWidget(self.pause)
+        self.idle_only = ToggleRow("Only when idle")
+        self.idle_only.setToolTip("Wait for two minutes without keyboard or mouse input.")
+        self.idle_only.toggled.connect(self._idle_changed)
+        options.addWidget(self.idle_only)
+        options.addStretch(1)
+        layout.addLayout(options)
+
+        queue_header = QHBoxLayout()
+        queue_header.addWidget(self._label("Queue"))
+        queue_header.addStretch(1)
+        scan_now = QPushButton("Scan current now")
+        scan_now.setObjectName("Mono")
+        scan_now.clicked.connect(self._scan_current)
+        queue_header.addWidget(scan_now)
+        retry = QPushButton("Retry")
+        retry.setObjectName("Mono")
+        retry.clicked.connect(self._retry)
+        queue_header.addWidget(retry)
+        clear = QPushButton("Clear finished")
+        clear.setObjectName("Mono")
+        clear.clicked.connect(self._clear)
+        queue_header.addWidget(clear)
+        layout.addLayout(queue_header)
+        self.jobs = QListWidget()
+        layout.addWidget(self.jobs, 1)
+        footer = QHBoxLayout()
+        self.status = QLabel("")
+        self.status.setObjectName("Muted")
+        footer.addWidget(self.status, 1)
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        footer.addWidget(close)
+        layout.addLayout(footer)
+        self.timer = QTimer(self)
+        self.timer.setInterval(2000)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start()
+        self.refresh()
+
+    @staticmethod
+    def _label(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("Subhead")
+        return label
+
+    def refresh(self) -> None:
+        if self._loading:
+            return
+        self._loading = True
+        try:
+            self.pause.blockSignals(True)
+            self.idle_only.blockSignals(True)
+            self.pause.setChecked(self.workflow.paused)
+            self.idle_only.setChecked(self.workflow.idle_only)
+            self.pause.blockSignals(False)
+            self.idle_only.blockSignals(False)
+
+            selected = self.folders.currentItem()
+            selected_path = (
+                str(selected.data(Qt.UserRole) or "") if selected is not None else ""
+            )
+            self.folders.blockSignals(True)
+            self.folders.clear()
+            for folder in self.workflow.folders:
+                text = folder.name + ("  (subfolders)" if folder.recursive else "")
+                item = QListWidgetItem(text)
+                item.setData(Qt.UserRole, folder.path)
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setCheckState(Qt.Checked if folder.enabled else Qt.Unchecked)
+                item.setToolTip(
+                    f"{folder.path}\n"
+                    f"{'Includes subfolders' if folder.recursive else 'Top-level files only'}"
+                )
+                self.folders.addItem(item)
+                if folder.path == selected_path:
+                    self.folders.setCurrentItem(item)
+            if self.folders.count() == 0:
+                empty = QListWidgetItem("No watch folders yet.")
+                empty.setFlags(Qt.NoItemFlags)
+                empty.setForeground(QBrush(QColor("#8f8f96")))
+                self.folders.addItem(empty)
+            self.folders.blockSignals(False)
+
+            selected_job = self.jobs.currentItem()
+            selected_job_id = (
+                str(selected_job.data(Qt.UserRole) or "")
+                if selected_job is not None
+                else ""
+            )
+            self.jobs.clear()
+            active = 0
+            for job in reversed(self.workflow.jobs[-80:]):
+                if job.active:
+                    active += 1
+                stamp = job.created_at.replace("T", " ")[11:19] if job.created_at else ""
+                detail = job.message or job.status
+                if job.status == DONE and job.clips:
+                    detail = f"{job.clips} clip(s)"
+                    if job.scan_id:
+                        detail += " in Library"
+                if job.error:
+                    detail = job.error
+                eta = job.eta_label
+                if eta:
+                    detail = f"{detail} · {eta}"
+                text = f"{job.status.upper():9s}  {stamp}  {job.name}  ·  {detail}"
+                item = QListWidgetItem(text)
+                item.setData(Qt.UserRole, job.id)
+                item.setToolTip(
+                    f"{job.path}\n"
+                    f"Progress {int(job.progress * 100)}%\n"
+                    f"{job.error or job.message}"
+                )
+                if job.status == FAILED:
+                    item.setForeground(QBrush(QColor("#e05a5a")))
+                elif job.status == RUNNING:
+                    item.setForeground(QBrush(QColor("#2f9bff")))
+                elif job.status == DONE:
+                    item.setForeground(QBrush(QColor("#8fbf8f")))
+                self.jobs.addItem(item)
+                if job.id == selected_job_id:
+                    self.jobs.setCurrentItem(item)
+            if self.jobs.count() == 0:
+                empty = QListWidgetItem("Queue is empty.")
+                empty.setFlags(Qt.NoItemFlags)
+                empty.setForeground(QBrush(QColor("#8f8f96")))
+                self.jobs.addItem(empty)
+            status_text = (
+                f"{len(self.workflow.folders)} watch folder(s) · "
+                f"{active} active · {self.workflow.pending_count()} waiting"
+            )
+            if self.workflow.last_error:
+                status_text += f" · storage error: {self.workflow.last_error}"
+            self.status.setText(status_text)
+        finally:
+            self._loading = False
+
+    def _folder_changed(self, item: QListWidgetItem) -> None:
+        if self._loading:
+            return
+        path = str(item.data(Qt.UserRole) or "")
+        if not path:
+            return
+        self.workflow.set_folder_enabled(path, item.checkState() == Qt.Checked)
+        self.refresh()
+
+    def _add_folder(self) -> None:
+        start = self.main.input_edit.text().strip()
+        path = QFileDialog.getExistingDirectory(self, "Watch a folder", start)
+        if not path:
+            return
+        try:
+            self.workflow.add_folder(path, baseline=True)
+        except (WorkflowError, OSError) as exc:
+            show_message(self, "Watch folder", str(exc), kind="warning")
+        self.refresh()
+
+    def _add_current(self) -> None:
+        target = self.main.input_edit.text().strip()
+        if not target:
+            show_message(self, "Watch folder", "Choose a footage folder first.")
+            return
+        path = Path(target)
+        if path.is_file():
+            path = path.parent
+        try:
+            self.workflow.add_folder(
+                path,
+                recursive=self.main.recursive.isChecked(),
+                baseline=True,
+            )
+        except (WorkflowError, OSError) as exc:
+            show_message(self, "Watch folder", str(exc), kind="warning")
+        self.refresh()
+
+    def _remove_folder(self) -> None:
+        item = self.folders.currentItem()
+        path = str(item.data(Qt.UserRole) or "") if item is not None else ""
+        if path:
+            self.workflow.remove_folder(path)
+            self.refresh()
+
+    def _toggle_subfolders(self) -> None:
+        item = self.folders.currentItem()
+        path = str(item.data(Qt.UserRole) or "") if item is not None else ""
+        if not path:
+            return
+        for folder in self.workflow.folders:
+            if folder.path == path:
+                self.workflow.set_folder_recursive(path, not folder.recursive)
+                break
+        self.refresh()
+
+    def _pause_changed(self, paused: bool) -> None:
+        self.workflow.set_paused(paused)
+        self.refresh()
+
+    def _idle_changed(self, idle: bool) -> None:
+        self.workflow.set_idle_only(idle)
+        self.refresh()
+
+    def _scan_current(self) -> None:
+        target = self.main.input_edit.text().strip()
+        if not target:
+            show_message(self, "Scan queue", "Choose a footage folder or video first.")
+            return
+        try:
+            job = self.workflow.enqueue_path(
+                target,
+                recursive=self.main.recursive.isChecked(),
+            )
+        except OSError as exc:
+            show_message(self, "Scan queue", str(exc), kind="warning")
+            return
+        if job is None:
+            self.status.setText("That path is already waiting in the queue.")
+        else:
+            self.status.setText(f"Queued {job.name}.")
+        self.refresh()
+
+    def _retry(self) -> None:
+        item = self.jobs.currentItem()
+        job_id = str(item.data(Qt.UserRole) or "") if item is not None else ""
+        if job_id:
+            self.workflow.retry(job_id)
+            self.refresh()
+
+    def _clear(self) -> None:
+        self.workflow.clear_finished()
+        self.refresh()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self.timer.stop()
+        super().closeEvent(event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, initial_input: str | None = None) -> None:
         super().__init__()
@@ -1708,13 +2186,42 @@ class MainWindow(QMainWindow):
         self._live_total = 0
         self._live_clips = 0
         self.worker: AnalyzeWorker | None = None
+        self.queue_worker: AnalyzeWorker | None = None
         self.export_worker: ExportWorker | None = None
         self._update_shutdown = False
-        self.preview_dir = Path(tempfile.mkdtemp(prefix="clipper-desktop-"))
+        self.preview_dir = library_preview_dir()
+        try:
+            self.preview_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self.preview_dir = Path(tempfile.mkdtemp(prefix="clipper-previews-"))
         self.files: list[Path] = []
         self.last_output_dir: str | None = None
         self.nvenc = False
         self._screenshot_path: Path | None = None
+        self.library_scan_id = ""
+        self.library_error = ""
+        self.workflow_error = ""
+        self._queue_job_id: str | None = None
+        self._loading_meta = False
+        self._meta_clip_id = ""
+        self._meta_dirty = False
+        self._library_dialog = None
+        self._workflow_dialog = None
+        try:
+            self.library = ClipLibrary()
+        except LibraryError as exc:
+            self.library_error = str(exc)
+            self.library = ClipLibrary(
+                Path(tempfile.mkdtemp(prefix="clipper-library-")) / "library.json"
+            )
+        try:
+            self.workflow = ScanWorkflow()
+            self.workflow.recover()
+        except WorkflowError as exc:
+            self.workflow_error = str(exc)
+            self.workflow = ScanWorkflow(
+                Path(tempfile.mkdtemp(prefix="clipper-queue-")) / "workflow.json"
+            )
         ai_state = ollama_status(timeout=1.5)
         self.ollama_ok = bool(ai_state.get("ok"))
         self.ollama_present = ollama_executable() is not None
@@ -1804,7 +2311,12 @@ class MainWindow(QMainWindow):
         self.game_timer = QTimer(self)
         self.game_timer.timeout.connect(self._poll_game)
         self.game_timer.start(5000)
+        self.workflow_timer = QTimer(self)
+        self.workflow_timer.timeout.connect(self._poll_workflow)
+        self.workflow_timer.start(10000)
         QTimer.singleShot(400, self._poll_game)
+        QTimer.singleShot(1200, self._poll_workflow)
+        QTimer.singleShot(900, self._show_storage_errors)
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
@@ -1842,6 +2354,18 @@ class MainWindow(QMainWindow):
         brand_box.addLayout(brand_line)
         header.addLayout(brand_box)
         header.addStretch(1)
+        self.library_btn = QPushButton("Library")
+        self.library_btn.setObjectName("HeaderButton")
+        self.library_btn.setFixedHeight(30)
+        self.library_btn.setToolTip("Reopen a previous scan and keep your clip notes.")
+        self.library_btn.clicked.connect(self.open_library)
+        header.addWidget(self.library_btn)
+        self.queue_btn = QPushButton("Queue")
+        self.queue_btn.setObjectName("HeaderButton")
+        self.queue_btn.setFixedHeight(30)
+        self.queue_btn.setToolTip("Watch folders, background scans, and pause/resume.")
+        self.queue_btn.clicked.connect(self.open_workflow)
+        header.addWidget(self.queue_btn)
         updates = QPushButton("Updates")
         updates.setObjectName("HeaderButton")
         updates.setFixedHeight(30)
@@ -2478,8 +3002,47 @@ class MainWindow(QMainWindow):
         table_grid.addWidget(self.empty_highlights, 0, 0, Qt.AlignCenter)
         right.addWidget(table_wrap, 1)
 
+        self.detail_tabs = QTabWidget()
+        self.detail_tabs.setMinimumHeight(210)
+        self.detail_tabs.setMaximumHeight(280)
         self.preview_player = InlineClipPreview()
-        right.addWidget(self.preview_player)
+        self.detail_tabs.addTab(self.preview_player, "Preview")
+
+        evidence_page = QWidget()
+        evidence_layout = QVBoxLayout(evidence_page)
+        evidence_layout.setContentsMargins(0, 0, 0, 0)
+        evidence_layout.setSpacing(6)
+        self.evidence = QTextBrowser()
+        self.evidence.setOpenExternalLinks(False)
+        self.evidence.setHtml(
+            "<div style='color:#8f8f96;'>Select a clip to see the transcript, "
+            "HUD proof, audio signals, and model reasoning.</div>"
+        )
+        evidence_layout.addWidget(self.evidence, 1)
+        meta_row = QHBoxLayout()
+        meta_row.setSpacing(6)
+        note_label = QLabel("Note")
+        note_label.setObjectName("FieldLabel")
+        meta_row.addWidget(note_label)
+        self.note_edit = QLineEdit()
+        self.note_edit.setPlaceholderText("Clip note")
+        self.note_edit.setToolTip("Saved locally with this clip in the Library.")
+        self.note_edit.editingFinished.connect(self._save_clip_meta)
+        self.note_edit.textEdited.connect(lambda _text: self._mark_meta_dirty())
+        meta_row.addWidget(self.note_edit, 1)
+        tags_label = QLabel("Tags")
+        tags_label.setObjectName("FieldLabel")
+        meta_row.addWidget(tags_label)
+        self.tags_edit = QLineEdit()
+        self.tags_edit.setPlaceholderText("tags, comma separated")
+        self.tags_edit.setMaximumWidth(220)
+        self.tags_edit.setToolTip("Saved locally. Use tags like funny, clutch, or to-post.")
+        self.tags_edit.editingFinished.connect(self._save_clip_meta)
+        self.tags_edit.textEdited.connect(lambda _text: self._mark_meta_dirty())
+        meta_row.addWidget(self.tags_edit)
+        evidence_layout.addLayout(meta_row)
+        self.detail_tabs.addTab(evidence_page, "Why this clip?")
+        right.addWidget(self.detail_tabs)
 
         export_group = QFrame()
         export_group.setObjectName("Group")
@@ -2504,15 +3067,71 @@ class MainWindow(QMainWindow):
         out_browse.setFixedWidth(92)
         out_browse.clicked.connect(self.choose_output)
         export_layout.addWidget(out_browse, 0, 2)
-        export_note = QLabel(
+
+        format_row = QHBoxLayout()
+        format_row.setSpacing(6)
+        format_label = QLabel("Format")
+        format_label.setObjectName("FieldLabel")
+        format_row.addWidget(format_label)
+        self.export_preset = QComboBox()
+        self.export_preset.setSizeAdjustPolicy(
+            QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.export_preset.setMinimumContentsLength(12)
+        for preset in preset_choices():
+            self.export_preset.addItem(preset.label, preset.id)
+            index = self.export_preset.count() - 1
+            self.export_preset.setItemData(index, preset.description, Qt.ToolTipRole)
+        self.export_preset.setToolTip(
+            "Lossless keeps the original streams. Creator presets re-encode, "
+            "reframe, and name the file for the target platform."
+        )
+        format_row.addWidget(self.export_preset, 1)
+        reframe_label = QLabel("Reframe")
+        reframe_label.setObjectName("FieldLabel")
+        format_row.addWidget(reframe_label)
+        self.reframe_mode = QComboBox()
+        self.reframe_mode.addItem("Auto (action)", "auto")
+        self.reframe_mode.addItem("Facecam", "facecam")
+        self.reframe_mode.addItem("Center", "center")
+        self.reframe_mode.setToolTip(
+            "Auto follows the strongest motion. Facecam follows the largest "
+            "stable face. Center uses a fixed crop."
+        )
+        format_row.addWidget(self.reframe_mode)
+        export_layout.addLayout(format_row, 1, 0, 1, 3)
+        self.export_preset.currentIndexChanged.connect(self._export_preset_changed)
+
+        name_row = QHBoxLayout()
+        name_row.setSpacing(6)
+        name_label = QLabel("Name")
+        name_label.setObjectName("FieldLabel")
+        name_row.addWidget(name_label)
+        self.filename_edit = QLineEdit(DEFAULT_TEMPLATE)
+        self.filename_edit.setToolTip(
+            "Filename template. Tokens: {source} {index:02d} {start} {end} "
+            "{duration} {score} {peak} {preset} {game} {date}."
+        )
+        name_row.addWidget(self.filename_edit, 1)
+        reset_name = QPushButton("Reset")
+        reset_name.setObjectName("Mono")
+        reset_name.setFixedWidth(62)
+        reset_name.setToolTip("Restore the default filename template.")
+        reset_name.clicked.connect(
+            lambda: self.filename_edit.setText(DEFAULT_TEMPLATE)
+        )
+        name_row.addWidget(reset_name)
+        export_layout.addLayout(name_row, 2, 0, 1, 3)
+
+        self.export_note = QLabel(
             "Lossless cuts - original video and audio streams are copied."
         )
-        export_note.setObjectName("Muted")
-        export_note.setWordWrap(True)
-        export_note.setToolTip(
+        self.export_note.setObjectName("Muted")
+        self.export_note.setWordWrap(True)
+        self.export_note.setToolTip(
             "Clipper exports with stream copy, so the original video and audio are untouched."
         )
-        export_layout.addWidget(export_note, 1, 0, 1, 3)
+        export_layout.addWidget(self.export_note, 3, 0, 1, 3)
         export_actions = QHBoxLayout()
         export_actions.setSpacing(6)
         export_actions.addStretch(1)
@@ -2529,7 +3148,7 @@ class MainWindow(QMainWindow):
         self.export_btn.clicked.connect(lambda: self.export(selected_only=True))
         self.export_btn.setEnabled(False)
         export_actions.addWidget(self.export_btn)
-        export_layout.addLayout(export_actions, 2, 0, 1, 3)
+        export_layout.addLayout(export_actions, 4, 0, 1, 3)
         right.addWidget(export_group)
 
         export_footer = QHBoxLayout()
@@ -2557,10 +3176,263 @@ class MainWindow(QMainWindow):
         label.setObjectName("Section")
         return label
 
+    def _export_preset_changed(self) -> None:
+        preset = preset_for(self.export_preset.currentData())
+        tracked = (
+            preset.width > 0
+            and preset.height > 0
+            and preset.reframe == "auto"
+            and not preset.lossless
+        )
+        self.reframe_mode.setEnabled(tracked and not self._job_running)
+        if preset.lossless:
+            self.export_note.setText(
+                "Lossless cuts - original video and audio streams are copied."
+            )
+            self.export_note.setToolTip(
+                "Clipper exports with stream copy, so the original video and audio are untouched."
+            )
+        else:
+            size = (
+                f"{preset.width} x {preset.height}"
+                if preset.width and preset.height
+                else "source size"
+            )
+            codec = {"h264": "H.264", "hevc": "HEVC"}.get(preset.codec, preset.codec)
+            self.export_note.setText(
+                f"{preset.label}: {size}, {codec}. Re-encoded and ready to post."
+            )
+            self.export_note.setToolTip(preset.description)
+
+    def _show_storage_errors(self) -> None:
+        message = self.library_error or self.workflow_error
+        if not message:
+            return
+        self.status.setText(f"Local storage warning: {message}")
+        self.library_btn.setToolTip(message)
+        self.queue_btn.setToolTip(message)
+
     def _update_highlights_empty(self) -> None:
         self.empty_highlights.setVisible(
             self.tree.topLevelItemCount() == 0
         )
+
+    # --------------------------------------------------------------- library
+    def open_library(self) -> None:
+        if self._busy():
+            return
+        dialog = LibraryDialog(self, self.library)
+        self._library_dialog = dialog
+        if dialog.exec() == QDialog.Accepted and dialog.selected_scan_id:
+            self._load_library_scan(dialog.selected_scan_id)
+        if self.library_scan_id and self.library_scan_id in dialog.deleted_ids:
+            self.library_scan_id = ""
+            self.status.setText(
+                "The open scan was removed from the Library. "
+                "Notes and decisions are no longer being saved."
+            )
+        self._library_dialog = None
+
+    def _load_library_scan(self, scan_id: str, announce: bool = True) -> None:
+        try:
+            summary = self.library.load(scan_id)
+        except LibraryError as exc:
+            show_message(self, "Library", str(exc), kind="critical")
+            return
+        if summary is None:
+            show_message(self, "Library", "That scan is no longer in the library.")
+            return
+        if not summary.scan_id:
+            summary.scan_id = scan_id
+        self.summary = summary
+        self.library_scan_id = summary.scan_id
+        self._live_done = 0
+        self._live_total = 0
+        self._live_clips = 0
+        self.tree.clear()
+        self.preview_player.clear()
+        self._populate(summary)
+        self.progress.setValue(100)
+        self.open_folder.setEnabled(summary.total_clips > 0)
+        self.export_status.setText("")
+        missing = [
+            analysis.name
+            for analysis in summary.files
+            if analysis.path and not Path(analysis.path).is_file()
+        ]
+        if missing:
+            self.status.setText(
+                f"Opened {summary.total_clips} clip(s). Source file missing: "
+                f"{', '.join(missing[:3])}"
+            )
+        elif announce:
+            self.status.setText(
+                f"Opened {summary.total_clips} clip(s) from the Library."
+            )
+
+    # --------------------------------------------------------------- workflow
+    def open_workflow(self) -> None:
+        dialog = WorkflowDialog(self, self)
+        self._workflow_dialog = dialog
+        dialog.exec()
+        self._workflow_dialog = None
+        self._update_queue_button()
+
+    def _update_queue_button(self) -> None:
+        if not hasattr(self, "queue_btn"):
+            return
+        pending = self.workflow.pending_count()
+        active = self.workflow.active_count()
+        if active:
+            self.queue_btn.setText(f"Queue ({active})")
+        elif pending:
+            self.queue_btn.setText(f"Queue ({pending})")
+        else:
+            self.queue_btn.setText("Queue")
+        self.queue_btn.setToolTip(
+            f"{pending} waiting · {active} active. "
+            "Watch folders, background scans, and pause/resume."
+        )
+
+    def _poll_workflow(self) -> None:
+        if not hasattr(self, "workflow_timer"):
+            return
+        excluded: list[Path] = [library_dir()]
+        output = self.output_edit.text().strip()
+        if output:
+            excluded.append(Path(output))
+        try:
+            added = self.workflow.discover(exclude=excluded)
+        except Exception as exc:
+            self.status.setText(f"Watch folder check failed: {exc}")
+            added = []
+        if self.workflow.last_error:
+            self.status.setText(f"Queue storage warning: {self.workflow.last_error}")
+        elif added:
+            self.status.setText(
+                f"Queued {len(added)} new recording(s)."
+            )
+        self._update_queue_button()
+        if self.workflow.paused or self._busy():
+            return
+        job = self.workflow.next_job()
+        if job is None:
+            return
+        if (
+            self.workflow.idle_only
+            and not job.manual
+            and not is_system_idle(120)
+        ):
+            return
+        if self.game_guard.isChecked() and self._pause_for_game():
+            return
+        self._start_queue_job(job)
+
+    def _start_queue_job(self, job: QueueJob) -> None:
+        if not self.ffmpeg_ok:
+            self.workflow.fail(job.id, "FFmpeg is not available.")
+            self.status.setText(f"Queue: {job.name} not started. FFmpeg is not available.")
+            self._update_queue_button()
+            return
+        if not self._vision_ready() or (
+            self._current_ears_model() and not self._ears_ready()
+        ):
+            self.workflow.fail(job.id, "Install a local AI model before queueing scans.")
+            self.status.setText(
+                f"Queue: {job.name} not started. Install a local AI model first."
+            )
+            self._update_queue_button()
+            return
+        running = self.workflow.mark_running(job.id)
+        if running is None:
+            return
+        self._queue_job_id = job.id
+        self.status.setText(f"Queue: scanning {job.name}…")
+        self.progress.setValue(0)
+        self._set_running(True)
+        try:
+            settings = self._build_settings()
+        except Exception as exc:
+            self._queue_job_id = None
+            self.workflow.fail(job.id, str(exc))
+            self.status.setText(f"Queue: {job.name} not started. {exc}")
+            self._set_running(False)
+            self._update_queue_button()
+            return
+        worker = AnalyzeWorker(
+            job.path,
+            settings,
+            job.recursive,
+            self.preview_dir,
+            exclude=self._output_exclude(),
+        )
+        worker.progress.connect(
+            lambda fraction, message, jid=job.id: self._on_queue_progress(
+                jid, fraction, message
+            )
+        )
+        worker.done.connect(
+            lambda summary, jid=job.id: self._on_queue_done(jid, summary)
+        )
+        worker.failed.connect(
+            lambda message, jid=job.id: self._on_queue_failed(jid, message)
+        )
+        self.queue_worker = worker
+        worker.start()
+        self._update_queue_button()
+
+    def _on_queue_progress(self, job_id: str, fraction: float, message: str) -> None:
+        self.progress.setValue(int(max(0.0, min(1.0, fraction)) * 100))
+        if message:
+            self.status.setText(f"Queue: {message}")
+        job = self.workflow.job(job_id)
+        last = job.progress if job is not None else 0.0
+        if fraction >= 1.0 or fraction - last >= 0.02:
+            self.workflow.update_progress(job_id, fraction, message)
+
+    def _on_queue_done(self, job_id: str, summary: AnalysisSummary) -> None:
+        try:
+            self.library.save(summary)
+            scan_id = summary.scan_id
+            saved = f" {summary.total_clips} clip(s) saved to Library."
+            error = ""
+        except (LibraryError, OSError, TypeError, ValueError) as exc:
+            scan_id = ""
+            saved = ""
+            error = str(exc)
+        try:
+            self.workflow.mark_seen(
+                [analysis.path for analysis in summary.files if analysis.path]
+            )
+        except WorkflowError:
+            pass
+        self.workflow.finish(job_id, scan_id=scan_id, clips=summary.total_clips)
+        self._queue_job_id = None
+        self.queue_worker = None
+        self._set_running(False)
+        self.progress.setValue(100)
+        job = self.workflow.job(job_id)
+        name = job.name if job is not None else "recording"
+        if error:
+            self.status.setText(f"Queue: {name} finished, but Library save failed: {error}")
+        else:
+            self.status.setText(f"Queue: {name} finished.{saved}")
+            if self.summary is None and scan_id:
+                self._load_library_scan(scan_id, announce=False)
+        self._update_queue_button()
+
+    def _on_queue_failed(self, job_id: str, message: str) -> None:
+        if message == "Cancelled":
+            self.workflow.cancel(job_id)
+            self.status.setText("Queue: scan cancelled.")
+        else:
+            self.workflow.fail(job_id, message)
+            self.status.setText(f"Queue: scan failed. {message}")
+        self._queue_job_id = None
+        self.queue_worker = None
+        self._set_running(False)
+        self.progress.setValue(0)
+        self._update_queue_button()
 
     def _select_ai_model(self, model: str | None) -> None:
         if not model:
@@ -2958,12 +3830,25 @@ class MainWindow(QMainWindow):
         self.input_edit.setCursorPosition(0)
         self.output_edit.setText(str(self.qsettings.value("output", "")))
         self.output_edit.setCursorPosition(0)
+        preset_id = str(self.qsettings.value("export_preset", "lossless"))
+        preset_index = self.export_preset.findData(preset_id)
+        if preset_index >= 0:
+            self.export_preset.setCurrentIndex(preset_index)
+        reframe_value = str(self.qsettings.value("reframe_mode", "auto"))
+        reframe_index = self.reframe_mode.findData(reframe_value)
+        if reframe_index >= 0:
+            self.reframe_mode.setCurrentIndex(reframe_index)
+        self.filename_edit.setText(
+            str(self.qsettings.value("filename_template", DEFAULT_TEMPLATE))
+        )
         geometry = self.qsettings.value("geometry")
         if geometry:
             self.restoreGeometry(geometry)
         self._clamp_to_screen()
         self._low_power_changed(self.low_power.isChecked())
         self._update_status()
+        self._update_queue_button()
+        self._export_preset_changed()
         QTimer.singleShot(0, self.input_edit.setFocus)
 
     def _save_settings(self) -> None:
@@ -2987,6 +3872,9 @@ class MainWindow(QMainWindow):
         self.qsettings.setValue("low_power", self.low_power.isChecked())
         self.qsettings.setValue("input", self.input_edit.text())
         self.qsettings.setValue("output", self.output_edit.text())
+        self.qsettings.setValue("export_preset", self.export_preset.currentData())
+        self.qsettings.setValue("reframe_mode", self.reframe_mode.currentData())
+        self.qsettings.setValue("filename_template", self.filename_edit.text())
         self.qsettings.setValue("geometry", self.saveGeometry())
 
     # --------------------------------------------------------------- updates
@@ -3561,9 +4449,11 @@ class MainWindow(QMainWindow):
             base = target.parent if target.is_file() else target
             self.output_edit.setText(str(base / "trimmed"))
         self.summary = None
+        self.library_scan_id = ""
         self.tree.clear()
         self._update_highlights_empty()
         self.preview_player.clear()
+        self._show_evidence(None)
         self.export_btn.setEnabled(False)
         self.open_folder.setEnabled(False)
         self.file_list.clear()
@@ -3577,7 +4467,11 @@ class MainWindow(QMainWindow):
             show_message(self, "Choose footage", "Pick a folder or drag one onto the drop zone.")
             return
         try:
-            files = scan_inputs(target, recursive=self.recursive.isChecked())
+            files = scan_inputs(
+                target,
+                recursive=self.recursive.isChecked(),
+                exclude=self._output_exclude(),
+            )
         except (ClipperError, OSError) as exc:
             show_message(self, "Scan failed", str(exc), kind="warning")
             return
@@ -3603,6 +4497,10 @@ class MainWindow(QMainWindow):
             self.output_edit.setText(path)
 
     # ------------------------------------------------------------- analysis
+    def _output_exclude(self) -> Path | None:
+        raw = self.output_edit.text().strip()
+        return Path(raw).expanduser() if raw else None
+
     def _build_settings(self) -> DetectionSettings:
         settings = DetectionSettings(
             sensitivity=self.sensitivity.value() / 100.0,
@@ -3640,11 +4538,12 @@ class MainWindow(QMainWindow):
                 kind="critical",
             )
             return
-        if not self.vlm_available or not self.ollama_ok:
+        if not self._vision_ready():
             show_message(
                 self,
                 "Local AI not ready",
-                "Install Ollama and a vision model before analyzing footage.",
+                "Install a bundled model or connect a local server before "
+                "analyzing footage.",
                 kind="warning",
             )
             self._update_ai_setup()
@@ -3673,9 +4572,11 @@ class MainWindow(QMainWindow):
             )
             return
         self.summary = None
+        self.library_scan_id = ""
         self.tree.clear()
         self._update_highlights_empty()
         self.preview_player.clear()
+        self._show_evidence(None)
         self.export_btn.setEnabled(False)
         self.open_folder.setEnabled(False)
         self.progress.setValue(0)
@@ -3688,6 +4589,7 @@ class MainWindow(QMainWindow):
             settings,
             self.recursive.isChecked(),
             self.preview_dir,
+            exclude=self._output_exclude(),
         )
         self.worker.progress.connect(self._on_progress)
         self.worker.file_done.connect(self._on_file_analyzed)
@@ -3719,19 +4621,61 @@ class MainWindow(QMainWindow):
 
     def _on_analyzed(self, summary: AnalysisSummary) -> None:
         self.summary = summary
+        library_error = self._save_summary_to_library(summary)
         self._set_running(False)
         self.progress.setValue(100)
         if self.tree.topLevelItemCount() == 0:
             self._populate(summary)
         else:
+            self._sync_tree_clip_ids()
+            current = self.tree.currentItem()
+            if current is not None:
+                self._show_preview(current)
             self.summary_label.setText(
                 self._summary_text(summary.total_clips, len(summary.files))
             )
             self._update_selection_label()
-        self.status.setText(f"Found {summary.total_clips} clip(s) in {len(summary.files)} file(s).")
+        status = f"Found {summary.total_clips} clip(s) in {len(summary.files)} file(s)."
+        if library_error:
+            status += f" Library save failed: {library_error}"
+        elif self.library_scan_id:
+            status += " Saved to Library."
+        self.status.setText(status)
         self.open_folder.setEnabled(summary.total_clips > 0)
         if self._screenshot_path:
             QTimer.singleShot(1200, self._capture_screenshot)
+
+    def _save_summary_to_library(self, summary: AnalysisSummary) -> str:
+        try:
+            self.library.save(summary)
+            self.library_scan_id = summary.scan_id
+            return ""
+        except (LibraryError, OSError, TypeError, ValueError) as exc:
+            self.library_scan_id = ""
+            return str(exc)
+
+    def _sync_tree_clip_ids(self) -> None:
+        if self.summary is None:
+            return
+        by_path: dict[str, list[ClipWindow]] = {
+            analysis.path: analysis.clips for analysis in self.summary.files
+        }
+        self.tree.blockSignals(True)
+        for index in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(index)
+            video = item.data(0, ROLE_VIDEO)
+            clip_index = item.data(0, ROLE_INDEX)
+            if video is None or clip_index is None:
+                continue
+            clips = by_path.get(str(video), [])
+            if not (0 <= int(clip_index) < len(clips)):
+                continue
+            clip = clips[int(clip_index)]
+            item.setData(0, ROLE_CLIP_ID, clip.id)
+            item.setCheckState(0, Qt.Checked if clip.keep else Qt.Unchecked)
+            item.setToolTip(6, clip.reason)
+        self.tree.blockSignals(False)
+        self._update_selection_label()
 
     def _on_failed(self, message: str) -> None:
         self._set_running(False)
@@ -3793,7 +4737,7 @@ class MainWindow(QMainWindow):
                     ]
                 )
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(0, Qt.Checked)
+                item.setCheckState(0, Qt.Checked if clip.keep else Qt.Unchecked)
                 item.setTextAlignment(0, Qt.AlignCenter)
                 item.setTextAlignment(2, Qt.AlignCenter)
                 item.setTextAlignment(3, Qt.AlignCenter)
@@ -3804,13 +4748,19 @@ class MainWindow(QMainWindow):
                 item.setData(0, ROLE_END, float(clip.end))
                 item.setData(0, ROLE_INDEX, index)
                 item.setData(0, ROLE_NAME, analysis.name)
+                item.setData(0, ROLE_CLIP_ID, clip.id)
                 if index < len(analysis.previews):
                     preview = analysis.previews[index]
                     if Path(preview).is_file():
                         item.setData(0, ROLE_PREVIEW, preview)
-                item.setToolTip(0, "Uncheck to exclude this clip from Export selected.")
+                item.setToolTip(0, "Uncheck to reject this clip in the Library and skip Export selected.")
                 item.setToolTip(1, analysis.path)
-                item.setToolTip(6, clip.reason)
+                meta = clip.reason
+                if clip.note:
+                    meta = f"{meta}\nNote: {clip.note}"
+                if clip.tags:
+                    meta = f"{meta}\nTags: {', '.join(clip.tags)}"
+                item.setToolTip(6, meta)
                 self.tree.addTopLevelItem(item)
                 if first_clip is None:
                     first_clip = item
@@ -3824,17 +4774,48 @@ class MainWindow(QMainWindow):
             self._show_preview(first_clip)
 
     def _clip_check_changed(self, item: QTreeWidgetItem, column: int) -> None:
-        if column == 0 and item.data(0, ROLE_VIDEO) is not None:
-            self._update_selection_label()
+        if column != 0 or item.data(0, ROLE_VIDEO) is None:
+            return
+        clip_id = item.data(0, ROLE_CLIP_ID)
+        if clip_id and self.library_scan_id:
+            keep = item.checkState(0) == Qt.Checked
+            clip = self._clip_for_id(str(clip_id))
+            if clip is not None:
+                clip.keep = keep
+            try:
+                self.library.set_clip(self.library_scan_id, str(clip_id), keep=keep)
+            except LibraryError as exc:
+                self.status.setText(f"Could not save the clip decision: {exc}")
+        self._update_selection_label()
 
     def _set_all_checked(self, checked: bool) -> None:
         self.tree.blockSignals(True)
         for index in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(index)
-            if item.data(0, ROLE_VIDEO) is not None:
-                item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+            if item.data(0, ROLE_VIDEO) is None:
+                continue
+            item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+            clip_id = item.data(0, ROLE_CLIP_ID)
+            if clip_id:
+                clip = self._clip_for_id(str(clip_id))
+                if clip is not None:
+                    clip.keep = checked
         self.tree.blockSignals(False)
+        if self.library_scan_id:
+            try:
+                self.library.set_all_keep(self.library_scan_id, checked)
+            except LibraryError as exc:
+                self.status.setText(f"Could not save clip decisions: {exc}")
         self._update_selection_label()
+
+    def _clip_for_id(self, clip_id: str) -> ClipWindow | None:
+        if not clip_id or self.summary is None:
+            return None
+        for analysis in self.summary.files:
+            for clip in analysis.clips:
+                if clip.id == clip_id:
+                    return clip
+        return None
 
     def _update_selection_label(self) -> None:
         total = 0
@@ -3891,6 +4872,7 @@ class MainWindow(QMainWindow):
     def _show_preview(self, current: QTreeWidgetItem | None, previous=None) -> None:
         if current is None or current.data(0, ROLE_VIDEO) is None:
             self.preview_player.clear()
+            self._show_evidence(None)
             return
         video = current.data(0, ROLE_VIDEO)
         start = current.data(0, ROLE_START)
@@ -3898,6 +4880,7 @@ class MainWindow(QMainWindow):
         poster = current.data(0, ROLE_PREVIEW)
         if not video or start is None or end is None:
             self.preview_player.clear()
+            self._show_evidence(None)
             return
         self.preview_player.load(
             str(video),
@@ -3905,6 +4888,229 @@ class MainWindow(QMainWindow):
             float(end),
             str(poster) if poster else None,
         )
+        clip = self._clip_for_id(str(current.data(0, ROLE_CLIP_ID) or ""))
+        self._show_evidence(clip)
+
+    def _show_evidence(self, clip: ClipWindow | None) -> None:
+        if self._meta_dirty and self._meta_clip_id and not self._loading_meta:
+            self._save_clip_meta()
+        if clip is None:
+            self._meta_clip_id = ""
+            self._meta_dirty = False
+            self.evidence.setHtml(
+                "<div style='color:#8f8f96;'>Select a clip to see the "
+                "transcript, HUD proof, audio signals, and model reasoning.</div>"
+            )
+            self._loading_meta = True
+            self.note_edit.clear()
+            self.tags_edit.clear()
+            self._loading_meta = False
+            return
+        self._loading_meta = True
+        self._meta_clip_id = clip.id
+        self._meta_dirty = False
+        self.note_edit.setText(clip.note)
+        self.tags_edit.setText(", ".join(clip.tags))
+        self._loading_meta = False
+        self.evidence.setHtml(self._evidence_html(clip))
+
+    def _mark_meta_dirty(self) -> None:
+        if not self._loading_meta:
+            self._meta_dirty = True
+
+    def _item_for_clip_id(self, clip_id: str) -> QTreeWidgetItem | None:
+        if not clip_id:
+            return None
+        for index in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(index)
+            if str(item.data(0, ROLE_CLIP_ID) or "") == clip_id:
+                return item
+        return None
+
+    def _evidence_html(self, clip: ClipWindow) -> str:
+        evidence = clip.evidence or {}
+        esc = html.escape
+
+        def section(title: str, body: str) -> str:
+            if not body:
+                return ""
+            return (
+                f"<div style='margin-top:12px;'>"
+                f"<div style='color:#ffffff;font-weight:600;font-size:12px;'>{esc(title)}</div>"
+                f"<div style='margin-top:3px;color:#c8c8ce;font-size:11px;'>{body}</div>"
+                f"</div>"
+            )
+
+        kind = str(evidence.get("kind") or "moment")
+        model = str(evidence.get("model") or "local model")
+        confidence = int(round(float(evidence.get("confidence", clip.score) or 0.0) * 100))
+        header = (
+            f"<div style='font-size:13px;font-weight:600;color:#ffffff;'>"
+            f"{esc(clip.reason or 'Selected moment')}</div>"
+            f"<div style='margin-top:4px;color:#8f8f96;font-size:11px;'>"
+            f"{esc(kind)} · {confidence}% · {esc(model)}</div>"
+        )
+        proof = section(
+            "Director evidence",
+            esc(str(evidence.get("director") or evidence.get("summary") or clip.reason)),
+        )
+        transcript = ""
+        lines = evidence.get("transcript")
+        if isinstance(lines, list) and lines:
+            rows = []
+            for line in lines[:16]:
+                if not isinstance(line, dict):
+                    continue
+                stamp = _clock(float(line.get("start", 0.0) or 0.0))
+                tags = str(line.get("tags") or "").strip()
+                suffix = f" <span style='color:#f0b35b;'>[{esc(tags)}]</span>" if tags else ""
+                rows.append(
+                    f"<div style='margin:2px 0;'><span style='color:#6f8fa8;'>{stamp}</span> "
+                    f"{esc(str(line.get('text') or ''))}{suffix}</div>"
+                )
+            transcript = section("Transcript", "".join(rows))
+        hud = ""
+        hud_lines = evidence.get("hud")
+        if isinstance(hud_lines, list) and hud_lines:
+            rows = []
+            for line in hud_lines[:10]:
+                if not isinstance(line, dict):
+                    continue
+                stamp = _clock(float(line.get("time", 0.0) or 0.0))
+                rows.append(
+                    f"<div style='margin:2px 0;'><span style='color:#6f8fa8;'>{stamp}</span> "
+                    f"{esc(str(line.get('text') or ''))}</div>"
+                )
+            hud = section("HUD proof", "".join(rows))
+        ears = evidence.get("ears")
+        ears_html = ""
+        if isinstance(ears, dict) and ears:
+            bits = []
+            if ears.get("tone"):
+                bits.append(f"tone: {ears.get('tone')}")
+            if ears.get("laughter"):
+                bits.append("laughter")
+            if ears.get("score") is not None:
+                bits.append(f"score: {ears.get('score')}")
+            if ears.get("reason"):
+                bits.append(str(ears.get("reason")))
+            ears_html = section("Audio ears", esc(" · ".join(bits)))
+        signal = evidence.get("signal")
+        signal_html = ""
+        if isinstance(signal, dict) and signal:
+            labels = signal.get("labels")
+            label_text = ", ".join(str(item) for item in labels) if isinstance(labels, list) else ""
+            measured = []
+            for key in ("laugh", "cheer", "shout", "jerk", "loud", "wps"):
+                if signal.get(key) not in (None, 0, 0.0, ""):
+                    measured.append(f"{key}: {signal.get(key)}")
+            if label_text or measured:
+                signal_html = section(
+                    "Audio and motion",
+                    esc(" · ".join(([label_text] if label_text else []) + measured)),
+                )
+        reviewed = ""
+        windows = evidence.get("reviewed_windows")
+        if isinstance(windows, list) and windows:
+            rows = []
+            for window in windows[:8]:
+                if not isinstance(window, dict):
+                    continue
+                rows.append(
+                    "<div style='margin:2px 0;'>"
+                    f"<span style='color:#6f8fa8;'>{_clock(float(window.get('start', 0.0) or 0.0))}"
+                    f"-{_clock(float(window.get('end', 0.0) or 0.0))}</span> "
+                    f"{esc(str(window.get('kind') or ''))} "
+                    f"<span style='color:#f0b35b;'>{int(round(float(window.get('score', 0.0) or 0.0) * 100))}%</span> "
+                    f"{esc(str(window.get('summary') or ''))}</div>"
+                )
+            reviewed = section("Reviewed windows", "".join(rows))
+        final = evidence.get("final")
+        final_html = ""
+        if isinstance(final, dict) and final.get("kept"):
+            final_html = section(
+                "Final edit",
+                esc(
+                    f"kept at {_clock(float(final.get('start', 0.0) or 0.0))}"
+                    f"-{_clock(float(final.get('end', 0.0) or 0.0))}"
+                    f" · {str(final.get('proof') or final.get('summary') or 'confirmed')}"
+                ),
+            )
+        exports = ""
+        if clip.exports:
+            rows = [
+                f"<div style='margin:2px 0;'>{esc(str(item.get('preset') or 'export'))} · "
+                f"{esc(Path(str(item.get('path') or '')).name)}</div>"
+                for item in clip.exports[-5:]
+                if isinstance(item, dict)
+            ]
+            exports = section("Exports", "".join(rows))
+        notes = ""
+        if clip.note or clip.tags:
+            bits = []
+            if clip.note:
+                bits.append(f"Note: {esc(clip.note)}")
+            if clip.tags:
+                bits.append(f"Tags: {esc(', '.join(clip.tags))}")
+            notes = section("Your notes", "<br>".join(bits))
+        return (
+            "<div style='font-family:Inter;'>"
+            + header
+            + proof
+            + transcript
+            + hud
+            + ears_html
+            + signal_html
+            + reviewed
+            + final_html
+            + exports
+            + notes
+            + "</div>"
+        )
+
+    def _save_clip_meta(self) -> None:
+        if self._loading_meta or not self.library_scan_id:
+            return
+        clip_id = self._meta_clip_id
+        clip = self._clip_for_id(clip_id)
+        if clip is None:
+            return
+        note = self.note_edit.text().strip()[:500]
+        tags = list(
+            dict.fromkeys(
+                part.strip().lower()
+                for part in self.tags_edit.text().split(",")
+                if part.strip()
+            )
+        )[:12]
+        clip.note = note
+        clip.tags = tags
+        self._meta_dirty = False
+        try:
+            self.library.set_clip(
+                self.library_scan_id,
+                clip_id,
+                note=note,
+                tags=tags,
+            )
+        except LibraryError as exc:
+            self.status.setText(f"Could not save the clip note: {exc}")
+        item = self._item_for_clip_id(clip_id)
+        if item is not None:
+            item.setToolTip(
+                6,
+                clip.reason
+                + (f"\nNote: {note}" if note else "")
+                + (f"\nTags: {', '.join(tags)}" if tags else ""),
+            )
+        current = self.tree.currentItem()
+        if (
+            current is not None
+            and str(current.data(0, ROLE_CLIP_ID) or "") == clip_id
+        ):
+            scroll = self.evidence.verticalScrollBar().value()
+            self.evidence.setHtml(self._evidence_html(clip))
+            self.evidence.verticalScrollBar().setValue(scroll)
 
     # ---------------------------------------------------------------- export
     def export(self, selected_only: bool = True) -> None:
@@ -3936,6 +5142,9 @@ class MainWindow(QMainWindow):
             summary,
             output,
             settings.threads,
+            preset_id=str(self.export_preset.currentData() or "lossless"),
+            filename_template=self.filename_edit.text().strip() or DEFAULT_TEMPLATE,
+            reframe_mode=str(self.reframe_mode.currentData() or "auto"),
         )
         self.export_worker.progress.connect(self._on_progress)
         self.export_worker.done.connect(self._on_exported)
@@ -3946,17 +5155,46 @@ class MainWindow(QMainWindow):
         self._set_running(False)
         self.progress.setValue(100)
         self.last_output_dir = str(Path(self.output_edit.text().strip()).resolve())
+        history_error = ""
+        if self.library_scan_id and getattr(result, "items", None):
+            try:
+                self.library.record_exports(self.library_scan_id, result.items)
+            except (LibraryError, OSError, TypeError, ValueError) as exc:
+                history_error = str(exc)
+            for item in result.items:
+                if item.error or not item.path:
+                    continue
+                clip = self._clip_for_id(item.clip_id)
+                if clip is not None:
+                    clip.exports.append(
+                        {"path": item.path, "preset": item.preset, "at": item.at}
+                    )
+                    clip.exports = clip.exports[-20:]
         if result.errors:
-            self.export_status.setText(f"{len(result.outputs)} exported, {len(result.errors)} failed.")
+            self.export_status.setText(
+                f"{len(result.outputs)} exported, {len(result.errors)} failed."
+                + (f" Library history failed: {history_error}" if history_error else "")
+            )
+            detail = "\n".join(result.errors[:8])
+            if result.warnings:
+                detail += "\n\n" + "\n".join(result.warnings[:5])
+            if history_error:
+                detail += f"\n\nLibrary history failed: {history_error}"
             show_message(
                 self,
                 "Export finished with errors",
-                "\n".join(result.errors[:8]),
+                detail,
                 kind="warning",
             )
         else:
-            self.export_status.setText(f"Exported {len(result.outputs)} clip(s).")
+            extra = f" {result.warnings[0]}" if result.warnings else ""
+            if history_error:
+                extra += f" Library history failed: {history_error}"
+            self.export_status.setText(
+                f"Exported {len(result.outputs)} clip(s).{extra}"
+            )
         self.open_folder.setEnabled(True)
+        self._show_evidence(self._clip_for_id(str(self.tree.currentItem().data(0, ROLE_CLIP_ID) or "")) if self.tree.currentItem() else None)
 
     def _on_export_failed(self, message: str) -> None:
         self._set_running(False)
@@ -3974,6 +5212,8 @@ class MainWindow(QMainWindow):
     def cancel_current(self) -> None:
         if self.worker and self.worker.isRunning():
             self.worker.cancel()
+        if self.queue_worker and self.queue_worker.isRunning():
+            self.queue_worker.cancel()
         if self.export_worker and self.export_worker.isRunning():
             self.export_worker.cancel()
         model = self._current_ai_model()
@@ -4000,6 +5240,11 @@ class MainWindow(QMainWindow):
         self.cancel_btn.setEnabled(running)
         self.input_edit.setEnabled(not running)
         self.output_edit.setEnabled(not running)
+        self.export_preset.setEnabled(not running)
+        self.filename_edit.setEnabled(not running)
+        self._export_preset_changed()
+        self.library_btn.setEnabled(not running)
+        self.queue_btn.setEnabled(not running)
         self._update_ai_state()
 
     def _toggle_maximize(self) -> None:
@@ -4011,6 +5256,7 @@ class MainWindow(QMainWindow):
     def _busy(self) -> bool:
         return bool(
             (self.worker and self.worker.isRunning())
+            or (self.queue_worker and self.queue_worker.isRunning())
             or (self.export_worker and self.export_worker.isRunning())
             or (self.update_download_worker and self.update_download_worker.isRunning())
         )
@@ -4208,6 +5454,8 @@ class MainWindow(QMainWindow):
         return super().nativeEvent(event_type, message)
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        if getattr(self, "_meta_dirty", False):
+            self._save_clip_meta()
         self.preview_player.release_media()
         if self.pull_worker is not None and self.pull_worker.isRunning():
             self.pull_worker.cancel()
@@ -4226,10 +5474,13 @@ class MainWindow(QMainWindow):
                 self.llama_install_worker.terminate()
                 self.llama_install_worker.wait(1000)
         self.ollama_poll_timer.stop()
+        if hasattr(self, "workflow_timer"):
+            self.workflow_timer.stop()
         for dialog in self.findChildren(ClipPreviewDialog):
             dialog.close()
         running = bool(
             (self.worker and self.worker.isRunning())
+            or (self.queue_worker and self.queue_worker.isRunning())
             or (self.export_worker and self.export_worker.isRunning())
         )
         if running:
@@ -4244,11 +5495,14 @@ class MainWindow(QMainWindow):
                 return
             self.cancel_current()
             terminate_active_processes()
-            for worker in (self.worker, self.export_worker):
+            for worker in (self.worker, self.queue_worker, self.export_worker):
                 if worker and worker.isRunning() and not worker.wait(8000):
                     # Last resort after cancelling and killing FFmpeg children.
                     worker.terminate()
                     worker.wait(1000)
+        if self._queue_job_id:
+            self.workflow.requeue(self._queue_job_id)
+            self._queue_job_id = None
         for worker in (self.update_check_worker, self.update_download_worker):
             if worker and worker.isRunning():
                 worker.requestInterruption()
@@ -4266,6 +5520,10 @@ class MainWindow(QMainWindow):
         stop_runtime()
         stop_ollama_server()
         terminate_active_processes()
+        try:
+            self.workflow.save()
+        except WorkflowError:
+            pass
         self._save_settings()
         event.accept()
 

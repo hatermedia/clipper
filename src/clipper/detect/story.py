@@ -584,6 +584,125 @@ def _audio_rank(label: str) -> int:
     return {"low": 0, "medium": 1, "high": 2}.get(label, 0)
 
 
+def _short_text(value: object, limit: int = 240) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _merge_evidence(
+    base: dict[str, Any] | None,
+    extra: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Combine evidence without letting a merge erase the first proof."""
+
+    merged: dict[str, Any] = dict(base or {})
+    for key, value in (extra or {}).items():
+        if key in {"transcript", "hud", "reviewed_windows"} and isinstance(value, list):
+            previous = merged.get(key)
+            existing = (
+                [dict(item) for item in previous if isinstance(item, dict)]
+                if isinstance(previous, list)
+                else []
+            )
+            seen = {
+                json.dumps(item, sort_keys=True, ensure_ascii=False)
+                for item in existing
+            }
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                marker = json.dumps(item, sort_keys=True, ensure_ascii=False)
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                existing.append(dict(item))
+            merged[key] = existing[:30]
+        elif key == "ears" and isinstance(value, dict):
+            merged[key] = dict(value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _clip_evidence(
+    best: StoryWindow,
+    kind: str,
+    cluster: list[StoryWindow],
+    spoken_lines: list[TranscriptLine],
+    cue_lines: list[TranscriptLine],
+    hud_hits: list[HudLine],
+    chat_line: HudLine | None,
+    signal: WindowSignal | None,
+    settings: DetectionSettings,
+) -> dict[str, Any]:
+    reviewed = [
+        {
+            "start": round(window.start, 3),
+            "end": round(window.end, 3),
+            "score": round(float(window.visual.get("score", 0.0)), 3),
+            "kind": _window_kind(window),
+            "summary": _short_text(window.visual.get("summary"), 180),
+            "proof": _short_text(window.visual.get("evidence"), 220),
+        }
+        for window in sorted(cluster, key=lambda item: item.start)[:12]
+    ]
+    transcript = [
+        {
+            "start": round(line.start, 3),
+            "end": round(line.end, 3),
+            "text": _short_text(line.text, 300),
+            "tags": line.tags,
+        }
+        for line in spoken_lines[:24]
+    ]
+    hum = [
+        {
+            "start": round(line.start, 3),
+            "text": _short_text(line.text, 220),
+        }
+        for line in cue_lines[:6]
+    ]
+    hud = [
+        {"time": round(line.time, 3), "text": _short_text(line.text, 180)}
+        for line in hud_hits[:8]
+    ]
+    signal_data: dict[str, Any] = {}
+    if signal is not None:
+        signal_data = {
+            "labels": list(signal.labels()),
+            "loud": round(float(signal.loud), 3),
+            "fast": round(float(signal.fast), 3),
+            "pitch": round(float(signal.pitch), 3),
+            "wps": round(float(signal.wps), 2),
+            "laugh": round(float(signal.laugh), 3),
+            "cheer": round(float(signal.cheer), 3),
+            "shout": round(float(signal.shout), 3),
+            "jerk": round(float(signal.jerk), 3),
+            "quote": _short_text(signal.quote, 220),
+            "peak": round(float(signal.peak_time), 3),
+        }
+    return {
+        "model": settings.ai_model,
+        "game": settings.ai_game,
+        "kind": kind,
+        "confidence": round(float(best.visual.get("score", 0.0)), 3),
+        "director": _short_text(best.visual.get("evidence"), 300),
+        "summary": _short_text(best.visual.get("summary"), 240),
+        "reviewed_windows": reviewed,
+        "transcript": transcript,
+        "humor_cues": hum,
+        "hud": hud,
+        "chat": (
+            {"time": round(chat_line.time, 3), "text": _short_text(chat_line.text, 220)}
+            if chat_line is not None
+            else {}
+        ),
+        "signal": signal_data,
+    }
+
+
 def _segments_from_windows(
     windows: list[StoryWindow],
     lines: list[TranscriptLine],
@@ -828,6 +947,17 @@ def _segments_from_windows(
             reason = f"AI {kind}: {evidence}"[:180]
         else:
             reason = f"AI {kind}: {summary}"[:180]
+        evidence_payload = _clip_evidence(
+            best,
+            kind,
+            cluster,
+            spoken_lines,
+            cue_lines,
+            hud_hits,
+            chat_line,
+            chosen_signal or best.signals,
+            settings,
+        )
         clips.append(
             ClipWindow(
                 start=max(0.0, start),
@@ -837,6 +967,7 @@ def _segments_from_windows(
                 audio_score=0.0,
                 visual_score=0.0,
                 reason=reason,
+                evidence=evidence_payload,
             )
         )
     return _merge(clips)
@@ -987,6 +1118,19 @@ def _refine_clip(
         or "(hud)" in clip.reason.lower()
     )
     reason = clip.reason if concrete or not summary else f"AI final: {summary}"
+    final_evidence = _merge_evidence(
+        clip.evidence,
+        {
+            "final": {
+                "kept": True,
+                "score": round(max(0.05, min(0.99, score)), 3),
+                "summary": _short_text(summary, 240),
+                "proof": _short_text(evidence, 300),
+                "start": round(start, 3),
+                "end": round(end, 3),
+            }
+        },
+    )
     return replace(
         clip,
         start=max(0.0, start),
@@ -994,6 +1138,7 @@ def _refine_clip(
         peak=min(duration - 0.05, max(0.0, (start + end) / 2.0)),
         score=max(0.05, min(0.99, score)),
         reason=reason[:180],
+        evidence=final_evidence,
     )
 
 
@@ -1095,6 +1240,31 @@ def _heard_reason(original: str, reading: AudioReading) -> str:
     return f"{original} | heard: {heard}"[:180]
 
 
+def _ears_evidence(reading: AudioReading) -> dict[str, Any]:
+    return {
+        "trusted": bool(reading.trusted),
+        "score": round(float(reading.score), 3),
+        "peak": round(float(reading.peak), 3),
+        "tone": reading.tone,
+        "laughter": bool(reading.laughter),
+        "reason": _short_text(reading.reason, 240),
+        "transcript": _short_text(reading.transcript, 500),
+        "chunks": [
+            {
+                "start": round(chunk.start, 3),
+                "end": round(chunk.end, 3),
+                "speech": _short_text(chunk.speech, 180),
+                "tone": chunk.tone,
+                "laughter": bool(chunk.laughter),
+                "shouting": bool(chunk.shouting),
+                "score": round(float(chunk.score), 3),
+                "trusted": bool(chunk.trusted),
+            }
+            for chunk in reading.chunks[:12]
+        ],
+    }
+
+
 def _apply_audio_reading(
     clip: ClipWindow,
     reading: AudioReading,
@@ -1186,12 +1356,20 @@ def _merge(clips: list[ClipWindow]) -> list[ClipWindow]:
         if merged and clip.start - merged[-1].end <= 1.0:
             last = merged[-1]
             best = last if last.score >= clip.score else clip
+            tags = list(dict.fromkeys([*last.tags, *clip.tags]))[:12]
             merged[-1] = ClipWindow(
                 start=last.start,
                 end=max(last.end, clip.end),
                 peak=best.peak,
                 score=max(last.score, clip.score),
+                audio_score=max(last.audio_score, clip.audio_score),
+                visual_score=max(last.visual_score, clip.visual_score),
                 reason=best.reason,
+                keep=best.keep,
+                note=best.note,
+                tags=tags,
+                evidence=_merge_evidence(last.evidence, clip.evidence),
+                exports=list(best.exports),
             )
         else:
             merged.append(clip)
@@ -1539,6 +1717,13 @@ def direct_clip(
                         settings.ai_game,
                         settings.min_clip,
                     )
+                    clip = replace(
+                        clip,
+                        evidence=_merge_evidence(
+                            clip.evidence,
+                            {"ears": _ears_evidence(reading)},
+                        ),
+                    )
                 heard_clips.append(clip)
             clips = heard_clips + clips[limit:]
         if serial_swap:
@@ -1637,6 +1822,15 @@ def direct_clip(
                 )
             ]
     clips = [clip for clip in clips if clip.duration >= settings.min_clip]
+    for clip in clips:
+        clip.evidence = _merge_evidence(
+            clip.evidence,
+            {
+                "model": settings.ai_model,
+                "game": settings.ai_game,
+                "min_confidence": round(float(settings.ai_min_confidence), 3),
+            },
+        )
     clips.sort(key=lambda clip: clip.score, reverse=True)
     clips = clips[: settings.max_clips]
     clips.sort(key=lambda clip: clip.start)

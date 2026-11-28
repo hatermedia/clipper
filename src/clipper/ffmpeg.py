@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
 import threading
 from functools import lru_cache
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from .config import (
     ClipperError,
@@ -64,7 +65,12 @@ def last_proxy_backend() -> str:
     return _LAST_PROXY_BACKEND
 
 
-def _run(cmd: Sequence[str], timeout: float | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    cmd: Sequence[str],
+    timeout: float | None = None,
+    *,
+    cwd: str | Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     args = [str(part) for part in cmd]
     try:
         proc = subprocess.Popen(
@@ -75,6 +81,7 @@ def _run(cmd: Sequence[str], timeout: float | None = None) -> subprocess.Complet
             encoding="utf-8",
             errors="replace",
             creationflags=_NO_WINDOW,
+            cwd=str(cwd) if cwd is not None else None,
         )
     except FileNotFoundError as exc:
         raise FFmpegNotFound(f"Could not execute {cmd[0]!r}") from exc
@@ -407,12 +414,94 @@ def make_thumbnail(
     return out
 
 
-def _video_encode_args(encoder: str, crf: int, preset: str) -> list[str]:
+def _video_encode_args(
+    encoder: str,
+    crf: int,
+    preset: str,
+    *,
+    pixel_format: str = "yuv420p",
+) -> list[str]:
     if encoder in {"h264_nvenc", "hevc_nvenc"}:
-        return ["-c:v", encoder, "-preset", "p4", "-cq", str(crf), "-b:v", "0"]
+        args = [
+            "-c:v",
+            encoder,
+            "-preset",
+            "p4",
+            "-cq",
+            str(crf),
+            "-b:v",
+            "0",
+            "-pix_fmt",
+            pixel_format,
+        ]
+        if encoder == "hevc_nvenc":
+            args.extend(["-tag:v", "hvc1"])
+        return args
     if encoder == "libx265":
-        return ["-c:v", "libx265", "-preset", preset, "-crf", str(crf)]
-    return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"]
+        return [
+            "-c:v",
+            "libx265",
+            "-preset",
+            preset,
+            "-crf",
+            str(crf),
+            "-pix_fmt",
+            pixel_format,
+            "-tag:v",
+            "hvc1",
+        ]
+    return [
+        "-c:v",
+        "libx264",
+        "-preset",
+        preset,
+        "-crf",
+        str(crf),
+        "-pix_fmt",
+        pixel_format,
+    ]
+
+
+def _even(value: int) -> int:
+    return max(2, int(value) // 2 * 2)
+
+
+def _scale_filter(
+    width: int,
+    height: int,
+    fit: str,
+) -> str:
+    width = _even(width)
+    height = _even(height)
+    if fit == "pad":
+        return (
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
+        )
+    if fit == "stretch":
+        return f"scale={width}:{height},setsar=1"
+    if fit == "crop":
+        return (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},setsar=1"
+        )
+    return f"scale={width}:{height}:force_original_aspect_ratio=decrease,setsar=1"
+
+
+def _reframe_filter(plan: Any, target_width: int, target_height: int) -> str:
+    if target_width < 2 or target_height < 2:
+        raise FFmpegError("The reframe target size is invalid")
+    crop_width = _even(int(getattr(plan, "crop_width", 0) or 0))
+    crop_height = _even(int(getattr(plan, "crop_height", 0) or 0))
+    if crop_width < 2 or crop_height < 2:
+        raise FFmpegError("The reframe plan has an invalid crop size")
+    static_x = max(0, int(getattr(plan, "static_x", 0) or 0))
+    static_y = max(0, int(getattr(plan, "static_y", 0) or 0))
+    filters = [
+        f"crop@reframe={crop_width}:{crop_height}:{static_x}:{static_y}",
+        _scale_filter(target_width, target_height, "stretch"),
+    ]
+    return ",".join(filters)
 
 
 def render_clip(
@@ -425,21 +514,57 @@ def render_clip(
     preset: str = "veryfast",
     bins: FFmpegBinaries | None = None,
     threads: int = 0,
+    *,
+    target_width: int = 0,
+    target_height: int = 0,
+    fit: str = "source",
+    fps: int = 0,
+    audio_bitrate: str = "192k",
+    reframe_plan: Any | None = None,
+    fallback_encoder: str = "libx264",
 ) -> tuple[Path, bool]:
     """Render one clip. Returns (output_path, used_reencode).
 
     Stream copy is effectively instant but starts on a keyframe, so the first
     fraction of a second may include extra footage. Re-encoding is frame-accurate.
+    A reframe plan adds a tracked crop with FFmpeg sendcmd commands; if the
+    dynamic path fails, the renderer retries with a static crop and then with
+    libx264 so a clip is never lost to a filter problem.
     """
 
     bins = _bins(bins)
-    src = Path(input_path)
-    out = Path(output_path)
+    src = Path(input_path).expanduser().resolve()
+    out = Path(output_path).expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0.05, clip.end - clip.start)
     resolved_encoder = resolve_encoder(encoder, bins)
+    wants_filter = bool(
+        (target_width and target_height)
+        or fps
+        or (reframe_plan is not None)
+    )
+    force_encode = bool(reencode or wants_filter)
 
-    def build(force_reencode: bool, video_encoder: str = resolved_encoder) -> list[str]:
+    if wants_filter and not force_encode:
+        force_encode = True
+
+    def filters(use_reframe: bool) -> str:
+        parts: list[str] = []
+        if use_reframe and reframe_plan is not None:
+            parts.append(_reframe_filter(reframe_plan, target_width, target_height))
+        elif target_width and target_height:
+            parts.append(_scale_filter(target_width, target_height, fit))
+        if fps:
+            parts.append(f"fps={max(1, int(fps))}")
+        return ",".join(part for part in parts if part)
+
+    def build(
+        force_reencode: bool,
+        video_encoder: str = resolved_encoder,
+        *,
+        use_reframe: bool = True,
+        use_crop: bool = True,
+    ) -> list[str]:
         cmd = [
             bins.ffmpeg,
             "-hide_banner",
@@ -462,8 +587,11 @@ def render_clip(
         ]
         if force_reencode:
             cmd.extend(_video_encode_args(video_encoder, crf, preset))
-            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+            cmd.extend(["-c:a", "aac", "-b:a", str(audio_bitrate)])
             cmd.extend(_thread_args(threads))
+            active_filter = filters(use_reframe) if use_crop else ""
+            if active_filter:
+                cmd.extend(["-vf", active_filter])
         else:
             cmd.extend(["-c", "copy"])
         if out.suffix.lower() in {".mp4", ".mov", ".m4v"}:
@@ -471,16 +599,67 @@ def render_clip(
         cmd.append(str(out))
         return cmd
 
-    proc = _run(build(reencode), timeout=3600)
-    used_reencode = reencode
-    failed = proc.returncode != 0 or not out.is_file() or out.stat().st_size == 0
-    if failed and (not reencode or resolved_encoder in {"h264_nvenc", "hevc_nvenc"}):
-        # Container/codec mismatch, or a GPU encoder that is listed but unusable
-        # on this machine: retry with a clean libx264/AAC output.
+    def run_attempt(
+        force_reencode: bool,
+        video_encoder: str = resolved_encoder,
+        *,
+        use_reframe: bool = True,
+        use_crop: bool = True,
+    ) -> tuple[subprocess.CompletedProcess[str], bool]:
+        nonlocal used_reencode
         out.unlink(missing_ok=True)
-        proc = _run(build(True, "libx264"), timeout=3600)
-        used_reencode = True
+        if use_reframe and reframe_plan is not None:
+            with tempfile.TemporaryDirectory(prefix="clipper_reframe_") as raw:
+                temp = Path(raw)
+                (temp / "reframe.cmd").write_text(
+                    str(getattr(reframe_plan, "command_text", lambda: "")()),
+                    encoding="utf-8",
+                )
+                cmd = build(
+                    force_reencode,
+                    video_encoder,
+                    use_reframe=True,
+                    use_crop=use_crop,
+                )
+                # Insert sendcmd before the crop filter, using a relative file
+                # name so Windows drive letters never need filter escaping.
+                if use_crop and target_width and target_height:
+                    filter_index = cmd.index("-vf") + 1
+                    cmd[filter_index] = f"sendcmd=f=reframe.cmd,{cmd[filter_index]}"
+                proc = _run(cmd, timeout=3600, cwd=temp)
+        else:
+            proc = _run(
+                build(force_reencode, video_encoder, use_reframe=False, use_crop=use_crop),
+                timeout=3600,
+            )
+        used_reencode = force_reencode
         failed = proc.returncode != 0 or not out.is_file() or out.stat().st_size == 0
-    if proc.returncode != 0 or not out.is_file() or out.stat().st_size == 0:
-        raise FFmpegError(_tail(proc.stderr or proc.stdout) or f"Failed to render {out.name}")
+        return proc, failed
+
+    used_reencode = force_encode
+    proc = _run(
+        build(force_encode, resolved_encoder, use_reframe=False, use_crop=False),
+        timeout=3600,
+    ) if not force_encode else None
+    if proc is None:
+        # The first render may be a dynamic reframe, a static target size, or a
+        # plain frame-accurate encode. Try the richest path first.
+        if reframe_plan is not None and target_width and target_height:
+            proc, failed = run_attempt(True, resolved_encoder, use_reframe=True)
+            if failed:
+                proc, failed = run_attempt(True, resolved_encoder, use_reframe=False)
+        else:
+            proc, failed = run_attempt(True, resolved_encoder, use_reframe=False)
+    else:
+        failed = proc.returncode != 0 or not out.is_file() or out.stat().st_size == 0
+
+    if failed and (not force_encode or resolved_encoder in {"h264_nvenc", "hevc_nvenc"}):
+        # Container/codec mismatch, or a GPU encoder that is listed but unusable
+        # on this machine: retry with a clean software output.
+        proc, failed = run_attempt(True, fallback_encoder, use_reframe=False)
+    if proc is None or proc.returncode != 0 or not out.is_file() or out.stat().st_size == 0:
+        raise FFmpegError(
+            _tail((proc.stderr or proc.stdout) if proc is not None else "")
+            or f"Failed to render {out.name}"
+        )
     return out, used_reencode

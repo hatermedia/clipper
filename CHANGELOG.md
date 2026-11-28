@@ -6,6 +6,44 @@ All notable changes to Clipper are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Clip library.** Previous scans are saved locally with clip decisions,
+  notes, tags, evidence, and export history. A rescan inherits decisions for
+  clips whose boundaries still match.
+- **Creator export presets.** YouTube Shorts, TikTok, Instagram Reels, square,
+  landscape, Shorts HEVC, and frame-accurate H.264 outputs. The desktop and CLI
+  share one preset registry.
+- **Automatic vertical reframe.** Action and facecam tracking produce a smoothed
+  FFmpeg crop path for 9:16 and 1:1 exports, with center-crop fallback.
+- **Filename templates.** `{source}`, `{index}`, `{start}`, `{end}`, `{duration}`,
+  `{score}`, `{peak}`, `{preset}`, `{game}`, and `{date}` are available in the
+  desktop and CLI.
+- **Why this clip?** panel. Shows the transcript, HUD proof, audio and motion
+  signals, reviewed windows, final-edit proof, confidence, notes, tags, and past
+  exports for the selected clip.
+- **Watch folders and scan queue.** New recordings are queued after they settle,
+  scanned when the PC is idle and no known game is running, and recovered after
+  a restart. The queue supports pause, retry, clear-finished, progress, and ETA.
+- CLI flags: `--export-preset` (alias `--format`), `--reframe`, and
+  `--name-template`.
+
+### Changed
+
+- Export results now include per-clip items and warnings, so the library can
+  attach output history and the UI can report a reframe fallback.
+- Clip metadata now survives scan JSON round-trips, including evidence, keep
+  state, notes, tags, and exports.
+
+### Fixed
+
+- Detect now checks the selected bundled model or local server instead of
+  requiring an Ollama process.
+- Desktop scans and the watch queue exclude the export folder, so Clipper does
+  not analyze its own output.
+- The watch queue remembers manual scans and active folder jobs, preventing
+  duplicate work.
+
 ## [0.8.4] - 2026-11-27
 
 ### Changed

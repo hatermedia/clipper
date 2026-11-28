@@ -21,6 +21,7 @@ from .config import (
 from .ffmpeg import ffmpeg_version, has_encoder, nvenc_available
 from .models import AnalysisSummary, fmt_short, fmt_time
 from .pipeline import analyze_target, export_analysis
+from .presets import DEFAULT_TEMPLATE, preset_choices
 
 
 def _build_batch_parser() -> argparse.ArgumentParser:
@@ -37,6 +38,7 @@ def _build_batch_parser() -> argparse.ArgumentParser:
             "  clipper --input ./footage --output ./clips --sensitivity 0.65\n"
             "  clipper --input ./footage --ai-model qwen2.5vl:7b --dry-run\n"
             "  clipper --input ./footage --reencode --encoder h264_nvenc\n"
+            "  clipper --input ./footage --export-preset shorts --reframe auto\n"
             "  clipper update\n"
             "  clipper gpu\n"
             "  clipper ui\n"
@@ -168,6 +170,28 @@ def _build_batch_parser() -> argparse.ArgumentParser:
         "--preset",
         default="veryfast",
         help="x264 preset used with --reencode (default: veryfast)",
+    )
+    parser.add_argument(
+        "--export-preset",
+        "--format",
+        dest="export_preset",
+        default=None,
+        choices=[preset.id for preset in preset_choices()],
+        help=(
+            "creator output preset: lossless, shorts, tiktok, reels, square, "
+            "landscape, shorts_hevc, h264 (default: lossless, or --reencode)"
+        ),
+    )
+    parser.add_argument(
+        "--reframe",
+        default="auto",
+        choices=["auto", "action", "facecam", "center", "none"],
+        help="tracking mode for vertical/square presets (default: auto)",
+    )
+    parser.add_argument(
+        "--name-template",
+        default=DEFAULT_TEMPLATE,
+        help=f"output filename template (default: {DEFAULT_TEMPLATE})",
     )
     parser.add_argument(
         "--no-previews",
@@ -447,6 +471,9 @@ def _run_batch(args: argparse.Namespace) -> int:
                 preset=args.preset,
                 progress=progress,
                 threads=settings.threads,
+                export_preset=args.export_preset,
+                filename_template=args.name_template,
+                reframe_mode=args.reframe,
             )
             payload["export"] = export_result.to_dict()
         else:
@@ -467,11 +494,17 @@ def _run_batch(args: argparse.Namespace) -> int:
             print(f"\nExported {len(export_result.outputs)} clip(s) to {output_dir}")
             for output in export_result.outputs:
                 print(f"  {output}")
-            if export_result.reencoded and not args.reencode:
+            if (
+                export_result.reencoded
+                and not args.reencode
+                and args.export_preset in (None, "lossless")
+            ):
                 print(
                     f"  ({len(export_result.reencoded)} clip(s) were re-encoded because "
                     "stream copy was not container-compatible.)"
                 )
+            for warning in export_result.warnings:
+                print(f"  ! {warning}")
             for error in export_result.errors:
                 print(f"  ERROR: {error}")
             if export_result.errors:
