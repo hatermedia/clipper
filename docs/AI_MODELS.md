@@ -212,6 +212,14 @@ thread/proxy/priority preset.
 Every download is pinned by size and SHA-256. Runtime archives are pinned to
 llama.cpp release `b12776`.
 
+## Evidence and local storage
+
+The 0.9 director records the evidence behind each clip: model id, confidence,
+transcript lines, HUD lines, audio and motion signals, reviewed windows, and the
+final edit confirmation. The desktop evidence panel reads that record. The clip
+library stores the same local evidence with notes, tags, and export history in
+`%LOCALAPPDATA%\Clipper\library`. It does not upload footage or model output.
+
 ## Troubleshooting
 
 - **Runtime download fails:** check internet, VPN/proxy, firewall, and free

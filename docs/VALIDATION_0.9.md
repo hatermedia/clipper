@@ -1,6 +1,6 @@
 # Clipper 0.9 development validation
 
-This record covers the 0.9 workflow work in the working tree. It is not a release
+This record covers the local Clipper 0.9.0 test build. It is not a public release
 validation record. The current public release remains 0.8.4.
 
 ## Automated checks

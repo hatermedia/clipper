@@ -11,7 +11,11 @@ no uploads, no browser.
 
 *Workflow demo recorded from Clipper 0.8.4: select footage, detect highlights, preview, and export. [Watch the full MP4](https://raw.githubusercontent.com/hatermedia/clipper/main/docs/media/demo.mp4).*
 
-**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) | **Release:** [v0.8.4](https://github.com/hatermedia/clipper/releases/tag/v0.8.4)
+**Website:** [hatermedia.github.io/clipper](https://hatermedia.github.io/clipper/) | **Stable release:** [v0.8.4](https://github.com/hatermedia/clipper/releases/tag/v0.8.4)
+
+> **0.9.0 test build:** The new clipping workflow is built and verified locally,
+> but it is not published. The download links below still point to the current
+> 0.8.4 stable release.
 
 ## Install
 
@@ -95,10 +99,10 @@ exports. Long source videos can need several gigabytes of working space.
 - **GPU + CPU controls** - real NVENC test, balanced thread cap, and a low-power
   preset.
 
-## Next workflow features
+## 0.9 workflow features
 
-The 0.9 development work adds the post-detection workflow. These features are
-not in the 0.8.4 installer yet:
+The 0.9.0 test build adds the post-detection workflow. These features are in the
+local 0.9.0 installer, but they are not published yet:
 
 - **Clip library** - reopen previous scans and keep keep/reject decisions,
   notes, tags, evidence, and export history. Stored locally under

@@ -4,7 +4,9 @@ All notable changes to Clipper are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.9.0] - 2026-11-28
+
+Local test build. Not published.
 
 ### Added
 

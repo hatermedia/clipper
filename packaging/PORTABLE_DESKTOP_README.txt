@@ -110,6 +110,30 @@ normal first-run path is the bundled llama.cpp runtime and one of the three
 bundled model tiers.
 
 
+CLIP WORKFLOW
+-------------
+Clipper 0.9 adds the post-detection workflow:
+
+- Clip library: every scan is saved under %LOCALAPPDATA%\Clipper\library with
+  keep/reject decisions, notes, tags, evidence, and export history. Reopen it
+  from the Library button. A rescan inherits decisions for matching clips.
+- Creator presets: lossless, YouTube Shorts, TikTok, Instagram Reels, square,
+  landscape, Shorts HEVC, and frame-accurate H.264. Batch export is available.
+- Filename templates: use tokens such as {source}, {index:02d}, {start}, {end},
+  {score}, {preset}, {game}, and {date}.
+- Automatic vertical reframe: follows action or a facecam and produces a
+  smoothed 9:16 crop. Center crop is available as a predictable fallback.
+- Why this clip?: shows the transcript, HUD proof, audio signals, reviewed
+  windows, confidence, notes, tags, and previous exports for the selected clip.
+- Watch folders and queue: add a folder, queue new recordings after they settle,
+  wait for idle time and Game Guard clearance, pause, retry, and recover queue
+  jobs after a restart. Queue state is stored in
+  %LOCALAPPDATA%\Clipper\workflow.json.
+
+The library and queue are local-only. They store paths, notes, tags, evidence
+text, and preview JPGs, not copies of the source footage.
+
+
 AI MODEL SIZES AND DISK SPACE
 -----------------------------
 These are verified file sizes. Download size is the compressed/network size
