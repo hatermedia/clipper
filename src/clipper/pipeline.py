@@ -230,18 +230,6 @@ def analyze_file(
                 warnings=warnings,
             )
 
-        _report(progress, 0.80, "Fusing excitement score")
-        grid = np.arange(0.0, max(0.25, info.duration), 0.25, dtype=np.float64)
-        audio = resample_track(audio_track, grid)
-        visual = resample_track(visual_track, grid)
-        combined = fuse_tracks(
-            grid,
-            audio,
-            visual,
-            audio_weight=settings.audio_weight,
-            visual_weight=settings.visual_weight,
-        )
-
         _report(progress, 0.88, "Selecting and merging clips")
         if settings.ai:
             file_settings = settings
@@ -271,6 +259,20 @@ def analyze_file(
                 warnings.append(f"AI director failed: {exc}")
                 clips = []
         else:
+            # Library/test path only: the CLI, desktop, and web UI always use
+            # the director. The fused audio/motion score is computed only here,
+            # because the director ignores the detector weights.
+            _report(progress, 0.80, "Fusing excitement score")
+            grid = np.arange(0.0, max(0.25, info.duration), 0.25, dtype=np.float64)
+            audio = resample_track(audio_track, grid)
+            visual = resample_track(visual_track, grid)
+            combined = fuse_tracks(
+                grid,
+                audio,
+                visual,
+                audio_weight=settings.audio_weight,
+                visual_weight=settings.visual_weight,
+            )
             clips = pick_peaks(grid, combined, audio, visual, settings, info.duration)
 
         if preview_dir is not None and settings.preview:

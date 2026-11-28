@@ -42,6 +42,36 @@ Clipper ships two ways from the same version:
 Do not publish a build whose installer README does not match the staged README
 or whose frozen app does not contain the current source.
 
+## Release signing (updater trust)
+
+The in-app updater checks the installer's SHA-256 against the release's
+`SHA256SUMS-X.Y.Z.txt`. On its own that only detects corruption: anyone who can
+publish a GitHub release could also publish matching checksums. A detached
+Ed25519 signature made with a key that never touches GitHub closes that gap.
+
+One-time setup:
+
+1. `python packaging\sign_release.py keygen --out <offline path>\clipper-release.key`
+   (refuses to write inside the repository). Back the key up offline.
+2. Paste the printed public key into `UPDATE_PUBLIC_KEYS` in
+   `src\clipper\update.py` and ship that build. From then on, installed apps
+   refuse any update whose checksums are unsigned or signed by another key.
+
+Every release:
+
+1. `packaging\build_installer.ps1 -SigningKey <offline path>\clipper-release.key`
+   writes `SHA256SUMS-X.Y.Z.txt.sig`.
+2. `python packaging\sign_release.py verify packaging\release\SHA256SUMS-X.Y.Z.txt`
+3. Upload the `.sig` next to the checksums (see below).
+
+If you also get an Authenticode certificate, sign `ClipperSetup-X.Y.Z.exe`
+and set `UPDATE_PUBLISHER` in `update.py` to the certificate subject so the
+updater requires that publisher. Any Authenticode signature that Windows
+reports as `HashMismatch` or `NotTrusted` is always refused.
+
+Pending updates are never installed silently on launch; the user clicks
+**Restart and install**.
+
 ## GitHub release
 
 ```powershell
@@ -54,6 +84,7 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes-file docs\RELEASE_NOTES_vX.Y.Z
   packaging\release\ClipperSetup-X.Y.Z.exe `
   packaging\release\clipper-X.Y.Z-windows-x64-native.zip `
   packaging\release\SHA256SUMS-X.Y.Z.txt `
+  packaging\release\SHA256SUMS-X.Y.Z.txt.sig `
   dist\clipper_gg-X.Y.Z-py3-none-any.whl `
   dist\clipper_gg-X.Y.Z.tar.gz `
   packaging\release\ffmpeg-source\*.tar.gz `

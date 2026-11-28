@@ -95,9 +95,6 @@ from PySide6.QtWidgets import (
 
 from . import __version__
 from .ai_setup import (
-    AISetupCancelled,
-    AISetupError,
-    install_prerequisite,
     launch_ollama_server,
     ollama_executable,
     stop_ollama_server,
@@ -109,6 +106,9 @@ from .config import (
     ai_confidence_for_sensitivity,
     default_threads,
     find_ffmpeg,
+    normalize_server_url,
+    server_url_is_local,
+    server_url_is_plaintext_remote,
     set_low_priority,
 )
 from .detect.ai import (
@@ -164,6 +164,7 @@ from .update import (
     load_pending_update,
     open_release_page,
     save_pending_update,
+    signature_enforced,
 )
 
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
@@ -764,40 +765,6 @@ class LlamaInstallWorker(QThread):
     def _progress(self, done: int, total: int) -> None:
         if self._cancel.is_set():
             raise RuntimeError("cancelled")
-        self.progress.emit(done, total)
-
-
-class OllamaInstallWorker(QThread):
-    progress = Signal(int, int)
-    status = Signal(str)
-    done = Signal(bool, str)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._cancel = threading.Event()
-
-    def cancel(self) -> None:
-        self._cancel.set()
-        self.requestInterruption()
-
-    def run(self) -> None:
-        try:
-            executable = install_prerequisite(
-                progress=self._progress,
-                status=self.status.emit,
-                cancelled=self._cancel.is_set,
-            )
-            self.done.emit(True, f"Ollama is installed at {executable.parent}.")
-        except AISetupCancelled as exc:
-            self.done.emit(False, str(exc))
-        except AISetupError as exc:
-            self.done.emit(False, str(exc))
-        except Exception as exc:  # Keep a failed install from closing the app.
-            self.done.emit(False, f"Ollama setup failed: {exc}")
-
-    def _progress(self, done: int, total: int) -> None:
-        if self._cancel.is_set():
-            raise AISetupCancelled("Ollama download cancelled. Retry to resume it.")
         self.progress.emit(done, total)
 
 
@@ -2273,7 +2240,6 @@ class MainWindow(QMainWindow):
         self.update_check_worker: UpdateCheckWorker | None = None
         self.update_download_worker: UpdateDownloadWorker | None = None
         self.pull_worker: OllamaPullWorker | None = None
-        self.ai_install_worker: OllamaInstallWorker | None = None
         self.llama_install_worker: LlamaInstallWorker | None = None
         self._pending_model: str | None = None
         self.ollama_poll_timer = QTimer(self)
@@ -2694,14 +2660,6 @@ class MainWindow(QMainWindow):
         setup_layout.addWidget(self.ai_setup_status)
         setup_actions = QHBoxLayout()
         setup_actions.setSpacing(6)
-        self.get_ollama_btn = QPushButton("Install Ollama")
-        self.get_ollama_btn.setObjectName("Mono")
-        self.get_ollama_btn.setToolTip(
-            "Download the official Ollama installer, verify it, and install it "
-            "for this Windows user. The AI model is downloaded separately."
-        )
-        self.get_ollama_btn.clicked.connect(self._install_ollama)
-        setup_actions.addWidget(self.get_ollama_btn)
         self.refresh_ai_btn = QPushButton("Refresh")
         self.refresh_ai_btn.setObjectName("Mono")
         self.refresh_ai_btn.clicked.connect(self._refresh_ai_models)
@@ -2712,7 +2670,7 @@ class MainWindow(QMainWindow):
         setup_actions.addWidget(self.pull_ai_btn)
         self.cancel_ai_btn = QPushButton("Cancel")
         self.cancel_ai_btn.setObjectName("Mono")
-        self.cancel_ai_btn.clicked.connect(self._cancel_ollama_install)
+        self.cancel_ai_btn.clicked.connect(self._cancel_model_pull)
         self.cancel_ai_btn.hide()
         setup_actions.addWidget(self.cancel_ai_btn)
         setup_actions.addStretch(1)
@@ -3545,9 +3503,29 @@ class MainWindow(QMainWindow):
         if not ok or not url.strip():
             self._select_ai_model(previous)
             return
-        base = url.strip().rstrip("/")
-        if base.endswith("/v1"):
-            base = base[:-3].rstrip("/")
+        try:
+            base = normalize_server_url(url)
+        except ValueError as exc:
+            show_message(self, "Local server", str(exc), kind="warning")
+            self._select_ai_model(previous)
+            return
+        if not server_url_is_local(base):
+            detail = (
+                "This server is not on this PC or your local network. Clipper will "
+                "send video frames, HUD crops, transcripts, and audio clips to it."
+            )
+            if server_url_is_plaintext_remote(base):
+                detail += " The URL uses plain HTTP, so that data is not encrypted."
+            if not ask_confirm(
+                self,
+                "Remote AI server",
+                detail + "\n\nUse this server anyway?",
+                confirm="Use server",
+                cancel="Cancel",
+                kind="warning",
+            ):
+                self._select_ai_model(previous)
+                return
         try:
             request = urllib.request.Request(
                 f"{base}/v1/models",
@@ -3722,6 +3700,8 @@ class MainWindow(QMainWindow):
         if runtime_ready() and model_ready(spec):
             self._update_ai_state()
             return
+        if not self._confirm_model_license(spec):
+            return
         worker = LlamaInstallWorker(spec)
         worker.progress.connect(self._llama_install_progress)
         worker.status.connect(self.ai_setup_status.setText)
@@ -3738,6 +3718,27 @@ class MainWindow(QMainWindow):
         self.ai_setup_progress.show()
         self.download_model_btn.setEnabled(False)
         worker.start()
+
+    def _confirm_model_license(self, spec) -> bool:
+        """Show the model's licence once before its first download."""
+
+        key = f"license_accepted/{spec.id}"
+        if str(self.qsettings.value(key, "")) == spec.license:
+            return True
+        url = getattr(spec, "license_url", "")
+        link = f"\n{url}" if url else ""
+        accepted = ask_confirm(
+            self,
+            f"{spec.name} licence",
+            f"{spec.name} is published under the {spec.license}.{link}\n\n"
+            "Clipper downloads it from the publisher for local use on this PC. "
+            "By continuing you agree to the model's licence terms.",
+            confirm="Agree and download",
+            cancel="Cancel",
+        )
+        if accepted:
+            self.qsettings.setValue(key, spec.license)
+        return accepted
 
     def _model_install_done(self, ok: bool, message: str, model_id: str) -> None:
         self.llama_install_worker = None
@@ -3757,6 +3758,8 @@ class MainWindow(QMainWindow):
             self.llama_install_worker is not None
             and self.llama_install_worker.isRunning()
         ):
+            return
+        if not self._confirm_model_license(LFM3_OMNI_2B):
             return
         worker = LlamaInstallWorker()
         worker.progress.connect(self._llama_install_progress)
@@ -3990,7 +3993,8 @@ class MainWindow(QMainWindow):
             except OSError:
                 pass
         self.update_label.setText(
-            f"Update ready · Clipper {version} downloaded and SHA-256 verified"
+            f"Update ready · Clipper {version} downloaded, "
+            + ("signature and SHA-256 verified" if signature_enforced() else "SHA-256 verified")
         )
         self.update_action.setText("Restart and install")
         self.update_action.setEnabled(True)
@@ -4036,14 +4040,14 @@ class MainWindow(QMainWindow):
             self.update_action.setEnabled(True)
             self.update_bar.show()
             return
+        # Never install silently on launch: the user confirms every install.
         self.update_installer = installer
         self.update_label.setText(
-            f"Clipper {release.version} is downloaded - installing on launch…"
+            f"Clipper {release.version} is downloaded and ready to install."
         )
-        self.update_action.setText("Install now")
+        self.update_action.setText("Restart and install")
         self.update_action.setEnabled(True)
         self.update_bar.show()
-        QTimer.singleShot(1500, lambda: self._install_update(auto=True))
 
     def _install_update(self, auto: bool = False) -> None:
         release = self.update_release
@@ -4147,11 +4151,10 @@ class MainWindow(QMainWindow):
             "Download a bundled model with the Download button above, or "
             "connect a local server from the AI model menu."
         )
-        self.get_ollama_btn.hide()
         self.pull_ai_btn.hide()
         self.refresh_ai_btn.hide()
         if not (
-            (self.ai_install_worker and self.ai_install_worker.isRunning())
+            (self.pull_worker and self.pull_worker.isRunning())
             or (
                 self.llama_install_worker
                 and self.llama_install_worker.isRunning()
@@ -4162,7 +4165,7 @@ class MainWindow(QMainWindow):
             self.ai_setup_progress.hide()
 
     def _set_ai_setup_busy(self, busy: bool) -> None:
-        for button in (self.get_ollama_btn, self.refresh_ai_btn, self.pull_ai_btn):
+        for button in (self.refresh_ai_btn, self.pull_ai_btn):
             button.setEnabled(not busy)
         self.cancel_ai_btn.setVisible(busy)
         self.cancel_ai_btn.setEnabled(True)
@@ -4173,66 +4176,12 @@ class MainWindow(QMainWindow):
             self.ai_setup_progress.setRange(0, 1000)
             self.ai_setup_progress.setValue(0)
 
-    def _install_ollama(self) -> None:
-        if self.ai_install_worker is not None and self.ai_install_worker.isRunning():
-            return
-        self._set_ai_setup_busy(True)
-        self.ai_setup_progress.setValue(0)
-        self.ai_setup_status.setText("Preparing the official Ollama installer...")
-        self.ai_setup_status.show()
-        worker = OllamaInstallWorker()
-        worker.progress.connect(self._ollama_install_progress)
-        worker.status.connect(self._ollama_install_status)
-        worker.done.connect(self._ollama_install_done)
-        self.ai_install_worker = worker
-        worker.start()
-
-    def _cancel_ollama_install(self) -> None:
-        worker = self.ai_install_worker
+    def _cancel_model_pull(self) -> None:
+        worker = self.pull_worker
         if worker is not None and worker.isRunning():
             worker.cancel()
             self.cancel_ai_btn.setEnabled(False)
-            self.ai_setup_status.setText("Cancelling Ollama download...")
-
-    def _ollama_install_progress(self, done: int, total: int) -> None:
-        self.ai_setup_progress.setRange(0, 1000)
-        if total > 0:
-            percent = max(0, min(1000, int(done * 1000 / total)))
-            self.ai_setup_progress.setValue(percent)
-            self.ai_setup_status.setText(
-                f"Downloading Ollama: {done / 1e6:.0f} / {total / 1e6:.0f} MB "
-                f"({done * 100 // total}%)"
-            )
-        else:
-            self.ai_setup_status.setText(f"Downloading Ollama: {done / 1e6:.0f} MB")
-
-    def _ollama_install_status(self, message: str) -> None:
-        self.ai_setup_status.setText(message)
-        self.ai_setup_status.show()
-        lowered = message.lower()
-        if "installing" in lowered or "starting the local" in lowered:
-            self.ai_setup_progress.setRange(0, 0)  # indeterminate busy state
-            self.cancel_ai_btn.setEnabled(False)
-        elif "downloading" in lowered:
-            self.ai_setup_progress.setRange(0, 1000)
-            self.cancel_ai_btn.setEnabled(True)
-
-    def _ollama_install_done(self, ok: bool, message: str) -> None:
-        self._set_ai_setup_busy(False)
-        self.ai_setup_progress.setRange(0, 1000)
-        self.ollama_present = ollama_executable() is not None
-        if ok:
-            self.ai_setup_status.setText(
-                "Ollama installed. Starting the local server..."
-            )
-            self.ai_setup_status.show()
-            self._begin_ollama_start()
-            return
-        self.ai_setup_status.setText(message)
-        self.ai_setup_status.show()
-        self._update_ai_setup()
-        if "cancelled" not in message.lower():
-            show_message(self, "Ollama setup failed", message, kind="warning")
+            self.ai_setup_status.setText("Cancelling model download...")
 
     def _begin_ollama_start(self) -> None:
         if self.ollama_poll_timer.isActive():
@@ -4246,7 +4195,7 @@ class MainWindow(QMainWindow):
             self.ollama_ok = False
             self._update_ai_state()
             self.ai_setup_status.setText(
-                "Ollama did not start. Click Refresh or reinstall it."
+                "Ollama did not start. Start it yourself, then click Refresh."
             )
             self.ai_setup_status.show()
             return
@@ -4271,7 +4220,7 @@ class MainWindow(QMainWindow):
             self.ollama_ok = False
             self._update_ai_state()
             self.ai_setup_status.setText(
-                "Ollama is not responding. Click Refresh or reinstall it."
+                "Ollama is not responding. Start it yourself, then click Refresh."
             )
             self.ai_setup_status.show()
 
@@ -4306,7 +4255,8 @@ class MainWindow(QMainWindow):
             show_message(
                 self,
                 "Ollama is not installed",
-                "Click Install Ollama first. Clipper downloads and verifies it for you.",
+                "Clipper no longer installs Ollama. Use a bundled model from the "
+                "Download button, or install Ollama yourself from ollama.com.",
                 kind="warning",
             )
             return
@@ -5460,11 +5410,6 @@ class MainWindow(QMainWindow):
         if self.pull_worker is not None and self.pull_worker.isRunning():
             self.pull_worker.cancel()
             self.pull_worker.wait(3000)
-        if self.ai_install_worker is not None and self.ai_install_worker.isRunning():
-            self.ai_install_worker.cancel()
-            if not self.ai_install_worker.wait(5000):
-                self.ai_install_worker.terminate()
-                self.ai_install_worker.wait(1000)
         if (
             self.llama_install_worker is not None
             and self.llama_install_worker.isRunning()
@@ -5657,6 +5602,31 @@ def _run_self_test(report_path: str | None) -> int:
     return 0 if all(result.get(key) for key in ("whisper", "rapidocr", "yamnet")) else 1
 
 
+def _acquire_instance_lock():
+    """Hold a per-user lock so only one Clipper edits the library and queue.
+
+    Returns the held QLockFile, or None when another live Clipper owns it.
+    QLockFile records the owner's PID, so a lock left by a crash is reclaimed.
+    """
+
+    from PySide6.QtCore import QLockFile
+
+    from .library import app_data_dir
+
+    try:
+        folder = app_data_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return object()  # cannot create the folder: do not block startup
+    lock = QLockFile(str(folder / "clipper.lock"))
+    lock.setStaleLockTime(0)
+    if lock.tryLock(200):
+        return lock
+    if lock.removeStaleLockFile() and lock.tryLock(200):
+        return lock
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="clipper-desktop", description="Native Clipper desktop app")
     parser.add_argument("--input", default=None, help="folder or video to preload")
@@ -5778,7 +5748,19 @@ def main(argv: list[str] | None = None) -> int:
         QTimer.singleShot(4500, capture_preview)
         return app.exec()
 
+    interactive = not (args.smoke_test or args.screenshot or args.demo_shot)
+    instance_lock = _acquire_instance_lock() if interactive else None
+    if interactive and instance_lock is None:
+        show_message(
+            None,
+            "Clipper is already running",
+            "Another Clipper window is open. Use that window so the clip library "
+            "and scan queue are not edited by two copies at once.",
+            kind="warning",
+        )
+        return 0
     window = MainWindow(initial_input=args.input)
+    window._instance_lock = instance_lock
     window.show()
 
     if args.demo_shot:

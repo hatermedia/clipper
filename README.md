@@ -129,8 +129,9 @@ up:
 
 1. Open the **AI model** dropdown in the Local AI director panel.
 2. Choose a bundled tier: **Lite**, **Standard**, or **Google**.
-3. Click **Download**. Clipper installs the llama.cpp runtime first, then the
-   selected model, with progress shown in the panel.
+3. Click **Download**. Clipper shows the model's licence (LFM Open License,
+   Apache-2.0, or the Gemma Terms of Use) the first time, then installs the
+   llama.cpp runtime and the selected model, with progress shown in the panel.
 4. Wait for the model to become ready, then click **Detect highlights**.
 
 The picker shows the download size next to each tier. Installed models do not
@@ -148,11 +149,17 @@ The AI model dropdown also offers **Connect local server...**. It accepts an
 OpenAI-compatible base URL, reads `/v1/models`, and lets you add exactly one
 model. That model must accept image input and return JSON. No API key is sent.
 This is optional and works with LM Studio, llama.cpp server, vLLM, Jan, and
-similar local endpoints.
+similar local endpoints. Only `http://` and `https://` URLs are accepted. If the
+server is not on this PC or your local network, Clipper warns you before using
+it (and says so when the URL is plain HTTP), because frames, HUD crops,
+transcripts, and audio clips are sent to that server.
 
-Ollama is not required. Clipper does not install it. It remains an optional
-alternative backend for the CLI and existing configurations, and for models
-that need Ollama-specific audio support. The normal first-run path is the
+The bundled llama.cpp server listens on `127.0.0.1` only and is started with a
+random per-launch API key, so other programs on the PC cannot use it.
+
+Ollama is not required. Clipper does not download, install, or close it. It
+remains an optional alternative backend for the CLI, the web UI, and existing
+configurations, if you install it yourself. The normal first-run path is the
 bundled llama.cpp runtime and one of the three bundled model tiers.
 
 ### VRAM guidance
@@ -243,9 +250,40 @@ queue are local data under `%LOCALAPPDATA%\Clipper`; they store paths, notes,
 tags, evidence text, and preview JPGs, not copies of the source video. Network
 access is limited to the optional GitHub update check, the AI runtime and model
 downloads when you request them, and the local server URL you configure. Local server requests go
-to the endpoint you enter, normally on your machine or local network. Clipper
-does not send an API key. Release downloads use HTTPS and are checked against
-SHA-256 hashes.
+to the endpoint you enter, normally on your machine or local network; Clipper
+asks before using a server outside your network. Clipper does not send an API
+key to it. Release downloads use HTTPS and are checked against SHA-256 hashes.
+
+Updates: the updater verifies the installer's SHA-256 against the release
+checksums, refuses installers whose Windows signature is broken or untrusted,
+and, once a release signing key is configured, also requires an Ed25519
+signature over those checksums (see [docs/PUBLISHING.md](docs/PUBLISHING.md)).
+A downloaded update is never installed silently on launch; you click
+**Restart and install**.
+
+## Web UI and Docker
+
+`clipper ui` starts a browser UI on `http://127.0.0.1:8765`. It uses the same
+AI director as the desktop app and CLI, through Ollama (`CLIPPER_OLLAMA_URL`)
+or an OpenAI-compatible server URL entered in the page. It has no login, so it
+is locked down instead:
+
+- Only requests addressed to `localhost`, `127.0.0.1`, or `[::1]` are served.
+  This blocks DNS-rebinding attacks from websites. Add trusted LAN names with
+  `CLIPPER_ALLOWED_HOSTS=nas.lan,clipper.home`.
+- Cross-site and foreign-origin API calls are refused, and the page loads no
+  third-party scripts.
+- `CLIPPER_ROOTS` (a path list) restricts which folders the API may browse,
+  read, and export to. The Docker image sets it to `/footage:/out`.
+
+```powershell
+docker build -t clipper .
+docker run --rm -p 127.0.0.1:8765:8765 -v D:\Videos:/footage:ro -v D:\Clips:/out clipper
+```
+
+Publish the port on `127.0.0.1` as shown. The image points
+`CLIPPER_OLLAMA_URL` at `host.docker.internal:11434` so it can use Ollama on the
+host.
 
 ## Troubleshooting
 
@@ -265,6 +303,9 @@ the portable zip. Common points:
 - **Local server fails:** use a base URL such as `http://127.0.0.1:1234`; the
   server must expose `/v1/models` and accept image input with JSON responses.
   Clipper does not send an API key.
+- **"Clipper is already running":** only one Clipper window may edit the clip
+  library and queue at a time. Switch to the open window. A lock left by a
+  crash is cleared automatically.
 - **Uninstall:** removes the app and settings, not footage, exports, models, or
   the llama.cpp runtime. Delete `%LOCALAPPDATA%\Clipper\ai-models` and
   `%LOCALAPPDATA%\Clipper\ai-runtime` manually to reclaim that space.

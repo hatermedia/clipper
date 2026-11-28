@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "clipper-gg"
 version = "0.9.0"
-description = "Automatic gaming highlight trimmer with a local AI director, audio + motion detection, and lossless FFmpeg cuts."
+description = "Automatic gaming highlight trimmer with a local AI director and lossless FFmpeg cuts. Desktop app and bundled AI runtime are Windows/NVIDIA; the CLI and web UI also run on Linux with Ollama or an OpenAI-compatible server."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -25,7 +25,9 @@ classifiers = [
   "Environment :: Console",
   "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: MIT License",
-  "Operating System :: OS Independent",
+  "Operating System :: Microsoft :: Windows :: Windows 10",
+  "Operating System :: Microsoft :: Windows :: Windows 11",
+  "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -69,7 +71,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "clipper" = ["assets/*", "assets/fonts/*", "assets/licenses/*"]
-"clipper.web" = ["static/*"]
+"clipper.web" = ["static/*", "static/vendor/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

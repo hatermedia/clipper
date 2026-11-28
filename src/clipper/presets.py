@@ -144,7 +144,14 @@ PRESETS: tuple[ExportPreset, ...] = (
 
 _BY_ID = {preset.id: preset for preset in PRESETS}
 DEFAULT_TEMPLATE = "{source}_clip_{index:02d}_{start}-{end}"
-_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+# Letters and digits from any script are kept (\w is Unicode-aware), so a
+# Japanese or accented source name survives. Path separators, Windows-reserved
+# punctuation, spaces, and emoji become underscores.
+_FILENAME_RE = re.compile(r"[^\w.-]+")
+_DOTS_RE = re.compile(r"\.{2,}")
+# Format specs with a 4+ digit width/precision (e.g. {index:99999999}) are
+# refused so a template cannot allocate gigantic strings.
+_HUGE_FORMAT_RE = re.compile(r"\{[^{}]*:[^{}]*\d{4,}[^{}]*\}")
 
 
 def preset_for(value: str | ExportPreset | None) -> ExportPreset:
@@ -167,7 +174,7 @@ def preset_choices() -> tuple[ExportPreset, ...]:
 
 
 def safe_stem(stem: str, limit: int = 70) -> str:
-    cleaned = _FILENAME_RE.sub("_", str(stem)).strip("._-")
+    cleaned = _DOTS_RE.sub(".", _FILENAME_RE.sub("_", str(stem))).strip("._-")
     return (cleaned or "clip")[:limit]
 
 
@@ -210,6 +217,8 @@ def render_filename(
         "game": safe_stem(game) if game and game.lower() != "auto" else "game",
         "date": date_value,
     }
+    if _HUGE_FORMAT_RE.search(pattern) or len(pattern) > 300:
+        pattern = DEFAULT_TEMPLATE
     try:
         rendered = pattern.format_map(values)
     except (KeyError, ValueError, IndexError):

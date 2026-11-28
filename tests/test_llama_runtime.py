@@ -285,3 +285,40 @@ def test_start_server_reuses_an_active_server(monkeypatch, tmp_path: Path) -> No
         assert len(calls) == 1
     finally:
         llama_runtime.stop_server()
+
+
+def test_start_server_requires_a_random_api_key(monkeypatch, tmp_path: Path) -> None:
+    _prepare_start_server(monkeypatch, tmp_path)
+    commands = []
+
+    def fake_popen(command, **kwargs):
+        commands.append(command)
+        return _FakeProcess()
+
+    monkeypatch.setattr(llama_runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(llama_runtime, "_health", lambda *a, **k: True)
+    server = llama_runtime.start_server(LFM3_OMNI_2B)
+    command = commands[0]
+    assert command[command.index("--host") + 1] == "127.0.0.1"
+    key = command[command.index("--api-key") + 1]
+    assert key == server.api_key and len(key) >= 32
+    llama_runtime._SERVERS.clear()
+
+
+def test_openai_chat_sends_the_server_api_key(tmp_path: Path, monkeypatch) -> None:
+    captured = {}
+
+    def fake_urlopen(request, timeout=0):
+        captured["auth"] = request.get_header("Authorization")
+        return _FakeResponse({"choices": [{"message": {"content": "{}"}}]})
+
+    monkeypatch.setattr(llama_runtime.urllib.request, "urlopen", fake_urlopen)
+    server = LlamaServer(
+        spec=LFM3_OMNI_2B,
+        port=1,
+        process=_FakeProcess(),  # type: ignore[arg-type]
+        log_path=tmp_path / "server.log",
+        api_key="secret-key",
+    )
+    openai_chat(server, "hi")
+    assert captured["auth"] == "Bearer secret-key"

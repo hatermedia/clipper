@@ -36,6 +36,17 @@ RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases"
 CHECK_INTERVAL_SECONDS = 6 * 60 * 60
 USER_AGENT = f"Clipper/{__version__} (+https://github.com/{GITHUB_REPO})"
 MAX_INSTALLER_BYTES = 512 * 1024 * 1024
+MAX_SIGNATURE_BYTES = 4096
+# Hex-encoded Ed25519 public keys allowed to sign release SHA256SUMS files.
+# When at least one key is listed, every update must ship a valid
+# ``<checksums name>.sig`` asset or it is refused. Generate the key pair with
+# ``python packaging/sign_release.py keygen`` and keep the private key offline.
+UPDATE_PUBLIC_KEYS: tuple[str, ...] = ()
+# Optional Authenticode publisher (certificate subject substring). When set, the
+# installer must carry a valid signature from that publisher.
+UPDATE_PUBLISHER = ""
+# Authenticode states that always mean tampering or an untrusted certificate.
+_BAD_AUTHENTICODE = {"HashMismatch", "NotTrusted", "Incompatible"}
 _WINDOWS_RESERVED_NAMES = {
     "CON",
     "PRN",
@@ -65,6 +76,8 @@ class ReleaseInfo:
     installer_size: int = 0
     checksums_name: str | None = None
     checksums_url: str | None = None
+    signature_name: str | None = None
+    signature_url: str | None = None
 
     @property
     def has_installer(self) -> bool:
@@ -73,6 +86,10 @@ class ReleaseInfo:
     @property
     def has_checksums(self) -> bool:
         return bool(self.checksums_url and self.checksums_name)
+
+    @property
+    def has_signature(self) -> bool:
+        return bool(self.signature_url and self.signature_name)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -87,6 +104,8 @@ class ReleaseInfo:
             "installer_size": self.installer_size,
             "checksums_name": self.checksums_name,
             "checksums_url": self.checksums_url,
+            "signature_name": self.signature_name,
+            "signature_url": self.signature_url,
         }
 
     @classmethod
@@ -110,6 +129,12 @@ class ReleaseInfo:
             ),
             checksums_url=(
                 str(value["checksums_url"]) if value.get("checksums_url") else None
+            ),
+            signature_name=(
+                str(value["signature_name"]) if value.get("signature_name") else None
+            ),
+            signature_url=(
+                str(value["signature_url"]) if value.get("signature_url") else None
             ),
         )
 
@@ -265,11 +290,21 @@ def _release_from_payload(payload: dict[str, Any]) -> ReleaseInfo:
         (
             item
             for item in assets
-            if "sha256" in str(item.get("name", "")).lower()
-            or "checksum" in str(item.get("name", "")).lower()
+            if (
+                "sha256" in str(item.get("name", "")).lower()
+                or "checksum" in str(item.get("name", "")).lower()
+            )
+            and not str(item.get("name", "")).lower().endswith(".sig")
         ),
         None,
     )
+    signature = None
+    if checksums:
+        wanted = str(checksums.get("name", "")).lower() + ".sig"
+        signature = next(
+            (item for item in assets if str(item.get("name", "")).lower() == wanted),
+            None,
+        )
     installer_name = (
         _safe_installer_name(str(installer.get("name")), tag.lstrip("vV"))
         if installer
@@ -281,6 +316,9 @@ def _release_from_payload(payload: dict[str, Any]) -> ReleaseInfo:
         _validate_https_url(installer_url)
     if checksums_url:
         _validate_https_url(checksums_url)
+    signature_url = str(signature.get("browser_download_url")) if signature else None
+    if signature_url:
+        _validate_https_url(signature_url)
     return ReleaseInfo(
         version=tag.lstrip("vV"),
         tag=tag,
@@ -293,7 +331,102 @@ def _release_from_payload(payload: dict[str, Any]) -> ReleaseInfo:
         installer_size=max(0, _safe_int((installer or {}).get("size", 0), 0)),
         checksums_name=str(checksums.get("name")) if checksums else None,
         checksums_url=checksums_url,
+        signature_name=str(signature.get("name")) if signature else None,
+        signature_url=signature_url,
     )
+
+
+def signature_enforced() -> bool:
+    """True when this build only accepts Ed25519-signed release checksums."""
+
+    return bool(UPDATE_PUBLIC_KEYS)
+
+
+def verify_checksums_signature(
+    checksums: bytes,
+    signature_text: str | bytes,
+    keys: tuple[str, ...] | None = None,
+) -> bool:
+    from .signing import parse_signature, verify
+
+    try:
+        signature = parse_signature(signature_text)
+    except ValueError:
+        return False
+    for key in UPDATE_PUBLIC_KEYS if keys is None else keys:
+        try:
+            public = bytes.fromhex(key.strip())
+        except ValueError:
+            continue
+        if verify(public, checksums, signature):
+            return True
+    return False
+
+
+def _require_signature(release: "ReleaseInfo", checksums: bytes, timeout: float) -> None:
+    if not signature_enforced():
+        return
+    if not release.has_signature:
+        raise UpdateError(
+            "This release has no checksum signature, so Clipper will not install "
+            "it. Download it manually from " + release.page_url
+        )
+    signature_text = _fetch_bytes(
+        release.signature_url or "", timeout=timeout, limit=MAX_SIGNATURE_BYTES
+    )
+    if not verify_checksums_signature(checksums, signature_text):
+        raise UpdateError(
+            "The release checksums are not signed by the Clipper release key; "
+            "refusing to install."
+        )
+
+
+def authenticode_status(path: Path, timeout: float = 60.0) -> tuple[str, str]:
+    """Return (status, signer subject) from Windows, or ("Unavailable", "")."""
+
+    if os.name != "nt":
+        return "Unavailable", ""
+    powershell = (
+        Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        / "System32"
+        / "WindowsPowerShell"
+        / "v1.0"
+        / "powershell.exe"
+    )
+    if not powershell.is_file():
+        return "Unavailable", ""
+    script = (
+        f"$sig = Get-AuthenticodeSignature -LiteralPath {_ps_quote(str(path))}; "
+        "[pscustomobject]@{"
+        "Status = $sig.Status.ToString(); "
+        "Subject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }"
+        "} | ConvertTo-Json -Compress"
+    )
+    try:
+        completed = subprocess.run(
+            [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            creationflags=0x08000000,
+        )
+        if completed.returncode != 0:
+            return "Unavailable", ""
+        payload = json.loads(completed.stdout.strip() or "{}")
+        return str(payload.get("Status") or "Unavailable"), str(payload.get("Subject") or "")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return "Unavailable", ""
+
+
+def _check_authenticode(path: Path) -> None:
+    status, subject = authenticode_status(path)
+    if status in _BAD_AUTHENTICODE:
+        raise UpdateError(f"The installer's Windows signature is {status}; refusing to install.")
+    if UPDATE_PUBLISHER:
+        if status != "Valid":
+            raise UpdateError("The installer is not signed by the Clipper publisher.")
+        if UPDATE_PUBLISHER.lower() not in subject.lower():
+            raise UpdateError("The installer is signed by an unexpected publisher.")
 
 
 def fetch_latest(timeout: float = 10.0) -> ReleaseInfo:
@@ -437,13 +570,17 @@ def parse_checksums(text: str) -> dict[str, str]:
 
 
 def _fetch_text(url: str, timeout: float = 30.0) -> str:
+    return _fetch_bytes(url, timeout=timeout).decode("utf-8", errors="replace")
+
+
+def _fetch_bytes(url: str, timeout: float = 30.0, limit: int = 4 * 1024 * 1024) -> bytes:
     _validate_https_url(url)
     try:
         with _open_url(url, timeout) as response:
-            raw = response.read(4 * 1024 * 1024 + 1)
-            if len(raw) > 4 * 1024 * 1024:
+            raw = response.read(limit + 1)
+            if len(raw) > limit:
                 raise UpdateError("Update metadata is unreasonably large.")
-            return raw.decode("utf-8", errors="replace")
+            return raw
     except urllib.error.HTTPError as exc:
         raise UpdateError(f"Update metadata returned HTTP {exc.code}.") from exc
     except urllib.error.URLError as exc:
@@ -498,6 +635,8 @@ def download_installer(
     checksums_text = ""
     try:
         checksums_text = _fetch_text(release.checksums_url or "", timeout=timeout)
+        # Release checksum files are ASCII, so these are the exact signed bytes.
+        _require_signature(release, checksums_text.encode("utf-8"), timeout)
     except Exception:
         if created_dir is not None:
             shutil.rmtree(created_dir, ignore_errors=True)
@@ -511,6 +650,7 @@ def download_installer(
         )
     if target.is_file() and sha256_file(target).lower() == expected:
         # A verified installer from an earlier attempt is already on disk.
+        _check_authenticode(target)
         return target
 
     digest = hashlib.sha256()
@@ -571,6 +711,11 @@ def download_installer(
                 f"(expected {expected[:12]}..., got {actual[:12]}...)."
             )
         partial.replace(target)
+        try:
+            _check_authenticode(target)
+        except UpdateError:
+            target.unlink(missing_ok=True)
+            raise
     except UpdateError:
         cleanup_partial()
         raise
@@ -692,6 +837,14 @@ def _helper_script(
     wait_pid: int | None,
 ) -> list[str]:
     installer_dir = installer_path.parent
+    if exe.name.lower() == "clipper.exe":
+        install_dir = exe.parent
+    else:
+        install_dir = (
+            Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir())
+            / "Programs"
+            / "Clipper"
+        )
     lines = [
         "$ErrorActionPreference = 'SilentlyContinue'",
         f"$log = {_ps_quote(str(log_path))}",
@@ -707,25 +860,33 @@ def _helper_script(
         "  Remove-Item -LiteralPath $helperDir -Recurse -Force -ErrorAction SilentlyContinue",
         "}",
         "function Remove-TempDirs { Remove-InstallerDir; Remove-HelperDir }",
+        f"$installDir = {_ps_quote(str(install_dir).rstrip(chr(92)))}",
+        # Only touch Clipper processes running from this install folder; an
+        # unrelated program that happens to be called Clipper.exe is left alone.
+        "function Get-ClipperProcess { @(Get-CimInstance Win32_Process "
+        "-Filter \"Name='Clipper.exe'\" -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installDir + '\\', "
+        "[System.StringComparison]::OrdinalIgnoreCase) } | "
+        "ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }) }",
         "Write-UpdateLog 'helper start'",
         f"$targetPid = {int(wait_pid or 0)}",
         "$deadline = (Get-Date).AddSeconds(90)",
         "while ($targetPid -gt 0 -and (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) "
         "-and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }",
         "$deadline = (Get-Date).AddSeconds(90)",
-        "while ((Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue) "
+        "while ((Get-ClipperProcess).Count -gt 0 "
         "-and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }",
-        "$running = @(Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue)",
+        "$running = Get-ClipperProcess",
         "if ($running.Count -gt 0) {",
         "  $running | ForEach-Object { $_.CloseMainWindow() | Out-Null }",
         "  Start-Sleep -Seconds 3",
         "}",
-        "$running = @(Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue)",
+        "$running = Get-ClipperProcess",
         "if ($running.Count -gt 0) {",
-        "  & \"$env:SystemRoot\\System32\\taskkill.exe\" /F /IM Clipper.exe /T | Out-Null",
+        "  $running | Stop-Process -Force -ErrorAction SilentlyContinue",
         "  Start-Sleep -Seconds 2",
         "}",
-        "if (@(Get-Process -Name 'Clipper' -ErrorAction SilentlyContinue).Count -gt 0) {",
+        "if ((Get-ClipperProcess).Count -gt 0) {",
         "  Write-UpdateLog 'Clipper did not exit; aborting before install'",
         "  Remove-TempDirs",
         "  exit 92",

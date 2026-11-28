@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 RESERVE_MB = 1024
 _RECOVERY_STEP_MB = 128
@@ -132,6 +133,17 @@ def _parse_nvidia_memory_output(text: str) -> list[GpuMemory]:
     return devices
 
 
+def nvidia_smi_path() -> str | None:
+    """Locate nvidia-smi, preferring the driver's System32 copy over PATH."""
+
+    if os.name == "nt":
+        system_root = os.environ.get("SystemRoot") or r"C:\Windows"
+        candidate = Path(system_root) / "System32" / "nvidia-smi.exe"
+        if candidate.is_file():
+            return str(candidate)
+    return shutil.which("nvidia-smi")
+
+
 def query_nvidia_memory(
     selector: int | str | None | object = _UNSET,
 ) -> GpuMemory | None:
@@ -140,7 +152,7 @@ def query_nvidia_memory(
     chosen = selected_gpu_selector() if selector is _UNSET else selector
     if chosen is None:
         return None
-    smi = shutil.which("nvidia-smi")
+    smi = nvidia_smi_path()
     if not smi:
         return None
     try:

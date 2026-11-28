@@ -99,3 +99,21 @@ def test_safe_stem_keeps_useful_characters() -> None:
 
 def test_default_template_is_stable() -> None:
     assert DEFAULT_TEMPLATE == "{source}_clip_{index:02d}_{start}-{end}"
+
+
+def test_safe_stem_keeps_non_ascii_letters() -> None:
+    assert safe_stem("ゲーム 録画") == "ゲーム_録画"
+    assert safe_stem("Café clutch") == "Café_clutch"
+    assert safe_stem("a:b*c?d") == "a_b_c_d"
+
+
+def test_huge_format_width_falls_back_to_default_template() -> None:
+    name = render_filename(
+        "{index:999999999}",
+        source="match.mkv",
+        clip=clip(),
+        index=1,
+        preset=LOSSLESS,
+    )
+    assert len(name) <= 120
+    assert name.startswith("match_clip_01")

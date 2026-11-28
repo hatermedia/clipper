@@ -4,44 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Clipper - gaming highlight trimmer</title>
-  <meta name="description" content="Turn raw gameplay into highlight clips. Local audio + motion detection, lossless FFmpeg cuts." />
+  <meta name="description" content="Turn raw gameplay into highlight clips. Local AI director, lossless FFmpeg cuts." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322d3ee' stroke-width='2'%3E%3Ccircle cx='6' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12'/%3E%3C/svg%3E" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            ink: '#06090f',
-            panel: '#0b111b',
-            panel2: '#0f1724',
-          },
-          fontFamily: {
-            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'sans-serif'],
-            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
-          },
-          boxShadow: {
-            glow: '0 0 40px -12px rgba(34, 211, 238, 0.35)',
-            card: '0 20px 60px -30px rgba(0, 0, 0, 0.8)',
-          },
-          keyframes: {
-            rise: {
-              '0%': { opacity: '0', transform: 'translateY(8px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            },
-            shimmer: {
-              '0%': { backgroundPosition: '200% 0' },
-              '100%': { backgroundPosition: '-200% 0' },
-            },
-          },
-          animation: {
-            rise: 'rise .35s ease-out both',
-            shimmer: 'shimmer 2s linear infinite',
-          },
-        },
-      },
-    };
-  </script>
+  <link rel="stylesheet" href="/static/vendor/tailwind.css" />
   <style>
     [x-cloak] { display: none !important; }
     html { color-scheme: dark; }
@@ -99,7 +64,9 @@
       background-size: 200% 100%;
     }
   </style>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+  <!-- Alpine.js 3.14.9 and a compiled Tailwind 3.4.17 build are vendored so the
+       page never loads third-party scripts. See static/vendor/README.md. -->
+  <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 
 <body class="min-h-screen bg-ink font-sans text-slate-200 antialiased" x-data="clipperApp()" x-init="init()" @keydown.escape.window="browserOpen = false">
@@ -150,7 +117,7 @@
         Turn raw gameplay into <span class="bg-gradient-to-r from-cyan-300 via-sky-300 to-rose-300 bg-clip-text text-transparent">highlights.</span>
       </h1>
       <p class="mt-4 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-        Clipper listens for loud reactions and watches for sudden motion, then cuts the boring parts out.
+        A local AI director watches your footage with its transcript, HUD, and audio cues, then cuts the boring parts out.
         Stream-copy exports are instant. Everything runs on your machine.
       </p>
     </section>
@@ -251,6 +218,28 @@
               <input x-model.number="post" type="number" min="0" max="120" step="1"
                      class="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-slate-200 focus:border-cyan-400/50 focus:outline-none" />
             </div>
+          </div>
+
+          <div class="mt-5 space-y-3 rounded-xl border border-white/[0.06] bg-black/20 p-3">
+            <div class="text-[11px] font-medium uppercase tracking-wider text-slate-500">Local AI director</div>
+            <div>
+              <label class="mb-1 block text-[10px] uppercase tracking-wider text-slate-600">Vision model</label>
+              <input x-model="aiModel" type="text" spellcheck="false" placeholder="qwen2.5vl:7b"
+                     class="w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 font-mono text-xs text-slate-300 focus:border-cyan-400/50 focus:outline-none" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="mb-1 block text-[10px] uppercase tracking-wider text-slate-600">Game</label>
+                <input x-model="aiGame" type="text" spellcheck="false" placeholder="auto"
+                       class="w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 font-mono text-xs text-slate-300 focus:border-cyan-400/50 focus:outline-none" />
+              </div>
+              <div>
+                <label class="mb-1 block text-[10px] uppercase tracking-wider text-slate-600">Server URL (optional)</label>
+                <input x-model="aiServerUrl" type="text" spellcheck="false" placeholder="http://127.0.0.1:1234"
+                       class="w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 font-mono text-xs text-slate-300 focus:border-cyan-400/50 focus:outline-none" />
+              </div>
+            </div>
+            <p class="text-[10px] leading-4 text-slate-600">Uses Ollama (CLIPPER_OLLAMA_URL) or an OpenAI-compatible server you enter. Frames and audio are sent only to that endpoint.</p>
           </div>
 
           <details class="group mt-4 rounded-xl border border-white/[0.06] bg-black/20">
@@ -593,6 +582,9 @@
         audioWeight: 0.6,
         visualWeight: 0.4,
         sampleFps: 4,
+        aiModel: 'qwen2.5vl:7b',
+        aiGame: 'auto',
+        aiServerUrl: '',
         scanning: false,
         files: [],
         scanError: '',
@@ -749,6 +741,9 @@
               visual_weight: Number(this.visualWeight || 0.4),
               sample_fps: Number(this.sampleFps || 4),
               merge_gap: 1.0,
+              ai_model: (this.aiModel || '').trim() || 'qwen2.5vl:7b',
+              ai_game: (this.aiGame || '').trim() || 'auto',
+              ai_server_url: (this.aiServerUrl || '').trim(),
             });
             this.watch(data.job_id, 'analyze');
           } catch (err) {

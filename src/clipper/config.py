@@ -71,6 +71,56 @@ def set_low_priority() -> None:
             pass
 
 
+def normalize_server_url(url: str) -> str:
+    """Validate a user-supplied OpenAI-compatible server base URL.
+
+    Only http(s) URLs with a host are accepted; ``file:``, ``ftp:`` and
+    credential-bearing URLs are refused. A trailing ``/v1`` is removed.
+    """
+
+    from urllib.parse import urlsplit
+
+    raw = str(url or "").strip().rstrip("/")
+    try:
+        parsed = urlsplit(raw)
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError(f"Invalid server URL: {raw!r}") from exc
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("The server URL must start with http:// or https:// and name a host.")
+    if parsed.username or parsed.password:
+        raise ValueError("The server URL must not contain a username or password.")
+    if parsed.query or parsed.fragment:
+        raise ValueError("The server URL must not contain a query string.")
+    if raw.lower().endswith("/v1"):
+        raw = raw[:-3].rstrip("/")
+    return raw
+
+
+def server_url_is_local(url: str) -> bool:
+    """True for loopback, private-network, and link-local hosts."""
+
+    import ipaddress
+    from urllib.parse import urlsplit
+
+    host = (urlsplit(str(url)).hostname or "").lower().strip(".")
+    if host in {"localhost"} or host.endswith((".local", ".localhost", ".lan", ".home.arpa")):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local
+
+
+def server_url_is_plaintext_remote(url: str) -> bool:
+    """True when frames would cross a network in cleartext to a public host."""
+
+    from urllib.parse import urlsplit
+
+    return urlsplit(str(url)).scheme.lower() == "http" and not server_url_is_local(url)
+
+
 def ai_confidence_for_sensitivity(sensitivity: float) -> float:
     """Map the UI's Strict/Balanced/Loose slider to the AI keep threshold."""
     return max(0.45, min(0.70, 0.55 + (0.5 - float(sensitivity)) * 0.6))
@@ -210,6 +260,19 @@ def _candidate_dirs() -> list[Path]:
     return dirs
 
 
+def _bundled_ffmpeg() -> FFmpegBinaries | None:
+    try:
+        exe_dir = Path(sys.executable).resolve().parent
+        bundle_dir = Path(getattr(sys, "_MEIPASS", exe_dir))
+    except (OSError, RuntimeError):
+        return None
+    for directory in (exe_dir / "bin", exe_dir / "ffmpeg" / "bin", exe_dir, bundle_dir / "bin", bundle_dir):
+        for exe, probe in (("ffmpeg.exe", "ffprobe.exe"), ("ffmpeg", "ffprobe")):
+            if (directory / exe).is_file() and (directory / probe).is_file():
+                return FFmpegBinaries(directory / exe, directory / probe)
+    return None
+
+
 @lru_cache(maxsize=1)
 def find_ffmpeg() -> FFmpegBinaries:
     """Locate ffmpeg and ffprobe from env vars, PATH, or common install dirs."""
@@ -220,6 +283,13 @@ def find_ffmpeg() -> FFmpegBinaries:
             probe = env_hit.with_name("ffprobe.exe" if env_hit.suffix == ".exe" else "ffprobe")
             if probe.is_file():
                 return FFmpegBinaries(env_hit, probe)
+
+    # A frozen build trusts its own bundled FFmpeg before anything on PATH, so
+    # a planted or outdated ffmpeg.exe earlier on PATH is never preferred.
+    if getattr(sys, "frozen", False):
+        bundled = _bundled_ffmpeg()
+        if bundled is not None:
+            return bundled
 
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")

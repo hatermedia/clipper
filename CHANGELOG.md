@@ -4,6 +4,54 @@ All notable changes to Clipper are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Security and consistency fixes from a full code audit.
+
+### Security
+
+- Updater: optional Ed25519 signature over the release `SHA256SUMS` file
+  (stdlib-only verifier, `packaging/sign_release.py` for keys and signing).
+  Once `UPDATE_PUBLIC_KEYS` is set, unsigned or wrongly signed releases are
+  refused. Installers with a broken or untrusted Authenticode signature are
+  always refused; `UPDATE_PUBLISHER` can require a specific publisher.
+- Updater: a downloaded update is no longer installed silently on the next
+  launch; the user must click **Restart and install**.
+- Updater and installer only stop `Clipper.exe` processes running from the
+  install folder. The `taskkill /IM Clipper.exe` fallbacks are gone.
+- Web UI: refuses foreign `Host` headers (DNS rebinding), cross-site and
+  foreign-origin API calls; adds CSP and related headers; no longer reports
+  the working directory or FFmpeg path; validates the x264 preset.
+- Web UI: optional `CLIPPER_ROOTS` confines browse, scan, analyze, thumbnail,
+  and export paths. The Docker image sets it to `/footage:/out`.
+- Web UI: Alpine.js and a compiled Tailwind stylesheet are vendored; the page
+  no longer loads scripts from CDNs.
+- Local server URL must be `http(s)://`; the desktop app warns before sending
+  footage to a server outside the local network, and flags plain HTTP.
+- The bundled llama.cpp server now requires a random per-launch API key.
+- Transcript, OCR, and earlier model text are fenced as untrusted data in
+  director prompts (prompt version `director-v16`).
+- Frozen builds use their bundled FFmpeg before anything on `PATH`;
+  `nvidia-smi` is resolved from System32 first.
+
+### Changed
+
+- The web UI and Docker image now use the AI director, like the desktop app
+  and CLI, instead of the old audio/motion peak picker.
+- Removed the hidden Ollama download/silent-install path. Clipper no longer
+  downloads, installs, or force-closes Ollama; an Ollama you install yourself
+  still works as an optional backend.
+- Removed the unused legacy single-peak AI reviewer.
+- Only one desktop instance can run at a time, so the library and queue are
+  never edited by two copies.
+- Model downloads show the model licence once before the first download.
+- Export filenames keep letters and digits from any script (for example
+  Japanese or accented names); oversized format widths in name templates are
+  refused.
+- The AI path no longer computes the unused fused audio/motion score.
+- CI runs the test suite and a desktop smoke test on Windows and builds and
+  probes the Docker image.
+
 ## [0.9.0] - 2026-11-28
 
 Local test build. Not published.

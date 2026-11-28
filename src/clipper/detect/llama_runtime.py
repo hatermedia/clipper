@@ -16,6 +16,7 @@ import base64
 import hashlib
 import json
 import os
+import secrets
 import shutil
 import socket
 import subprocess
@@ -93,6 +94,7 @@ class ModelSpec:
     audio: bool = True
     engine: str = "llamacpp"
     license: str = ""
+    license_url: str = ""
     experimental: bool = False
 
 
@@ -152,6 +154,7 @@ LFM3_OMNI_2B = ModelSpec(
         ),
     ),
     license="LFM Open License v1.0",
+    license_url="https://ollama.com/library/lfm3-omni",
 )
 
 MINICPM_O_4_5 = ModelSpec(
@@ -191,6 +194,7 @@ MINICPM_O_4_5 = ModelSpec(
     ),
     engine="llamacpp",
     license="Apache-2.0",
+    license_url="https://huggingface.co/openbmb/MiniCPM-o-4_5-gguf",
     experimental=True,
 )
 
@@ -231,6 +235,7 @@ GEMMA_4_12B = ModelSpec(
     ),
     engine="llamacpp",
     license="Gemma Terms of Use",
+    license_url="https://ai.google.dev/gemma/terms",
     experimental=True,
 )
 
@@ -510,6 +515,10 @@ class LlamaServer:
     process: subprocess.Popen
     log_path: Path
     started: float = field(default_factory=time.monotonic)
+    # Random per-launch key. llama-server's /health stays public, but chat
+    # completions require it, so other local processes cannot borrow the GPU
+    # model that Clipper started.
+    api_key: str = ""
 
     @property
     def base_url(self) -> str:
@@ -606,6 +615,7 @@ def start_server(
                     "use the Lite model."
                 )
         port = _free_port()
+        api_key = secrets.token_urlsafe(32)
         log_path = model_dir(spec) / "server.log"
         command = [
             str(server),
@@ -624,6 +634,8 @@ def start_server(
             "127.0.0.1",
             "--port",
             str(port),
+            "--api-key",
+            api_key,
         ]
         mmproj = paths.get("mmproj") or paths.get("vision")
         if mmproj is not None and mmproj.is_file():
@@ -644,6 +656,7 @@ def start_server(
             port=port,
             process=process,
             log_path=log_path,
+            api_key=api_key,
         )
         if _health(server_state.base_url, timeout=timeout):
             _SERVERS[spec.id] = server_state
@@ -677,6 +690,7 @@ def openai_chat_base(
     timeout: float = 300.0,
     json_mode: bool = True,
     label: str = "Local server",
+    api_key: str = "",
 ) -> str:
     content: list[dict] = []
     for image in images:
@@ -706,10 +720,13 @@ def openai_chat_base(
         payload["response_format"] = {"type": "json_object"}
     if "gemma4" in model.lower():
         payload["chat_template_kwargs"] = {"enable_thinking": False}
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     request = urllib.request.Request(
         base_url.rstrip("/") + "/v1/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
@@ -728,6 +745,7 @@ def openai_chat_base(
                 timeout=timeout,
                 json_mode=False,
                 label=label,
+                api_key=api_key,
             )
         raise RuntimeError(f"{label} HTTP {exc.code}: {body}") from exc
     except Exception as exc:
@@ -762,4 +780,5 @@ def openai_chat(
         timeout=timeout,
         json_mode=json_mode,
         label="llama.cpp",
+        api_key=server.api_key,
     )

@@ -238,7 +238,9 @@ def _run_gpu_check(argv: list[str]) -> int:
     except Exception as exc:
         info["ollama"] = {"ok": False, "models": [], "error": str(exc)}
         info["ai_default_model"] = "qwen2.5vl:7b"
-    smi = shutil.which("nvidia-smi")
+    from .gpu import nvidia_smi_path
+
+    smi = nvidia_smi_path()
     if smi:
         proc = subprocess.run(
             [

@@ -64,17 +64,17 @@ done:
 FunctionEnd
 
 !macro CloseClipperImpl PREFIX
-  IfFileExists "$INSTDIR\close_clipper.ps1" ${PREFIX}_has_script
-  Goto ${PREFIX}_try_taskkill
-
-${PREFIX}_has_script:
+  ; close_clipper.ps1 only stops Clipper.exe processes running from $INSTDIR.
+  ; There is deliberately no "taskkill /IM Clipper.exe" fallback: that would
+  ; also kill unrelated programs that share the image name.
+  IfFileExists "$INSTDIR\close_clipper.ps1" 0 ${PREFIX}_close_done
   nsExec::ExecToStack '"${POWERSHELL}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\close_clipper.ps1"'
   Pop $0
   Pop $1
   StrCmp $0 "0" ${PREFIX}_close_done
-
-${PREFIX}_try_taskkill:
-  nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /F /IM Clipper.exe /T'
+  ; One more attempt: a just-started PyInstaller process can miss WM_CLOSE.
+  Sleep 1500
+  nsExec::ExecToStack '"${POWERSHELL}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\close_clipper.ps1"'
   Pop $0
   Pop $1
 

@@ -26,6 +26,12 @@ def test_low_power_caps() -> None:
 
 
 def test_auto_encoder_resolves() -> None:
+    from clipper.config import FFmpegNotFound, find_ffmpeg
+
+    try:
+        find_ffmpeg()
+    except FFmpegNotFound:
+        pytest.skip("ffmpeg is not available")
     assert resolve_encoder("auto") in {"h264_nvenc", "libx264"}
 
 

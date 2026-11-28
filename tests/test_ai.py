@@ -36,40 +36,6 @@ def test_sensitivity_presets_map_to_ai_thresholds() -> None:
     assert 0.45 <= loose <= 0.55 <= balanced <= strict <= 0.70
 
 
-def test_malformed_ollama_json_does_not_abort_other_candidates(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(ai, "model_available", lambda _model: True)
-    calls: list[float] = []
-
-    def fake_review(*args, **kwargs):
-        calls.append(1.0)
-        if len(calls) == 1:
-            raise ai.AIError("Ollama returned malformed JSON: truncated")
-        return {
-            "highlight": True,
-            "confidence": 0.95,
-            "best_frame": 2,
-            "category": "funny",
-            "reason": "clear reaction",
-        }
-
-    monkeypatch.setattr(ai, "review_window", fake_review)
-    candidates = [
-        ClipWindow(start=1.0, end=13.0, peak=7.0, score=0.8),
-        ClipWindow(start=20.0, end=32.0, peak=26.0, score=0.8),
-    ]
-    clips, warnings = ai.review_candidates(
-        Path("clip.mp4"),
-        candidates,
-        DetectionSettings(ai_model="test-model"),
-        40.0,
-    )
-    assert len(calls) == 2
-    assert len(clips) == 1
-    assert any("malformed JSON" in warning for warning in warnings)
-
-
 def test_explicit_local_server_model_uses_server_runtime() -> None:
     settings = DetectionSettings(
         ai=True,
@@ -141,5 +107,20 @@ def test_configure_runtime_propagates_vram_error_after_vision_load(
         with pytest.raises(VramError, match="ears need more memory"):
             ai.configure_runtime(settings)
         assert started == ["minicpm-o-4.5"]
+    finally:
+        ai.stop_runtime()
+
+
+def test_external_server_url_is_validated() -> None:
+    settings = DetectionSettings(
+        ai=True,
+        ai_model="server:local-vision",
+        ai_server_url="file:///C:/Windows/win.ini",
+        ai_ears=False,
+    )
+    try:
+        with pytest.raises(ai.AIError, match="http"):
+            ai.configure_runtime(settings)
+        assert ai.runtime_name() != "server"
     finally:
         ai.stop_runtime()

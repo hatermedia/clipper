@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -26,6 +29,28 @@ jobs:
       - name: Unit tests
         run: pytest -q
 
+  windows:
+    # The product ships for Windows: exercise the updater, installer helper,
+    # PowerShell scripts, llama runtime wiring, and the Qt desktop app there.
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install FFmpeg
+        run: choco install ffmpeg -y --no-progress
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,desktop]"
+      - name: Unit tests
+        run: pytest -q
+      - name: Desktop smoke test
+        run: python -m clipper.desktop --smoke-test
+
   e2e:
     runs-on: ubuntu-latest
     steps:
@@ -43,3 +68,23 @@ jobs:
         env:
           CLIPPER_E2E: "1"
         run: pytest -q tests/test_e2e.py
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t clipper-ci .
+      - name: Web UI answers locally and refuses foreign hosts
+        run: |
+          docker run -d --name clipper -p 127.0.0.1:8765:8765 clipper-ci
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8765/api/health && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8765/api/health
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' http://127.0.0.1:8765/api/browse)
+          test "$code" = "421"
+          code=$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:8765/api/browse?path=/etc')
+          test "$code" = "403"
+          docker rm -f clipper

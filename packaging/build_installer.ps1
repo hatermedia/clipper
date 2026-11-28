@@ -1,6 +1,9 @@
 param(
     [string]$Version = "",
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    # Offline Ed25519 release key (packaging\sign_release.py keygen). When set,
+    # SHA256SUMS-<version>.txt.sig is written for upload with the release.
+    [string]$SigningKey = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -126,5 +129,12 @@ foreach ($artifact in $Artifacts) {
 Set-Content -Path $Sums -Value $Lines -Encoding ascii
 $VersionedSums = Join-Path $Release "SHA256SUMS-$Version.txt"
 Set-Content -Path $VersionedSums -Value $Lines -Encoding ascii
+if ($SigningKey) {
+    & $Python (Join-Path $PSScriptRoot "sign_release.py") sign $VersionedSums --key $SigningKey
+    if ($LASTEXITCODE -ne 0) { throw "Signing $VersionedSums failed" }
+    Write-Host "Signature: $VersionedSums.sig" -ForegroundColor Green
+} else {
+    Write-Host "Checksums are unsigned (no -SigningKey). Builds that set UPDATE_PUBLIC_KEYS will refuse this release." -ForegroundColor Yellow
+}
 Write-Host ("Installer: {0} ({1:N1} MB)" -f $Setup, ((Get-Item $Setup).Length / 1MB)) -ForegroundColor Green
 Write-Host "Checksums: $VersionedSums" -ForegroundColor Green
