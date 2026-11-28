@@ -1,7 +1,8 @@
 # Clipper 0.9.0 validation
 
-This record covers the local Clipper 0.9.0 test build. It is not a public
-release validation record. The current public release remains 0.8.4.
+This record covers the Clipper 0.9.0 Windows x64 release build. The build commit
+is recorded in `BUILD_INFO.txt` inside both packages. Final artifact sizes and
+SHA-256 values are published in `SHA256SUMS-0.9.0.txt`.
 
 ## Test environment
 
@@ -19,12 +20,40 @@ scan tests. The existing 0.8.4 install and release artifacts were preserved.
 
 ```text
 pytest -q
-257 passed, 1 skipped
+263 passed, 1 skipped
 ```
 
 The skipped test is `tests/test_e2e.py`, which requires `CLIPPER_E2E=1`.
 `compileall` passed, the source desktop smoke test passed, the frozen desktop
 smoke test passed, and the static website check found no missing local assets.
+
+## Packaging remediation
+
+The first 0.9.0 candidate was rejected before publication. PyInstaller had
+copied stale editable-install metadata from the development virtual
+environment into both packages:
+
+- `_internal/clipper_gg-0.7.0.dist-info/METADATA` reported version 0.7.0.
+- `_internal/clipper_gg-0.7.0.dist-info/direct_url.json` contained a
+  `file:///C:/Users/<user>/clipper` editable-install URL.
+- `Clipper.exe` had no Windows file or product version resource, and the
+  packages had no build provenance file.
+
+Those rejected artifacts are retained only under
+`packaging/release/rejected-0.9.0-stale-metadata` and were never distributed.
+
+The corrected build now:
+
+- Refuses to start from a dirty Git tree and records the full commit hash.
+- Removes stale `clipper_gg-*.dist-info` and editable `direct_url.json` data.
+- Writes a clean 0.9.0 package record and `BUILD_INFO.txt`.
+- Scans every payload file, including binaries, for personal Windows user
+  paths and fails on a match.
+- Rejects bundled video files, GGUF model weights, and temporary artifacts.
+- Gives `Clipper.exe` 0.9.0 file/product versions, the Clipper product name,
+  and hatermedia branding through a generated PyInstaller version resource.
+- Is covered by packaging regression tests for editable metadata, local paths,
+  provenance, and version metadata.
 
 ## Clean AI runtime and model restore
 
@@ -147,21 +176,24 @@ process behind.
 
 ## Installer
 
-| Artifact | Size | SHA-256 |
-| --- | ---: | --- |
-| `ClipperSetup-0.9.0.exe` | 398,533,769 bytes | `631bbfea7a6ab08116f921a1aeb7e1450e2c974ecd160a67e32dd6fd2b6a5655` |
-| `clipper-0.9.0-windows-x64-native.zip` | 493,822,964 bytes | `f83686e3f507bcad9df948f0dd690bc1e9c00bff97310b6891f42566fed6a97d` |
+The corrected installer and portable zip are the only 0.9.0 artifacts staged
+for release. Their sizes and SHA-256 values are in `SHA256SUMS-0.9.0.txt`; the
+build commit is in `BUILD_INFO.txt`.
 
 The installer was extracted and inspected before installation. Its README says
-0.9.0 and includes the workflow section, FFmpeg and FFprobe are present, and all
-28 packaged Python files matched the source tree byte for byte. The portable zip
-received the same source comparison and its own smoke test.
+0.9.0 and includes the workflow section, `BUILD_INFO.txt` is present, the
+executable reports 0.9.0 file and product versions, FFmpeg and FFprobe are
+present, and all packaged Python files matched the source tree byte for byte.
+Neither package contains `clipper_gg-0.7.0.dist-info`, a `direct_url.json` with
+a local path, or any personal Windows user path. The portable zip received the
+same source comparison and its own smoke test.
 
 The installer was installed to an isolated directory. Installation exited 0,
 the registry reported `DisplayVersion` 0.9.0, both shortcuts targeted the test
 install, the installed app passed its smoke test, and a screenshot showed
-`v0.9.0` with the Library and Queue controls. The test uninstaller removed the
-test install.
+`v0.9.0` with the Library and Queue controls. The installed payload contained
+the clean 0.9.0 package record, `BUILD_INFO.txt`, and the correct executable
+version resource. The test uninstaller removed the test install.
 
 The existing 0.8.4 installation was moved aside for the test and restored
 afterward. It is back to 1,406 files, 1,047,979,269 bytes, with the same README
@@ -169,8 +201,8 @@ hash (`E1DC3441...`), 0.8.4 registry values, and 0.8.4 shortcut targets. The
 0.8.4 installer and portable zip hashes are unchanged:
 `A5607F6F...` and `9CBBB4D2...`.
 
-`SHA256SUMS.txt` was restored to the original 0.8.4 content. The 0.9.0 checksums
-are in `SHA256SUMS-0.9.0.txt`.
+`SHA256SUMS.txt` was preserved for 0.8.4. The corrected 0.9.0 checksums are in
+`SHA256SUMS-0.9.0.txt`.
 
 ## Remaining limitations
 
@@ -185,5 +217,3 @@ are in `SHA256SUMS-0.9.0.txt`.
 - PyInstaller reported non-blocking warnings for unused
   `onnxruntime.quantization`, `tzdata`, and `scipy.special._cdflib` imports.
   Frozen smoke, live AI, and export tests passed with the packaged build.
-- The public website and public download links remain on the 0.8.4 stable
-  release until publishing is authorized.

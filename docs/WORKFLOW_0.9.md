@@ -1,7 +1,7 @@
 # Clipper 0.9 workflow
 
 Clipper 0.9 turns the detector into a complete local clipping workflow. This
-page documents the features in the 0.9.0 test build. They are not published yet.
+page documents the features in the published 0.9.0 Windows release.
 
 Everything here is local. The library, queue, notes, and evidence are JSON or
 text on this PC. Footage is never uploaded.

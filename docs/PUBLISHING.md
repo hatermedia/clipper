@@ -18,18 +18,23 @@ Clipper ships two ways from the same version:
 5. Extract `README.txt` from the generated installer and compare it with the
    staged payload. For example:
    `7z e packaging\release\ClipperSetup-X.Y.Z.exe README.txt -o<temp-dir>`.
-6. Confirm the installer was built from the current source commit. The frozen
-   `llama_runtime` must include the MSVC runtime staging logic from `ed2b278`
-   or later, and the app version must match the README.
-7. Test the installer on a clean per-user profile or a fresh Windows VM:
+6. Confirm the installer was built from the current source commit. `BUILD_INFO.txt`
+   must record the full commit, and `Clipper.exe` must report the expected file
+   and product versions. `build_installer.ps1` refuses a dirty tree and verifies
+   both automatically.
+7. Confirm neither package contains stale editable metadata. The build removes
+   `clipper_gg-*.dist-info` and editable `direct_url.json` files, writes a clean
+   versioned package record, and fails if any personal Windows user path is
+   present in any payload file. Packaging tests cover these checks.
+8. Test the installer on a clean per-user profile or a fresh Windows VM:
    install, launch, first-run AI setup, runtime download, model initialization,
    and one analysis. Verify Ollama is not installed or required.
-8. Build wheel/sdist with `python -m build`.
-9. Verify notices and license files are present in the payload.
-10. Verify every website, README, and release-note media reference points to
+9. Build wheel/sdist with `python -m build`.
+10. Verify notices and license files are present in the payload.
+11. Verify every website, README, and release-note media reference points to
     the current workflow demo and current GUI screenshots. Remove retired
     screenshots and recordings instead of leaving stale promotional assets.
-11. On NVIDIA hardware, verify live free-VRAM detection with no external
+12. On NVIDIA hardware, verify live free-VRAM detection with no external
     workload, with a simulated external CUDA allocation, and with telemetry
     unavailable. Confirm that a full model does not start when free memory is
     below the measured allocation plus the 1 GiB reserve.
@@ -48,7 +53,7 @@ git push origin vX.Y.Z
 gh release create vX.Y.Z --title "vX.Y.Z" --notes-file docs\RELEASE_NOTES_vX.Y.Z.md `
   packaging\release\ClipperSetup-X.Y.Z.exe `
   packaging\release\clipper-X.Y.Z-windows-x64-native.zip `
-  packaging\release\SHA256SUMS.txt `
+  packaging\release\SHA256SUMS-X.Y.Z.txt `
   dist\clipper_gg-X.Y.Z-py3-none-any.whl `
   dist\clipper_gg-X.Y.Z.tar.gz `
   packaging\release\ffmpeg-source\*.tar.gz `

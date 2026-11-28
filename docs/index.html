@@ -24,10 +24,10 @@
     "name": "Clipper",
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Windows 10, Windows 11",
-    "softwareVersion": "0.8.4",
+    "softwareVersion": "0.9.0",
     "description": "Native Windows highlight trimmer with bundled local AI, smart padding, and lossless FFmpeg cuts.",
     "url": "https://hatermedia.github.io/clipper/",
-    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.8.4",
+    "downloadUrl": "https://github.com/hatermedia/clipper/releases/tag/v0.9.0",
     "license": "https://opensource.org/license/mit",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
   }
@@ -71,7 +71,7 @@
             runs on your machine. No accounts, no uploads, no admin prompt.
           </p>
           <div class="cta-row" style="margin-top: 24px;">
-            <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.8.4/ClipperSetup-0.8.4.exe" target="_blank" rel="noreferrer">Download for Windows</a>
+            <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.9.0/ClipperSetup-0.9.0.exe" target="_blank" rel="noreferrer">Download for Windows</a>
             <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">View source</a>
           </div>
           <div class="hero-meta">
@@ -92,13 +92,41 @@
         <div class="section-head">
           <span class="eyebrow">See the workflow</span>
           <h2>Pick footage. Detect highlights. Preview. Export.</h2>
-          <p>Recorded from the actual Clipper 0.8.4 desktop app on Windows 11 with the bundled llama.cpp runtime. No mockup, no cloud round-trip.</p>
+          <p>Recorded from the actual Clipper desktop app on Windows 11 with the bundled llama.cpp runtime. No mockup, no cloud round-trip.</p>
         </div>
         <video controls preload="metadata" poster="media/demo-poster.jpg" style="width: 100%; display: block; border: 1px solid var(--line); border-radius: 12px; background: #000;">
           <source src="media/demo.mp4" type="video/mp4" />
           Your browser does not support the video tag. <a href="media/demo.mp4">Download the demo</a>.
         </video>
         <p class="small dim" style="margin-top: 10px;">The demo selects a real Rocket League capture, runs the local AI director, previews the goal, and exports the selected clip with lossless stream copy.</p>
+      </div>
+    </section>
+
+    <section class="section" id="workflow" style="background: var(--panel-2); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft);">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">New in 0.9</span>
+          <h2>From one-off scans to a clipping workflow.</h2>
+          <p>Keep a local library, export platform-ready clips, reframe vertically, and let watch folders pick up new recordings in the background.</p>
+        </div>
+        <div class="grid-3">
+          <article class="card">
+            <img src="media/desktop-090-library.png" alt="Clipper clip library listing saved scans with clip counts" style="border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px;" />
+            <h3>Clip library</h3>
+            <p>Every scan is saved with scores, reasons, keep decisions, notes, tags, and export history. Reopen a scan later, or rescan and keep decisions for clips whose boundaries still match.</p>
+          </article>
+          <article class="card">
+            <img src="media/desktop-090-main.png" alt="Clipper showing Shorts export preset, auto reframe, and filename template controls" style="border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px;" />
+            <h3>Creator exports + reframe</h3>
+            <p>Lossless is still the default. Add YouTube Shorts, TikTok, Reels, square, landscape, and frame-accurate H.264 presets, with automatic vertical reframing and filename templates.</p>
+          </article>
+          <article class="card">
+            <img src="media/desktop-090-queue.png" alt="Clipper watch folders and scan queue with a running job and a queued recording" style="border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px;" />
+            <h3>Watch folders + queue</h3>
+            <p>Add folders without queueing the existing archive. New recordings settle for 15 seconds, then scan when the PC is idle. Pause, retry, and recover running jobs after a restart.</p>
+          </article>
+        </div>
+        <p class="small dim" style="margin-top: 18px;">Also in 0.9: the <strong>Why this clip?</strong> evidence tab, watch-folder safety checks, and a refreshed local AI director. Read the <a href="RELEASE_NOTES_v0.9.0.md">release notes</a>.</p>
       </div>
     </section>
 
@@ -214,11 +242,11 @@
               <p class="small dim" style="margin-top: 14px;">Disk after AI setup: about 4.5 GB for Lite, 10.6 GB for Standard with LFM3 ears, or 12.1 GB for Google with LFM3 ears. Leave extra space for analysis temp files and exports. On NVIDIA, driver 551.61 or newer is recommended; no CUDA Toolkit is needed. Clipper checks live free VRAM before every model start and serializes automatically when games or other apps leave insufficient headroom. CPU-only AI works but is much slower.</p>
             </div>
             <div class="download-box">
-              <strong style="color: #fff; font-size: 15px;">Clipper v0.8.4</strong>
+              <strong style="color: #fff; font-size: 15px;">Clipper v0.9.0</strong>
               <p class="muted" style="margin-top: 6px;">Native Windows x64. No Python, FFmpeg, admin, or Ollama install.</p>
               <div class="cta-row" style="margin-top: 16px;">
-                <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.8.4/ClipperSetup-0.8.4.exe" target="_blank" rel="noreferrer">Download installer</a>
-                <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.8.4/clipper-0.8.4-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
+                <a class="btn btn-primary" href="https://github.com/hatermedia/clipper/releases/download/v0.9.0/ClipperSetup-0.9.0.exe" target="_blank" rel="noreferrer">Download installer</a>
+                <a class="btn btn-ghost" href="https://github.com/hatermedia/clipper/releases/download/v0.9.0/clipper-0.9.0-windows-x64-native.zip" target="_blank" rel="noreferrer">Portable zip</a>
               </div>
               <p class="meta">SHA-256 checksums are published with every release. The portable zip is for people who do not want an installer. The AI runtime and model download on first setup.</p>
             </div>
@@ -292,7 +320,7 @@
         </a>
         <div class="footer-links">
           <a href="https://github.com/hatermedia/clipper" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://github.com/hatermedia/clipper/releases/tag/v0.8.4" target="_blank" rel="noreferrer">Release</a>
+          <a href="https://github.com/hatermedia/clipper/releases/tag/v0.9.0" target="_blank" rel="noreferrer">Release</a>
           <a href="https://github.com/hatermedia/clipper/blob/main/README.md" target="_blank" rel="noreferrer">README</a>
           <a href="https://github.com/hatermedia/clipper/issues" target="_blank" rel="noreferrer">Issues</a>
         </div>

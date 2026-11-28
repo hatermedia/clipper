@@ -1,6 +1,6 @@
 # Clipper v0.9.0
 
-Local test build. Not published.
+Windows x64 release. Published 2026-11-28.
 
 Clipper 0.9 moves from highlight detection to a complete local clipping
 workflow: keep a scan library, export platform-ready clips, reframe vertically,
@@ -59,6 +59,20 @@ clipper --input .\footage --export-preset square --name-template "{game}_{index:
 clipper --input .\clip.mp4 --format shorts_hevc --reframe facecam
 ```
 
+## Packaging and provenance
+
+- Both packages include `BUILD_INFO.txt` with the application version, full
+  Git commit, build date, platform, build type, and Python, PyInstaller, and
+  PySide6 versions.
+- `Clipper.exe` carries 0.9.0 file and product version resources, the Clipper
+  product name, and hatermedia branding.
+- The release is built from a clean working tree. Stale editable-install
+  metadata is removed, a clean 0.9.0 package record is written, and the build
+  fails if a personal filesystem path or stale Clipper metadata remains.
+- Packaging regression tests cover editable `direct_url.json` metadata, local
+  paths in text and binary files, `BUILD_INFO.txt`, and the Windows version
+  resource.
+
 ## Verification
 
 - Full test suite and compile checks pass.
@@ -70,9 +84,12 @@ clipper --input .\clip.mp4 --format shorts_hevc --reframe facecam
   and two-clip batch output.
 - The 60 Hz vertical crop path stayed within 8 px per update and matched the
   source crop at 0.987 to 0.995 correlation.
-- The 0.9.0 installer and portable package were built, extracted, installed to
-  an isolated path, smoke-tested, and uninstalled while preserving the 0.8.4
-  installation.
+- The corrected 0.9.0 installer and portable package were rebuilt from the
+  remediation commit, audited for stale metadata and local paths, extracted,
+  installed to an isolated path, smoke-tested, and uninstalled while preserving
+  the 0.8.4 installation.
+- The final checksums are published in `SHA256SUMS-0.9.0.txt`; the build commit
+  is recorded inside `BUILD_INFO.txt` in both packages.
 - Detailed results and remaining gaps are in
   [`VALIDATION_0.9.md`](VALIDATION_0.9.md).
 

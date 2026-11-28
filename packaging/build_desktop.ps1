@@ -17,11 +17,23 @@ if (-not (Test-Path $Python)) {
 
 $Version = & $Python -c "import clipper; print(clipper.__version__)"
 if (-not $Version) { throw "Could not read clipper.__version__" }
+$Commit = (& git -C $Root rev-parse HEAD).Trim()
+if (-not $Commit) { throw "Could not read the source commit" }
+$Dirty = (& git -C $Root status --porcelain)
+if ($Dirty) {
+    throw "Refusing to build from a dirty working tree. Commit or stash changes first."
+}
 
-Write-Host "Building Clipper $Version native desktop..." -ForegroundColor Cyan
+Write-Host "Building Clipper $Version native desktop from $Commit..." -ForegroundColor Cyan
 Remove-Item -Recurse -Force $Dist, $Build -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $Release | Out-Null
 New-Item -ItemType Directory -Force $SpecDir | Out-Null
+New-Item -ItemType Directory -Force $Build | Out-Null
+$VersionFile = Join-Path $env:TEMP "clipper-version-info-$PID.txt"
+& $Python (Join-Path $PSScriptRoot "make_version_info.py") --version $Version --output $VersionFile
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $VersionFile)) {
+    throw "Could not generate the Windows version resource"
+}
 Remove-Item -Force (Join-Path $PSScriptRoot "clipper.spec") -ErrorAction SilentlyContinue
 
 $ErrorActionPreference = "Continue"
@@ -32,6 +44,7 @@ $ErrorActionPreference = "Continue"
     --workpath $Build `
     --specpath $SpecDir `
     --icon $Icon `
+    --version-file $VersionFile `
     --collect-all clipper `
     --collect-all faster_whisper `
     --collect-all ctranslate2 `
@@ -72,6 +85,12 @@ Copy-Item (Join-Path $Root "LICENSE") (Join-Path $Dist "LICENSE") -Force
 if ($LASTEXITCODE -ne 0) { throw "Could not stage the offline Whisper model" }
 & (Join-Path $PSScriptRoot "bundle_runtime.ps1") -Dist $Dist -Python $Python -Root $Root
 if ($LASTEXITCODE -ne 0) { throw "Could not bundle runtime dependencies" }
+
+& $Python (Join-Path $PSScriptRoot "sanitize_payload.py") `
+    --dist $Dist `
+    --version $Version `
+    --commit $Commit
+if ($LASTEXITCODE -ne 0) { throw "Could not sanitize the release payload" }
 
 $SizeMb = [math]::Round((Get-ChildItem $Dist -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
 Write-Host "Native folder: $Dist ($SizeMb MB)" -ForegroundColor Green

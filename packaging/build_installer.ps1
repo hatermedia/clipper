@@ -14,6 +14,12 @@ if (-not $Version) {
     $Version = & $Python -c "import clipper; print(clipper.__version__)"
 }
 if (-not $Version) { throw "Could not read Clipper version" }
+$Commit = (& git -C $Root rev-parse HEAD).Trim()
+if (-not $Commit) { throw "Could not read the source commit" }
+$Dirty = (& git -C $Root status --porcelain)
+if ($Dirty) {
+    throw "Refusing to package from a dirty working tree. Commit or stash changes first."
+}
 $Parts = $Version.Split(".")
 while ($Parts.Count -lt 3) { $Parts += "0" }
 $ViVersion = "$($Parts[0]).$($Parts[1]).$($Parts[2]).0"
@@ -29,6 +35,7 @@ if (-not (Test-Path (Join-Path $AppDir "Clipper.exe"))) {
 $RequiredFiles = @(
     "Clipper.exe",
     "README.txt",
+    "BUILD_INFO.txt",
     "close_clipper.ps1",
     "THIRD_PARTY_NOTICES.txt",
     "FFMPEG_NOTICE.txt",
@@ -43,6 +50,21 @@ foreach ($relative in $RequiredFiles) {
     if (-not (Test-Path (Join-Path $AppDir $relative))) {
         throw "Release payload is missing $relative. Rebuild with packaging\build_desktop.ps1."
     }
+}
+& $Python (Join-Path $PSScriptRoot "sanitize_payload.py") `
+    --dist $AppDir `
+    --version $Version `
+    --commit $Commit `
+    --check
+if ($LASTEXITCODE -ne 0) {
+    throw "Release payload failed the packaging integrity check. Rebuild with packaging\build_desktop.ps1."
+}
+$ExeInfo = (Get-Item (Join-Path $AppDir "Clipper.exe")).VersionInfo
+if ($ExeInfo.FileVersion -ne $Version -or $ExeInfo.ProductVersion -ne $Version) {
+    throw "Clipper.exe version resource does not match $Version. Rebuild the desktop payload."
+}
+if ($ExeInfo.ProductName -ne "Clipper" -or $ExeInfo.CompanyName -ne "hatermedia") {
+    throw "Clipper.exe product metadata is incorrect. Rebuild the desktop payload."
 }
 $ReadmePath = Join-Path $AppDir "README.txt"
 $ReadmeText = Get-Content $ReadmePath -Raw
@@ -102,4 +124,7 @@ foreach ($artifact in $Artifacts) {
     Write-Host "SHA-256: $Hash  $Name" -ForegroundColor DarkGray
 }
 Set-Content -Path $Sums -Value $Lines -Encoding ascii
+$VersionedSums = Join-Path $Release "SHA256SUMS-$Version.txt"
+Set-Content -Path $VersionedSums -Value $Lines -Encoding ascii
 Write-Host ("Installer: {0} ({1:N1} MB)" -f $Setup, ((Get-Item $Setup).Length / 1MB)) -ForegroundColor Green
+Write-Host "Checksums: $VersionedSums" -ForegroundColor Green
