@@ -117,7 +117,8 @@ local 0.9.0 installer, but they are not published yet:
   idle time or game exit, pause, resume, and recover after a crash.
 
 See [docs/WORKFLOW_0.9.md](docs/WORKFLOW_0.9.md) for behavior, storage, CLI
-examples, and current limitations.
+examples, and current limitations, or the
+[0.9.0 release notes](docs/RELEASE_NOTES_v0.9.0.md) for the feature summary.
 
 ## First run and local AI
 
