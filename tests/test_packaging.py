@@ -337,7 +337,8 @@ def test_payload_sanitizer_scans_binary_files_for_local_paths(
     internal = dist / "_internal"
     internal.mkdir(parents=True)
     (dist / "Clipper.exe").write_bytes(b"exe")
-    (internal / "leak.bin").write_bytes(b"\x00\x01C:\\Users\\Example\\clipper\x00")
+    leak = str(Path.home()).encode("utf-8", errors="replace")
+    (internal / "leak.bin").write_bytes(b"\x00\x01" + leak + b"\\clipper\x00")
     proc = subprocess.run(
         [
             sys.executable,
@@ -354,8 +355,44 @@ def test_payload_sanitizer_scans_binary_files_for_local_paths(
         check=False,
     )
     assert proc.returncode != 0
-    assert "local filesystem path" in proc.stderr
+    assert "build machine path" in proc.stderr
     assert "leak.bin" in proc.stderr
+
+
+def test_payload_sanitizer_removes_python_cache_directories(
+    tmp_path: Path,
+) -> None:
+    dist = tmp_path / "dist"
+    internal = dist / "_internal"
+    cache = internal / "thirdparty" / "licenses" / "__pycache__"
+    cache.mkdir(parents=True)
+    sbom = internal / "thirdparty-1.0.dist-info" / "sboms"
+    sbom.mkdir(parents=True)
+    (dist / "Clipper.exe").write_bytes(b"exe")
+    (cache / "AUTHORS.cpython-313.pyc").write_bytes(
+        str(Path.home()).encode("utf-8", errors="replace")
+    )
+    (sbom / "bom.json").write_text(
+        '{"ref": "path+file:///D:/a/vendor/build"}', encoding="utf-8"
+    )
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(PACKAGING / "sanitize_payload.py"),
+            "--dist",
+            str(dist),
+            "--version",
+            "0.9.0",
+            "--commit",
+            "abc123",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert not cache.exists()
+    assert not sbom.exists()
 
 
 def test_version_resource_generator_uses_requested_version(tmp_path: Path) -> None:

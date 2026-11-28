@@ -46,6 +46,8 @@ The corrected build now:
 
 - Refuses to start from a dirty Git tree and records the full commit hash.
 - Removes stale `clipper_gg-*.dist-info` and editable `direct_url.json` data.
+- Removes Python `__pycache__` directories and third-party SBOM files that can
+  carry vendor build-machine paths.
 - Writes a clean 0.9.0 package record and `BUILD_INFO.txt`.
 - Scans every payload file, including binaries, for personal Windows user
   paths and fails on a match.

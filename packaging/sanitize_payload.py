@@ -2,13 +2,15 @@
 
 The developer virtual environment may contain editable-install metadata from an
 older Clipper version. PyInstaller can copy that metadata into ``_internal``.
-This step removes stale Clipper metadata, writes a clean versioned dist-info,
-adds build provenance, and fails if local paths or unwanted files remain.
+This step removes stale Clipper metadata, Python cache directories, and vendor
+SBOMs, writes a clean versioned dist-info, adds build provenance, and fails if
+local paths or unwanted files remain.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import re
 import shutil
@@ -18,10 +20,60 @@ from pathlib import Path
 
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".mov", ".avi"}
 TEMP_SUFFIXES = {".log", ".tmp", ".part", ".bak"}
-LOCAL_PATH_BYTES = (
-    re.compile(rb"[A-Za-z]:[\\/]Users[\\/]", re.IGNORECASE),
-    re.compile(rb"file:///[A-Za-z]:/Users/", re.IGNORECASE),
+TEXT_SUFFIXES = {
+    ".py",
+    ".txt",
+    ".json",
+    ".md",
+    ".rst",
+    ".html",
+    ".css",
+    ".js",
+    ".ps1",
+    ".cfg",
+    ".ini",
+    ".toml",
+    ".yml",
+    ".yaml",
+}
+TEXT_NAMES = {
+    "METADATA",
+    "WHEEL",
+    "INSTALLER",
+    "REQUESTED",
+    "RECORD",
+    "top_level.txt",
+    "BUILD_INFO.txt",
+}
+GENERIC_USER_PATH_TEXT = re.compile(
+    r"[A-Za-z]:[\\/]Users[\\/][^\\/\s\"']+", re.IGNORECASE
 )
+FILE_URL_TEXT = re.compile(r"file:///[A-Za-z]:/", re.IGNORECASE)
+BUILD_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _personal_paths() -> tuple[str, ...]:
+    candidates = {str(BUILD_ROOT)}
+    try:
+        candidates.add(str(Path.home()))
+    except RuntimeError:
+        pass
+    profile = os.environ.get("USERPROFILE")
+    if profile:
+        candidates.add(profile)
+    expanded: set[str] = set()
+    for value in candidates:
+        normalized = value.rstrip("\\/")
+        if not normalized:
+            continue
+        expanded.add(normalized)
+        expanded.add(normalized.replace("\\", "/"))
+        expanded.add(normalized.replace("/", "\\"))
+    return tuple(sorted(expanded))
+
+
+def _personal_path_bytes() -> tuple[bytes, ...]:
+    return tuple(value.encode("utf-8", errors="ignore") for value in _personal_paths())
 
 
 def _tool_versions() -> dict[str, str]:
@@ -61,6 +113,14 @@ def _clean_metadata(dist: Path, version: str) -> list[str]:
             r"(?<![A-Za-z])[A-Za-z]:[\\/]", text
         ):
             path.unlink()
+            removed.append(str(path.relative_to(dist)))
+    for pattern in ("__pycache__", "sboms"):
+        for path in sorted((dist / "_internal").rglob(pattern), reverse=True):
+            if not path.is_dir():
+                continue
+            if pattern == "sboms" and not path.parent.name.endswith(".dist-info"):
+                continue
+            shutil.rmtree(path)
             removed.append(str(path.relative_to(dist)))
 
     meta = dist / "_internal" / f"clipper_gg-{version}.dist-info"
@@ -126,6 +186,7 @@ def assert_clean(dist: Path, version: str, commit: str = "") -> None:
         if commit and f"Commit: {commit}" not in text:
             errors.append("BUILD_INFO.txt has the wrong commit")
     expected_meta = f"clipper_gg-{version}.dist-info"
+    personal = _personal_path_bytes()
     for path in dist.rglob("*"):
         if (
             path.is_dir()
@@ -133,6 +194,8 @@ def assert_clean(dist: Path, version: str, commit: str = "") -> None:
             and path.name != expected_meta
         ):
             errors.append(f"stale Clipper metadata: {path.relative_to(dist)}")
+        if path.is_dir() and path.name == "__pycache__":
+            errors.append(f"Python cache directory: {path.relative_to(dist)}")
         if not path.is_file():
             continue
         suffix = path.suffix.lower()
@@ -146,14 +209,21 @@ def assert_clean(dist: Path, version: str, commit: str = "") -> None:
             data = path.read_bytes()
         except OSError:
             continue
-        for pattern in LOCAL_PATH_BYTES:
-            if pattern.search(data):
-                errors.append(f"local filesystem path in {path.relative_to(dist)}")
-                break
-        if path.name == "direct_url.json":
+        lowered = data.lower()
+        if any(value.lower() in lowered for value in personal):
+            errors.append(f"build machine path in {path.relative_to(dist)}")
+            continue
+        text: str | None = None
+        if suffix in TEXT_SUFFIXES or path.name in TEXT_NAMES:
             text = data.decode("utf-8", errors="replace")
-            if "file:" in text.lower() or re.search(
-                r"(?<![A-Za-z])[A-Za-z]:[\\/]", text
+        if text is not None and (
+            GENERIC_USER_PATH_TEXT.search(text) or FILE_URL_TEXT.search(text)
+        ):
+            errors.append(f"local filesystem path in {path.relative_to(dist)}")
+        if path.name == "direct_url.json":
+            direct = text or data.decode("utf-8", errors="replace")
+            if "file:" in direct.lower() or re.search(
+                r"(?<![A-Za-z])[A-Za-z]:[\\/]", direct
             ):
                 errors.append(f"local direct_url metadata: {path.relative_to(dist)}")
     if errors:
