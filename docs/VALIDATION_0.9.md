@@ -38,7 +38,9 @@ download, verify, and install the runtime and both models.
 | MiniCPM-o 4.5 | 6,121,827,584 bytes, both files SHA-256 matched |
 
 The runtime server and both model folders reported ready. No download or
-checksum failures occurred.
+checksum failures occurred. The verified runtime, LFM3, and MiniCPM files were
+also installed into the normal per-user profile with `install_runtime` and
+`install_model`; both models reported ready there as well.
 
 ## Live AI scans
 
@@ -76,8 +78,8 @@ Free memory returned to 8,970 MiB after shutdown.
 
 Each selected source produced one surviving story beat, so the two-config
 scans verified scoring and timestamp selection but did not provide a multi-clip
-ranking sample. Multi-clip sorting remains covered by unit tests, not by these
-two live recordings.
+ranking sample. Multi-clip ranking was not exercised by these two live
+recordings.
 
 ## Creator export verification
 
@@ -136,9 +138,39 @@ isolated data directory.
   returned it to the queue with one attempt and the message
   `Resuming after restart`.
 
-## Installer and frozen app
+## Frozen app
 
-Pending final package build.
+The final portable payload passed a window smoke test. A frozen `--story-test`
+run against the Desktop Rocket League recording returned the same 14.8-45.59 s
+clip with HUD and LFM3 laughter evidence, exited 0, and left no `llama-server`
+process behind.
+
+## Installer
+
+| Artifact | Size | SHA-256 |
+| --- | ---: | --- |
+| `ClipperSetup-0.9.0.exe` | 398,533,769 bytes | `631bbfea7a6ab08116f921a1aeb7e1450e2c974ecd160a67e32dd6fd2b6a5655` |
+| `clipper-0.9.0-windows-x64-native.zip` | 493,822,964 bytes | `f83686e3f507bcad9df948f0dd690bc1e9c00bff97310b6891f42566fed6a97d` |
+
+The installer was extracted and inspected before installation. Its README says
+0.9.0 and includes the workflow section, FFmpeg and FFprobe are present, and all
+28 packaged Python files matched the source tree byte for byte. The portable zip
+received the same source comparison and its own smoke test.
+
+The installer was installed to an isolated directory. Installation exited 0,
+the registry reported `DisplayVersion` 0.9.0, both shortcuts targeted the test
+install, the installed app passed its smoke test, and a screenshot showed
+`v0.9.0` with the Library and Queue controls. The test uninstaller removed the
+test install.
+
+The existing 0.8.4 installation was moved aside for the test and restored
+afterward. It is back to 1,406 files, 1,047,979,269 bytes, with the same README
+hash (`E1DC3441...`), 0.8.4 registry values, and 0.8.4 shortcut targets. The
+0.8.4 installer and portable zip hashes are unchanged:
+`A5607F6F...` and `9CBBB4D2...`.
+
+`SHA256SUMS.txt` was restored to the original 0.8.4 content. The 0.9.0 checksums
+are in `SHA256SUMS-0.9.0.txt`.
 
 ## Remaining limitations
 

@@ -70,7 +70,8 @@ row's checkbox is the keep/reject decision and the export selection.
 
 Vertical and square presets crop the source instead of stretching it. Clipper
 samples the clip, follows the strongest motion, smooths the crop path, and sends
-the result to FFmpeg as tracked crop commands.
+the result to FFmpeg as interpolated 60 Hz crop commands so the movement does
+not step between tracking samples.
 
 **Reframe** offers:
 

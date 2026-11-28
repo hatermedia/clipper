@@ -70,6 +70,9 @@ clipper --input .\clip.mp4 --format shorts_hevc --reframe facecam
   and two-clip batch output.
 - The 60 Hz vertical crop path stayed within 8 px per update and matched the
   source crop at 0.987 to 0.995 correlation.
+- The 0.9.0 installer and portable package were built, extracted, installed to
+  an isolated path, smoke-tested, and uninstalled while preserving the 0.8.4
+  installation.
 - Detailed results and remaining gaps are in
   [`VALIDATION_0.9.md`](VALIDATION_0.9.md).
 

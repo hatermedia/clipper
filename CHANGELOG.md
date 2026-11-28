@@ -43,6 +43,8 @@ Local test build. Not published.
   echoes from the prompt instead of displaying them as proof.
 - Vertical reframe commands are interpolated at 60 Hz, removing the visible
   0.5-second crop steps from the first tracking implementation.
+- Bundled llama.cpp servers now stop on process exit, including the hidden
+  story-test path. The frozen AI check previously left `llama-server` running.
 - Detect now checks the selected bundled model or local server instead of
   requiring an Ollama process.
 - Desktop scans and the watch queue exclude the export folder, so Clipper does
