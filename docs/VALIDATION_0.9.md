@@ -185,6 +185,15 @@ build commit is in `BUILD_INFO.txt`. Every line in that checksum file was
 re-hashed and matched, covering the two 0.9.0 artifacts and the four preserved
 FFmpeg source assets.
 
+| Artifact | Size | SHA-256 |
+| --- | ---: | --- |
+| `ClipperSetup-0.9.0.exe` | 398,502,576 bytes | `441b2d0c567644f5a9499d7e43a25087d60e40078827c299da5363b21694b743` |
+| `clipper-0.9.0-windows-x64-native.zip` | 493,788,536 bytes | `5f8b49cf0cbed8423f8f068379516fb1614c9cf190d831de44336a2f2c4ef83a` |
+
+Both files were downloaded again from the public v0.9.0 release and their
+SHA-256 values matched. The release is the repository's latest release, and the
+v0.8.4 release assets remain unchanged.
+
 The installer was extracted and inspected before installation. Its README says
 0.9.0 and includes the workflow section, `BUILD_INFO.txt` is present, the
 executable reports 0.9.0 file and product versions, FFmpeg and FFprobe are
@@ -208,6 +217,15 @@ hash (`E1DC3441...`), 0.8.4 registry values, and 0.8.4 shortcut targets. The
 
 The 0.8.4 checksum file is preserved as `SHA256SUMS-0.8.4.txt`. The corrected
 0.9.0 checksums are in `SHA256SUMS-0.9.0.txt`.
+
+## Published website
+
+- `https://hatermedia.github.io/clipper/` serves the 0.9.0 page from `main`.
+- The 0.9.0 installer and portable zip links resolve, and their byte sizes
+  match the release assets.
+- The three 0.9.0 screenshots and `RELEASE_NOTES_v0.9.0.md` return HTTP 200.
+- The published page contains no personal build path and no 0.8.4 download
+  links.
 
 ## Remaining limitations
 
