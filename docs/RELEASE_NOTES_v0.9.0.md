@@ -62,7 +62,14 @@ clipper --input .\clip.mp4 --format shorts_hevc --reframe facecam
 ## Verification
 
 - Full test suite and compile checks pass.
-- A real 1080p Arc Raiders export produced 1080 x 1920 H.264 with AAC audio.
+- Lite and Standard live scans found real Rocket League highlights with HUD,
+  transcript, and audio evidence.
+- Standard serialized MiniCPM and LFM3 with one server resident and a
+  7,612 MiB peak.
+- Real exports verified lossless, 1080 x 1920, 1080 x 1080, 1920 x 1080,
+  and two-clip batch output.
+- The 60 Hz vertical crop path stayed within 8 px per update and matched the
+  source crop at 0.987 to 0.995 correlation.
 - Detailed results and remaining gaps are in
   [`VALIDATION_0.9.md`](VALIDATION_0.9.md).
 
